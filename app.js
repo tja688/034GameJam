@@ -474,6 +474,7 @@ class CoreDemoScene extends Phaser.Scene {
         this.activeNodes = [];
         this.links = [];
         this.rebuildFormation(true);
+        this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
         this.refreshMenuState();
     }
 
@@ -723,6 +724,7 @@ class CoreDemoScene extends Phaser.Scene {
 
         this.computeCentroid();
         this.updateDisplay(0);
+        this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
         this.menuMode = null;
         this.refreshMenuState();
         return true;
@@ -853,7 +855,12 @@ class CoreDemoScene extends Phaser.Scene {
         }, 120);
     }
 
-    getDefaultTopologySlot(order) {
+    isSunflowerTopologyEnabled() {
+        const T = window.TUNING || {};
+        return T.enableSunflowerTopologySlots ?? true;
+    }
+
+    getSunflowerTopologySlot(order) {
         if (order <= 0) {
             return { x: 0, y: 0 };
         }
@@ -867,6 +874,77 @@ class CoreDemoScene extends Phaser.Scene {
             x: Math.cos(angle) * radius,
             y: Math.sin(angle) * radius * yComp
         };
+    }
+
+    getLinearTopologySlot(order) {
+        if (order <= 0) {
+            return { x: 0, y: 0 };
+        }
+        const T = window.TUNING || {};
+        const spacing = T.slotSpacing ?? PARTIAL_MESH_RULES.slotSpacing;
+        const forwardStep = Math.max(T.forwardStep ?? PARTIAL_MESH_RULES.forwardStep, spacing * 0.72);
+        const lane = Math.ceil(order / 2);
+        const side = order % 2 === 0 ? -1 : 1;
+        return {
+            x: lane * forwardStep,
+            y: side * spacing * 0.38
+        };
+    }
+
+    getDefaultTopologySlot(order) {
+        return this.isSunflowerTopologyEnabled()
+            ? this.getSunflowerTopologySlot(order)
+            : this.getLinearTopologySlot(order);
+    }
+
+    captureNodeLocalSlot(node) {
+        const local = rotateLocal(node.x - this.player.centroidX, node.y - this.player.centroidY, -this.player.heading);
+        return { x: local.x, y: local.y };
+    }
+
+    applyTopologySlotLayout(useSunflower) {
+        const previousTopology = this.player.topology || { slots: {}, edges: [] };
+        const previousSlots = previousTopology.slots || {};
+        const activeByIndex = new Map((this.activeNodes || []).map((node) => [node.index, node]));
+        const slots = {};
+
+        this.player.chain.forEach((poolIndex, order) => {
+            if (useSunflower) {
+                slots[poolIndex] = this.getSunflowerTopologySlot(order);
+                return;
+            }
+
+            const activeNode = activeByIndex.get(poolIndex);
+            if (activeNode) {
+                slots[poolIndex] = this.captureNodeLocalSlot(activeNode);
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(previousSlots, poolIndex)) {
+                slots[poolIndex] = { ...previousSlots[poolIndex] };
+                return;
+            }
+            slots[poolIndex] = this.getLinearTopologySlot(order);
+        });
+
+        this.player.topology = {
+            slots,
+            edges: (previousTopology.edges || []).filter((edge) => Object.prototype.hasOwnProperty.call(slots, edge.a) && Object.prototype.hasOwnProperty.call(slots, edge.b))
+        };
+    }
+
+    syncTopologySlotLayoutMode() {
+        const useSunflower = this.isSunflowerTopologyEnabled();
+        if (this.lastSunflowerTopologyEnabled === useSunflower) {
+            return;
+        }
+
+        this.lastSunflowerTopologyEnabled = useSunflower;
+        if (!this.player?.topology) {
+            return;
+        }
+
+        this.applyTopologySlotLayout(useSunflower);
+        this.rebuildFormation();
     }
 
     buildPartialMeshEdges(chain, slots) {
@@ -1496,6 +1574,7 @@ class CoreDemoScene extends Phaser.Scene {
         this.handleModeInputs();
         this.readIntent();
         this.updateEditMode(frameDt);
+        this.syncTopologySlotLayoutMode();
 
         const simDt = frameDt * this.timeScaleFactor;
         this.worldTime += simDt;

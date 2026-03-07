@@ -124,6 +124,7 @@ window.TUNING = {
     plantBladeAimBias: 0.38,
 
     // ─── 拓扑槽位 ────────────────────────────────
+    enableSunflowerTopologySlots: true,
     slotSpacing: 102,
     slotYCompression: 0.84,
     slotRadiusScale: 0.94,
@@ -322,7 +323,8 @@ const TUNING_DEFS = [
     { key: 'plantBladeAimBias', label: 'aim 权重', desc: '锚点方向中瞄准方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
 
     // ── 拓扑 ──
-    { section: '🌐 拓扑与槽位', sectionDesc: '黄金角散列的槽位生成参数' },
+    { section: '🌐 拓扑与槽位', sectionDesc: '控制默认槽位生成方式，以及新节点扩张时的空间基准' },
+    { key: 'enableSunflowerTopologySlots', label: '向日葵槽位排列', desc: '默认开启：使用黄金角向日葵种子槽位分布。关闭时会冻结当前结构为新的编队基准，并让缺省槽位改用更线性的展开方式，方便观察是否还会被圆饼化', type: 'toggle' },
     { key: 'slotSpacing', label: '槽位间距', desc: '节点排布的基准间距 (px)——影响整体密度', min: 40, max: 250, step: 2 },
     { key: 'slotYCompression', label: 'Y 轴压缩', desc: '槽位在 Y 方向的压缩比 (0.84=稍扁)', min: 0.3, max: 1.5, step: 0.02 },
     { key: 'slotRadiusScale', label: '半径缩放', desc: '槽位散布半径的总缩放系数', min: 0.3, max: 2, step: 0.02 },
