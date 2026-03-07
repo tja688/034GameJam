@@ -141,6 +141,42 @@ window.TUNING = {
     formationSpanFactor: 0.16,
 };
 
+const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
+
+function loadPersistedTuning() {
+    try {
+        const raw = window.localStorage.getItem(TUNING_STORAGE_KEY);
+        if (!raw) {
+            return false;
+        }
+
+        const saved = JSON.parse(raw);
+        if (!saved || typeof saved !== 'object') {
+            return false;
+        }
+
+        Object.keys(window.TUNING).forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(saved, key)) {
+                window.TUNING[key] = saved[key];
+            }
+        });
+        return true;
+    } catch (error) {
+        console.warn('加载本地调参配置失败:', error);
+        return false;
+    }
+}
+
+function savePersistedTuning() {
+    try {
+        window.localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(window.TUNING));
+        return true;
+    } catch (error) {
+        console.warn('保存本地调参配置失败:', error);
+        return false;
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  参数定义表：key → { label, desc, min, max, step, section }
 // ═══════════════════════════════════════════════════════════════
@@ -306,6 +342,7 @@ const TUNING_DEFS = [
 // ═══════════════════════════════════════════════════════════════
 //  保存默认值以供重置
 // ═══════════════════════════════════════════════════════════════
+loadPersistedTuning();
 const TUNING_DEFAULTS = JSON.parse(JSON.stringify(window.TUNING));
 
 // ═══════════════════════════════════════════════════════════════
@@ -402,6 +439,14 @@ function buildTuningPanel() {
         }
         #tuning-header button.export-btn:hover {
             background: rgba(54, 214, 255, 0.25);
+        }
+        #tuning-header button.apply-btn {
+            background: rgba(244, 240, 215, 0.1);
+            border-color: rgba(244, 240, 215, 0.28);
+            color: #f4f0d7;
+        }
+        #tuning-header button.apply-btn:hover {
+            background: rgba(244, 240, 215, 0.18);
         }
         #tuning-body {
             flex: 1;
@@ -692,6 +737,7 @@ function buildTuningPanel() {
     header.innerHTML = `
         <h2>运动学调参面板</h2>
         <div class="header-btns">
+            <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
             <button class="export-btn" id="tuning-export">📋 导出</button>
             <button id="tuning-reset-all">🔄 全部重置</button>
         </div>
@@ -795,6 +841,25 @@ function buildTuningPanel() {
             window.TUNING[key] = TUNING_DEFAULTS[key];
         });
         allRows.forEach((row) => row.sync());
+    });
+
+    document.getElementById('tuning-apply-local').addEventListener('click', () => {
+        const ok = savePersistedTuning();
+        if (!ok) {
+            const btn = document.getElementById('tuning-apply-local');
+            btn.textContent = '保存失败';
+            setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
+            return;
+        }
+
+        Object.keys(window.TUNING).forEach((key) => {
+            TUNING_DEFAULTS[key] = window.TUNING[key];
+        });
+        allRows.forEach((row) => row.sync());
+
+        const btn = document.getElementById('tuning-apply-local');
+        btn.textContent = '✅ 已应用';
+        setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
     });
 
     // ─── 导出 ──────────────────────────────────────

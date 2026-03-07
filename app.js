@@ -41,6 +41,10 @@ const ENEMY_DEFS = {
     stinger: { color: COLORS.stinger, radius: 16, maxHealth: 8, speed: 118, accel: 190, mass: 0.75, touchDamage: 12, push: 88, shape: 'triangle' },
     brute: { color: COLORS.brute, radius: 28, maxHealth: 40, speed: 52, accel: 96, mass: 2.4, touchDamage: 18, push: 124, shape: 'square' }
 };
+const DEFAULT_BASE_CHAIN = [0, 2, 5, 4, 1, 7];
+const STORAGE_KEYS = {
+    saveSlot: 'bio-core-save-slot-1'
+};
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -134,12 +138,208 @@ function getChainSpan(count) {
     return 310 + (count - 6) * 42;
 }
 
+function cloneData(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function getFiniteNumber(value, fallback) {
+    return Number.isFinite(value) ? value : fallback;
+}
+
+function readStoredJson(key) {
+    try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+            return null;
+        }
+        return JSON.parse(raw);
+    } catch (error) {
+        console.warn(`Failed to read storage key "${key}"`, error);
+        return null;
+    }
+}
+
+function writeStoredJson(key, value) {
+    try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+        return true;
+    } catch (error) {
+        console.warn(`Failed to write storage key "${key}"`, error);
+        return false;
+    }
+}
+
+function formatSaveTimestamp(timestamp) {
+    if (!Number.isFinite(timestamp)) {
+        return '未知时间';
+    }
+
+    try {
+        return new Intl.DateTimeFormat('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        }).format(new Date(timestamp));
+    } catch (error) {
+        return new Date(timestamp).toLocaleString();
+    }
+}
+
+function ensureGameUiStyles() {
+    if (document.getElementById('game-ui-style')) {
+        return;
+    }
+
+    const style = document.createElement('style');
+    style.id = 'game-ui-style';
+    style.textContent = `
+        #game-menu-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 20000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background:
+                radial-gradient(circle at top, rgba(54, 214, 255, 0.12), transparent 32%),
+                linear-gradient(180deg, rgba(2, 7, 11, 0.62), rgba(2, 7, 11, 0.82));
+            backdrop-filter: blur(10px);
+            transition: opacity 0.18s ease;
+        }
+        #game-menu-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .game-menu-panel {
+            width: min(420px, calc(100vw - 48px));
+            padding: 28px 24px 22px;
+            border: 1px solid rgba(79, 169, 198, 0.28);
+            border-radius: 18px;
+            background: rgba(7, 16, 23, 0.88);
+            color: #d7e6eb;
+            box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        .game-menu-eyebrow {
+            margin-bottom: 8px;
+            color: #4fa9c6;
+            font-size: 12px;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+        }
+        .game-menu-title {
+            margin: 0;
+            font-size: 36px;
+            line-height: 1.1;
+            color: #f4f0d7;
+        }
+        .game-menu-subtitle {
+            margin: 10px 0 0;
+            color: rgba(215, 230, 235, 0.72);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .game-menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 22px;
+        }
+        .game-menu-buttons.hidden {
+            display: none;
+        }
+        .game-menu-button {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid rgba(54, 214, 255, 0.22);
+            border-radius: 10px;
+            background: rgba(54, 214, 255, 0.12);
+            color: #f4f0d7;
+            font-size: 15px;
+            cursor: pointer;
+            transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+        }
+        .game-menu-button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            border-color: rgba(54, 214, 255, 0.48);
+            background: rgba(54, 214, 255, 0.18);
+        }
+        .game-menu-button.secondary {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.12);
+            color: rgba(215, 230, 235, 0.92);
+        }
+        .game-menu-button:disabled {
+            opacity: 0.38;
+            cursor: default;
+        }
+        .game-menu-slot {
+            margin-top: 18px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: rgba(79, 169, 198, 0.08);
+            color: rgba(215, 230, 235, 0.8);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .game-menu-hint {
+            margin-top: 12px;
+            color: rgba(215, 230, 235, 0.46);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        #game-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            z-index: 20010;
+            transform: translate(-50%, 10px);
+            min-width: 220px;
+            max-width: min(460px, calc(100vw - 32px));
+            padding: 12px 16px;
+            border-radius: 999px;
+            background: rgba(7, 16, 23, 0.92);
+            border: 1px solid rgba(79, 169, 198, 0.28);
+            color: #d7e6eb;
+            text-align: center;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            font-size: 13px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+        #game-toast.visible {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+        #game-toast.error {
+            border-color: rgba(255, 93, 73, 0.38);
+            color: #ffd4ce;
+        }
+        @media (max-width: 640px) {
+            .game-menu-panel {
+                width: calc(100vw - 24px);
+                padding: 24px 18px 18px;
+            }
+            .game-menu-title {
+                font-size: 30px;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+}
+
 class CoreDemoScene extends Phaser.Scene {
     constructor() {
         super('core-demo');
     }
 
     create() {
+        ensureGameUiStyles();
         this.cameras.main.setBackgroundColor(COLORS.background);
         this.graphics = this.add.graphics();
         this.input.mouse?.disableContextMenu();
@@ -160,7 +360,11 @@ class CoreDemoScene extends Phaser.Scene {
         this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
             this.cameraZoomScale = clamp(this.cameraZoomScale - deltaY * 0.001, 0.1, 5.0);
         });
-        this.resetSimulation();
+        this.menuMode = null;
+        this.toastTimer = null;
+        this.buildUi();
+        this.resetSimulation(false);
+        this.showMainMenu();
     }
 
     handleResize() {
@@ -171,19 +375,29 @@ class CoreDemoScene extends Phaser.Scene {
         this.cameraRig.viewportHeight = this.scale.height;
     }
 
-    resetSimulation() {
-        this.paused = false;
-        this.timeScaleFactor = 1;
-        this.worldTime = 0;
-        this.effects = [];
-        this.projectiles = [];
-        this.echoQueue = [];
-        this.enemies = [];
-        this.spawnTimers = { swarm: 0.35, stinger: 8, brute: 46, flank: 21 };
-        this.baseChain = [0, 2, 5, 4, 1, 7];
+    createDefaultEditState() {
+        return {
+            active: false,
+            ambience: 0,
+            hoverNode: -1,
+            hoverLink: '',
+            selectedNode: -1,
+            pointerNode: -1,
+            dragNode: -1,
+            dragStartX: 0,
+            dragStartY: 0,
+            dragOffsetX: 0,
+            dragOffsetY: 0,
+            dragWorldX: 0,
+            dragWorldY: 0,
+            deleteNode: -1,
+            deleteProgress: 0
+        };
+    }
 
-        this.player = {
-            chain: [...this.baseChain],
+    createDefaultPlayer(chain = this.baseChain) {
+        return {
+            chain: [...chain],
             centroidX: 0,
             centroidY: 0,
             heading: -Math.PI * 0.5,
@@ -205,26 +419,12 @@ class CoreDemoScene extends Phaser.Scene {
             pulseCursor: 0,
             pulseTimer: 0.12,
             pulsePath: { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false },
-            edit: {
-                active: false,
-                ambience: 0,
-                hoverNode: -1,
-                hoverLink: '',
-                selectedNode: -1,
-                pointerNode: -1,
-                dragNode: -1,
-                dragStartX: 0,
-                dragStartY: 0,
-                dragOffsetX: 0,
-                dragOffsetY: 0,
-                dragWorldX: 0,
-                dragWorldY: 0,
-                deleteNode: -1,
-                deleteProgress: 0
-            }
+            edit: this.createDefaultEditState()
         };
+    }
 
-        this.intent = {
+    createDefaultIntent() {
+        return {
             moveX: 0,
             moveY: 0,
             moveLength: 0,
@@ -234,8 +434,10 @@ class CoreDemoScene extends Phaser.Scene {
             flowX: 0,
             flowY: -1
         };
+    }
 
-        this.cameraRig = {
+    createDefaultCameraRig() {
+        return {
             x: 0,
             y: 0,
             zoom: 0.92,
@@ -243,12 +445,412 @@ class CoreDemoScene extends Phaser.Scene {
             viewportWidth: this.scale.width,
             viewportHeight: this.scale.height
         };
+    }
 
-        this.poolNodes = NODE_LIBRARY.map((node, index) => ({ ...node, index }));
+    createDefaultSpawnTimers() {
+        return { swarm: 0.35, stinger: 8, brute: 46, flank: 21 };
+    }
+
+    createPoolNodesFromLibrary() {
+        return NODE_LIBRARY.map((node, index) => ({ ...node, index }));
+    }
+
+    resetSimulation(startSession = true) {
+        this.paused = false;
+        this.sessionStarted = startSession;
+        this.timeScaleFactor = 1;
+        this.worldTime = 0;
+        this.effects = [];
+        this.projectiles = [];
+        this.echoQueue = [];
+        this.enemies = [];
+        this.spawnTimers = this.createDefaultSpawnTimers();
+        this.baseChain = [...DEFAULT_BASE_CHAIN];
+        this.player = this.createDefaultPlayer();
+        this.intent = this.createDefaultIntent();
+        this.cameraRig = this.createDefaultCameraRig();
+        this.poolNodes = this.createPoolNodesFromLibrary();
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
         this.links = [];
         this.rebuildFormation(true);
+        this.refreshMenuState();
+    }
+
+    buildUi() {
+        const overlay = document.createElement('div');
+        overlay.id = 'game-menu-overlay';
+        overlay.className = 'hidden';
+        overlay.innerHTML = `
+            <div class="game-menu-panel">
+                <div class="game-menu-eyebrow" id="game-menu-eyebrow">Biological Dynamics</div>
+                <h1 class="game-menu-title" id="game-menu-title">主菜单</h1>
+                <p class="game-menu-subtitle" id="game-menu-subtitle"></p>
+                <div class="game-menu-buttons" id="game-main-menu-buttons">
+                    <button class="game-menu-button" id="menu-start-btn">开始</button>
+                    <button class="game-menu-button" id="menu-main-continue-btn">继续</button>
+                    <button class="game-menu-button secondary" id="menu-exit-btn">退出</button>
+                </div>
+                <div class="game-menu-buttons hidden" id="game-pause-menu-buttons">
+                    <button class="game-menu-button" id="menu-pause-continue-btn">继续</button>
+                    <button class="game-menu-button" id="menu-save-btn">保存</button>
+                    <button class="game-menu-button" id="menu-load-btn">读档</button>
+                    <button class="game-menu-button secondary" id="menu-main-menu-btn">返回主菜单</button>
+                </div>
+                <div class="game-menu-slot" id="game-menu-slot"></div>
+                <div class="game-menu-hint" id="game-menu-hint"></div>
+            </div>
+        `;
+
+        const toast = document.createElement('div');
+        toast.id = 'game-toast';
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(toast);
+
+        this.ui = {
+            overlay,
+            toast,
+            title: overlay.querySelector('#game-menu-title'),
+            subtitle: overlay.querySelector('#game-menu-subtitle'),
+            slot: overlay.querySelector('#game-menu-slot'),
+            hint: overlay.querySelector('#game-menu-hint'),
+            mainButtons: overlay.querySelector('#game-main-menu-buttons'),
+            pauseButtons: overlay.querySelector('#game-pause-menu-buttons'),
+            startButton: overlay.querySelector('#menu-start-btn'),
+            mainContinueButton: overlay.querySelector('#menu-main-continue-btn'),
+            exitButton: overlay.querySelector('#menu-exit-btn'),
+            pauseContinueButton: overlay.querySelector('#menu-pause-continue-btn'),
+            saveButton: overlay.querySelector('#menu-save-btn'),
+            loadButton: overlay.querySelector('#menu-load-btn'),
+            mainMenuButton: overlay.querySelector('#menu-main-menu-btn')
+        };
+
+        this.ui.startButton.addEventListener('click', () => this.startNewGame());
+        this.ui.mainContinueButton.addEventListener('click', () => this.handleMainContinue());
+        this.ui.exitButton.addEventListener('click', () => this.handleExitGame());
+        this.ui.pauseContinueButton.addEventListener('click', () => this.resumeGame());
+        this.ui.saveButton.addEventListener('click', () => this.saveGameToSlot());
+        this.ui.loadButton.addEventListener('click', () => this.loadGameFromSlot());
+        this.ui.mainMenuButton.addEventListener('click', () => this.showMainMenu());
+    }
+
+    hasSavedGame() {
+        return !!this.getSavedGameData();
+    }
+
+    getSavedGameData() {
+        const data = readStoredJson(STORAGE_KEYS.saveSlot);
+        if (!data || !Array.isArray(data.player?.chain) || !data.player?.topology || !Array.isArray(data.poolNodes) || !Array.isArray(data.activeNodes)) {
+            return null;
+        }
+        return data;
+    }
+
+    buildSaveData() {
+        return {
+            version: 1,
+            savedAt: Date.now(),
+            baseChain: [...this.baseChain],
+            player: {
+                chain: [...this.player.chain],
+                centroidX: this.player.centroidX,
+                centroidY: this.player.centroidY,
+                heading: this.player.heading,
+                health: this.player.health,
+                maxHealth: this.player.maxHealth,
+                shield: this.player.shield,
+                shieldTimer: this.player.shieldTimer,
+                mass: this.player.mass,
+                energy: this.player.energy,
+                guard: this.player.guard,
+                overload: this.player.overload,
+                echo: this.player.echo,
+                tempoBoost: this.player.tempoBoost,
+                agitation: this.player.agitation,
+                stability: this.player.stability,
+                turnAssist: this.player.turnAssist,
+                dead: this.player.dead,
+                deathTimer: this.player.deathTimer,
+                pulseCursor: this.player.pulseCursor,
+                pulseTimer: this.player.pulseTimer,
+                pulsePath: cloneData(this.player.pulsePath),
+                topology: cloneData(this.player.topology)
+            },
+            poolNodes: this.poolNodes.map((node) => ({
+                index: node.index,
+                id: node.id,
+                shape: node.shape,
+                polarity: node.polarity,
+                role: node.role,
+                color: node.color
+            })),
+            activeNodes: this.activeNodes.map((node) => ({
+                index: node.index,
+                x: node.x,
+                y: node.y,
+                vx: node.vx,
+                vy: node.vy,
+                anchorX: node.anchorX,
+                anchorY: node.anchorY,
+                anchored: node.anchored,
+                stanceTimer: node.stanceTimer,
+                anchorStrength: node.anchorStrength,
+                pulseGlow: node.pulseGlow,
+                tension: node.tension,
+                displayX: node.displayX,
+                displayY: node.displayY,
+                displayAnchorX: node.displayAnchorX,
+                displayAnchorY: node.displayAnchorY,
+                attackTimer: node.attackTimer,
+                attackDirX: node.attackDirX,
+                attackDirY: node.attackDirY,
+                attackDamage: node.attackDamage
+            })),
+            summary: {
+                nodeCount: this.activeNodes.length,
+                linkCount: this.links.length
+            }
+        };
+    }
+
+    saveGameToSlot() {
+        if (!this.sessionStarted) {
+            this.showToast('当前没有可保存的局内状态。', true);
+            return false;
+        }
+
+        const ok = writeStoredJson(STORAGE_KEYS.saveSlot, this.buildSaveData());
+        this.refreshMenuState();
+        this.showToast(ok ? '单通道存档已保存。' : '保存失败，无法写入本地存储。', !ok);
+        return ok;
+    }
+
+    applySaveData(data) {
+        const savedBaseChain = Array.isArray(data.baseChain) && data.baseChain.length >= 3 ? data.baseChain : [...DEFAULT_BASE_CHAIN];
+        const savedPoolNodes = Array.isArray(data.poolNodes) && data.poolNodes.length > 0 ? data.poolNodes : this.createPoolNodesFromLibrary();
+        const validIndices = new Set(savedPoolNodes.map((node, index) => Number.isInteger(node.index) ? node.index : index));
+        const savedChain = Array.isArray(data.player?.chain)
+            ? data.player.chain.filter((index) => validIndices.has(index))
+            : [];
+        const chain = savedChain.length >= 3 ? savedChain : [...savedBaseChain];
+
+        this.paused = false;
+        this.sessionStarted = true;
+        this.timeScaleFactor = 1;
+        this.worldTime = 0;
+        this.effects = [];
+        this.projectiles = [];
+        this.echoQueue = [];
+        this.enemies = [];
+        this.spawnTimers = this.createDefaultSpawnTimers();
+        this.baseChain = [...savedBaseChain];
+        this.player = this.createDefaultPlayer(chain);
+        this.intent = this.createDefaultIntent();
+        this.cameraRig = this.createDefaultCameraRig();
+        this.cameraZoomScale = 1;
+        this.poolNodes = savedPoolNodes.map((node, index) => ({
+            ...node,
+            index: Number.isInteger(node.index) ? node.index : index
+        }));
+
+        Object.assign(this.player, {
+            centroidX: getFiniteNumber(data.player.centroidX, this.player.centroidX),
+            centroidY: getFiniteNumber(data.player.centroidY, this.player.centroidY),
+            heading: getFiniteNumber(data.player.heading, this.player.heading),
+            health: getFiniteNumber(data.player.health, this.player.health),
+            maxHealth: getFiniteNumber(data.player.maxHealth, this.player.maxHealth),
+            shield: getFiniteNumber(data.player.shield, this.player.shield),
+            shieldTimer: getFiniteNumber(data.player.shieldTimer, this.player.shieldTimer),
+            mass: getFiniteNumber(data.player.mass, this.player.mass),
+            energy: getFiniteNumber(data.player.energy, this.player.energy),
+            guard: getFiniteNumber(data.player.guard, this.player.guard),
+            overload: getFiniteNumber(data.player.overload, this.player.overload),
+            echo: getFiniteNumber(data.player.echo, this.player.echo),
+            tempoBoost: getFiniteNumber(data.player.tempoBoost, this.player.tempoBoost),
+            agitation: getFiniteNumber(data.player.agitation, this.player.agitation),
+            stability: getFiniteNumber(data.player.stability, this.player.stability),
+            turnAssist: getFiniteNumber(data.player.turnAssist, this.player.turnAssist),
+            dead: !!data.player.dead,
+            deathTimer: getFiniteNumber(data.player.deathTimer, this.player.deathTimer),
+            pulseCursor: clamp(getFiniteNumber(data.player.pulseCursor, 0), 0, Math.max(0, chain.length - 1)),
+            pulseTimer: getFiniteNumber(data.player.pulseTimer, this.player.pulseTimer),
+            pulsePath: {
+                ...this.player.pulsePath,
+                ...(data.player.pulsePath || {})
+            },
+            topology: {
+                slots: cloneData(data.player.topology?.slots || {}),
+                edges: Array.isArray(data.player.topology?.edges) ? cloneData(data.player.topology.edges) : []
+            },
+            edit: this.createDefaultEditState()
+        });
+
+        this.activeNodes = [];
+        this.links = [];
+        this.rebuildFormation(true);
+
+        const savedNodeMap = new Map(
+            (Array.isArray(data.activeNodes) ? data.activeNodes : []).map((node) => [node.index, node])
+        );
+
+        this.activeNodes.forEach((node) => {
+            const savedNode = savedNodeMap.get(node.index);
+            if (!savedNode) {
+                return;
+            }
+
+            node.x = getFiniteNumber(savedNode.x, node.x);
+            node.y = getFiniteNumber(savedNode.y, node.y);
+            node.vx = getFiniteNumber(savedNode.vx, node.vx);
+            node.vy = getFiniteNumber(savedNode.vy, node.vy);
+            node.anchorX = getFiniteNumber(savedNode.anchorX, node.anchorX);
+            node.anchorY = getFiniteNumber(savedNode.anchorY, node.anchorY);
+            node.anchored = !!savedNode.anchored;
+            node.stanceTimer = getFiniteNumber(savedNode.stanceTimer, node.stanceTimer);
+            node.anchorStrength = getFiniteNumber(savedNode.anchorStrength, node.anchorStrength);
+            node.pulseGlow = getFiniteNumber(savedNode.pulseGlow, node.pulseGlow);
+            node.tension = getFiniteNumber(savedNode.tension, node.tension);
+            node.displayX = getFiniteNumber(savedNode.displayX, node.displayX);
+            node.displayY = getFiniteNumber(savedNode.displayY, node.displayY);
+            node.displayAnchorX = getFiniteNumber(savedNode.displayAnchorX, node.displayAnchorX);
+            node.displayAnchorY = getFiniteNumber(savedNode.displayAnchorY, node.displayAnchorY);
+            node.attackTimer = getFiniteNumber(savedNode.attackTimer, node.attackTimer);
+            node.attackDirX = getFiniteNumber(savedNode.attackDirX, node.attackDirX);
+            node.attackDirY = getFiniteNumber(savedNode.attackDirY, node.attackDirY);
+            node.attackDamage = getFiniteNumber(savedNode.attackDamage, node.attackDamage);
+        });
+
+        this.computeCentroid();
+        this.updateDisplay(0);
+        this.menuMode = null;
+        this.refreshMenuState();
+        return true;
+    }
+
+    loadGameFromSlot() {
+        const data = this.getSavedGameData();
+        if (!data) {
+            this.showToast('没有可读取的单通道存档。', true);
+            this.refreshMenuState();
+            return false;
+        }
+
+        const ok = this.applySaveData(data);
+        this.showToast(ok ? '单通道存档已读取。' : '读档失败，存档数据不可用。', !ok);
+        return ok;
+    }
+
+    refreshMenuState() {
+        if (!this.ui) {
+            return;
+        }
+
+        const saveData = this.getSavedGameData();
+        const hasSave = !!saveData;
+        const hasSession = !!this.sessionStarted;
+        const mainContinueText = hasSession ? '继续' : '继续（读档）';
+
+        this.ui.mainContinueButton.textContent = mainContinueText;
+        this.ui.mainContinueButton.disabled = !hasSession && !hasSave;
+        this.ui.loadButton.disabled = !hasSave;
+        this.ui.saveButton.disabled = !hasSession;
+
+        if (this.menuMode === 'pause') {
+            this.ui.overlay.classList.remove('hidden');
+            this.ui.mainButtons.classList.add('hidden');
+            this.ui.pauseButtons.classList.remove('hidden');
+            this.ui.title.textContent = '暂停';
+            this.ui.subtitle.textContent = '游戏已暂停。可以继续、保存当前单槽、直接读回单槽，或返回主菜单。';
+            this.ui.hint.textContent = 'ESC 继续游戏。读档会直接覆盖当前局内状态。';
+        } else if (this.menuMode === 'main') {
+            this.ui.overlay.classList.remove('hidden');
+            this.ui.mainButtons.classList.remove('hidden');
+            this.ui.pauseButtons.classList.add('hidden');
+            this.ui.title.textContent = '主菜单';
+            this.ui.subtitle.textContent = hasSession
+                ? '当前局仍保留在内存里。可以继续当前局，或者重新开始新局。'
+                : '开始新局，或读取本地单通道存档继续。';
+            this.ui.hint.textContent = '单通道存档只保存玩家状态、节点与连线等结构数据，不包含调参本地应用配置。';
+        } else {
+            this.ui.overlay.classList.add('hidden');
+        }
+
+        if (hasSave) {
+            const nodeCount = saveData.summary?.nodeCount ?? saveData.activeNodes.length;
+            const linkCount = saveData.summary?.linkCount ?? (saveData.player.topology?.edges?.length || 0);
+            this.ui.slot.textContent = `单通道存档：${formatSaveTimestamp(saveData.savedAt)} · 节点 ${nodeCount} · 连线 ${linkCount}`;
+        } else {
+            this.ui.slot.textContent = '单通道存档：空';
+        }
+    }
+
+    showToast(message, isError = false) {
+        if (!this.ui?.toast) {
+            return;
+        }
+
+        if (this.toastTimer) {
+            window.clearTimeout(this.toastTimer);
+        }
+
+        this.ui.toast.textContent = message;
+        this.ui.toast.classList.toggle('error', isError);
+        this.ui.toast.classList.add('visible');
+        this.toastTimer = window.setTimeout(() => {
+            this.ui.toast.classList.remove('visible');
+        }, 1800);
+    }
+
+    startNewGame() {
+        this.resetSimulation(true);
+        this.resumeGame();
+    }
+
+    handleMainContinue() {
+        if (this.sessionStarted) {
+            this.resumeGame();
+            return;
+        }
+        this.loadGameFromSlot();
+    }
+
+    resumeGame() {
+        if (!this.sessionStarted) {
+            this.handleMainContinue();
+            return;
+        }
+
+        this.menuMode = null;
+        this.paused = false;
+        this.refreshMenuState();
+    }
+
+    showPauseMenu() {
+        if (!this.sessionStarted) {
+            return;
+        }
+
+        this.exitEditMode();
+        this.menuMode = 'pause';
+        this.paused = true;
+        this.refreshMenuState();
+    }
+
+    showMainMenu() {
+        this.exitEditMode();
+        this.menuMode = 'main';
+        this.paused = true;
+        this.refreshMenuState();
+    }
+
+    handleExitGame() {
+        window.close();
+        window.setTimeout(() => {
+            if (!document.hidden) {
+                this.showToast('浏览器阻止了关闭窗口。', true);
+            }
+        }, 120);
     }
 
     getDefaultTopologySlot(order) {
@@ -844,20 +1446,35 @@ class CoreDemoScene extends Phaser.Scene {
     update(_, deltaMs) {
         const frameDt = Math.min(deltaMs, 33) / 1000;
 
-        if (this.player.dead) {
-            this.player.deathTimer -= frameDt;
-            if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
-                this.resetSimulation();
+        if (Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
+            if (this.menuMode === 'pause') {
+                this.resumeGame();
+                return;
+            }
+            if (this.menuMode === 'main') {
+                return;
+            }
+            if (this.player.edit.active) {
+                this.exitEditMode();
+            } else if (this.sessionStarted) {
+                this.showPauseMenu();
                 return;
             }
         }
 
-        // Handle ESC (cancel) key
-        if (Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
-            if (this.player.edit.active) {
-                this.exitEditMode();
-            } else {
-                this.paused = !this.paused;
+        if (this.menuMode) {
+            this.updateCamera(frameDt);
+            this.updateDisplay(frameDt);
+            this.render();
+            return;
+        }
+
+        if (this.player.dead) {
+            this.player.deathTimer -= frameDt;
+            if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
+                this.resetSimulation(true);
+                this.resumeGame();
+                return;
             }
         }
 
@@ -872,7 +1489,7 @@ class CoreDemoScene extends Phaser.Scene {
             this.addDebugNode();
         }
         if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
-            this.resetSimulation();
+            this.resetSimulation(true);
             return;
         }
 
@@ -949,8 +1566,12 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     handlePointerDown(pointer) {
+        if (this.menuMode) {
+            return;
+        }
+
         if (this.player.dead) {
-            this.resetSimulation();
+            this.resetSimulation(true);
             return;
         }
 
@@ -1006,6 +1627,10 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     handlePointerUp(pointer) {
+        if (this.menuMode) {
+            return;
+        }
+
         if (!this.player.edit.active) {
             return;
         }
@@ -2264,14 +2889,9 @@ class CoreDemoScene extends Phaser.Scene {
         g.fillStyle(COLORS.inverse, 0.78);
         g.fillRect(left, top + 40, healthWidth * pressure, 6);
 
-        if (this.paused) {
-            const cx = this.scale.width * 0.5;
-            const cy = this.scale.height * 0.5;
-            g.fillStyle(0x000000, 0.4);
+        if (this.menuMode === 'pause') {
+            g.fillStyle(0x000000, 0.18);
             g.fillRect(0, 0, this.scale.width, this.scale.height);
-            g.fillStyle(COLORS.pulse, 0.9);
-            g.fillRect(cx - 20, cy - 30, 12, 60);
-            g.fillRect(cx + 8, cy - 30, 12, 60);
         }
     }
 
