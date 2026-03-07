@@ -80,6 +80,13 @@ function makeEdgeKey(a, b) {
     return a < b ? `${a}:${b}` : `${b}:${a}`;
 }
 
+let TOPOLOGY_EDGE_UID = 1;
+function createTopologyEdgeId() {
+    const id = TOPOLOGY_EDGE_UID;
+    TOPOLOGY_EDGE_UID += 1;
+    return `edge-${id}`;
+}
+
 function angleDistance(a, b) {
     return Math.abs(Phaser.Math.Angle.Wrap(a - b));
 }
@@ -428,6 +435,16 @@ class CoreDemoScene extends Phaser.Scene {
         return { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
     }
 
+    createTopologyEdgeDescriptor(a, b, kind = 'support', id = createTopologyEdgeId()) {
+        return { id, a, b, kind };
+    }
+
+    normalizeTopologyEdges(edges) {
+        return (Array.isArray(edges) ? edges : [])
+            .filter((edge) => Number.isInteger(edge?.a) && Number.isInteger(edge?.b) && edge.a !== edge.b)
+            .map((edge) => this.createTopologyEdgeDescriptor(edge.a, edge.b, edge.kind || 'support', edge.id || createTopologyEdgeId()));
+    }
+
     createPulseRunner(cursor = 0, timer = 0.12, path = null) {
         return {
             cursor,
@@ -686,7 +703,10 @@ class CoreDemoScene extends Phaser.Scene {
                 pulseCursor: this.player.pulseCursor,
                 pulseTimer: this.player.pulseTimer,
                 pulsePath: cloneData(this.player.pulsePath),
-                topology: cloneData(this.player.topology)
+                topology: {
+                    slots: cloneData(this.player.topology?.slots || {}),
+                    edges: cloneData(this.player.topology?.edges || [])
+                }
             },
             poolNodes: this.poolNodes.map((node) => ({
                 index: node.index,
@@ -799,7 +819,7 @@ class CoreDemoScene extends Phaser.Scene {
             },
             topology: {
                 slots: cloneData(data.player.topology?.slots || {}),
-                edges: Array.isArray(data.player.topology?.edges) ? cloneData(data.player.topology.edges) : []
+                edges: this.normalizeTopologyEdges(cloneData(data.player.topology?.edges || []))
             },
             edit: this.createDefaultEditState()
         });
@@ -1046,7 +1066,9 @@ class CoreDemoScene extends Phaser.Scene {
 
         this.player.topology = {
             slots,
-            edges: (previousTopology.edges || []).filter((edge) => Object.prototype.hasOwnProperty.call(slots, edge.a) && Object.prototype.hasOwnProperty.call(slots, edge.b))
+            edges: this.normalizeTopologyEdges(
+                (previousTopology.edges || []).filter((edge) => Object.prototype.hasOwnProperty.call(slots, edge.a) && Object.prototype.hasOwnProperty.call(slots, edge.b))
+            )
         };
     }
 
@@ -1179,7 +1201,7 @@ class CoreDemoScene extends Phaser.Scene {
 
         return {
             slots,
-            edges: this.buildPartialMeshEdges(chain, slots)
+            edges: this.normalizeTopologyEdges(this.buildPartialMeshEdges(chain, slots))
         };
     }
 
@@ -1383,25 +1405,24 @@ class CoreDemoScene extends Phaser.Scene {
         return degree;
     }
 
-    hasTopologyEdge(a, b) {
+    getTopologyEdgeCount(a, b) {
         const key = makeEdgeKey(a, b);
-        return this.player.topology.edges.some((edge) => makeEdgeKey(edge.a, edge.b) === key);
+        return this.player.topology.edges.filter((edge) => makeEdgeKey(edge.a, edge.b) === key).length;
     }
 
     addTopologyEdge(a, b, kind = 'support') {
-        if (a === b || this.hasTopologyEdge(a, b)) {
+        if (a === b) {
             return false;
         }
         if (this.getTopologyDegree(a) >= PARTIAL_MESH_RULES.manualMaxDegree || this.getTopologyDegree(b) >= PARTIAL_MESH_RULES.manualMaxDegree) {
             return false;
         }
-        this.player.topology.edges.push({ a, b, kind });
+        this.player.topology.edges.push(this.createTopologyEdgeDescriptor(a, b, kind));
         return true;
     }
 
-    removeTopologyEdge(a, b) {
-        const key = makeEdgeKey(a, b);
-        const nextEdges = this.player.topology.edges.filter((edge) => makeEdgeKey(edge.a, edge.b) !== key);
+    removeTopologyEdge(edgeId) {
+        const nextEdges = this.player.topology.edges.filter((edge) => edge.id !== edgeId);
         if (nextEdges.length === this.player.topology.edges.length) {
             return false;
         }
@@ -1446,23 +1467,23 @@ class CoreDemoScene extends Phaser.Scene {
         return true;
     }
 
-    getTopologyLinkRigidity(degreeA, degreeB, sharedTriangleCount) {
-        if (sharedTriangleCount > 0 || (degreeA >= 3 && degreeB >= 3)) {
+    getTopologyLinkRigidity(parallelCount) {
+        if (parallelCount >= 3) {
             return 'rigid';
         }
-        if (degreeA <= 1 || degreeB <= 1) {
-            return 'flex';
+        if (parallelCount === 2) {
+            return 'joint';
         }
-        return 'joint';
+        return 'flex';
     }
 
-    buildTopologyLinkProfile(edge, samePolarity, degreeA, degreeB, sharedTriangleCount) {
+    buildTopologyLinkProfile(edge, samePolarity, parallelCount) {
         const T = window.TUNING || {};
         const kindStiffness = edge.kind === 'support' ? (T.supportStiffness ?? 0.78) : (T.spineStiffness ?? 0.98);
         const kindDamping = edge.kind === 'support' ? (T.supportDamping ?? 0.18) : (T.spineDamping ?? 0.24);
         const inverseStiffMul = samePolarity ? 1 : (T.inversePolarityStiffnessMul ?? 0.88) * (edge.kind === 'support' ? (T.supportSoftness ?? 0.88) : 1);
         const inverseDampMul = samePolarity ? 1 : (T.inversePolarityDampingMul ?? 0.86);
-        const rigidity = this.getTopologyLinkRigidity(degreeA, degreeB, sharedTriangleCount);
+        const rigidity = this.getTopologyLinkRigidity(parallelCount);
 
         let stiffnessBase = T.jointStiffness ?? 0.72;
         let dampingBase = T.jointDamping ?? 0.55;
@@ -1478,7 +1499,7 @@ class CoreDemoScene extends Phaser.Scene {
             stiffnessBase = T.rigidStiffness ?? 2.6;
             dampingBase = T.rigidDamping ?? 1.45;
             stretchSlack = T.rigidStretchSlack ?? 2;
-            pbdWeight = (T.rigidPbdWeight ?? 2.1) + sharedTriangleCount * 0.35;
+            pbdWeight = T.rigidPbdWeight ?? 2.1;
         }
 
         return {
@@ -1486,7 +1507,8 @@ class CoreDemoScene extends Phaser.Scene {
             stiffness: stiffnessBase * kindStiffness * inverseStiffMul,
             damping: dampingBase * kindDamping * inverseDampMul,
             stretchSlack,
-            pbdWeight
+            pbdWeight,
+            parallelCount
         };
     }
 
@@ -1524,6 +1546,28 @@ class CoreDemoScene extends Phaser.Scene {
         first.y += correctionY * (moveA / moveTotal);
         second.x -= correctionX * (moveB / moveTotal);
         second.y -= correctionY * (moveB / moveTotal);
+    }
+
+    getLinkRenderPoints(link, useDisplay = true) {
+        const first = this.activeNodes[link.a];
+        const second = this.activeNodes[link.b];
+        const fromX = useDisplay ? first.displayX : first.x;
+        const fromY = useDisplay ? first.displayY : first.y;
+        const toX = useDisplay ? second.displayX : second.x;
+        const toY = useDisplay ? second.displayY : second.y;
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const distance = Math.hypot(dx, dy) || 1;
+        const normalX = -dy / distance;
+        const normalY = dx / distance;
+        const spread = link.parallelCount > 1 ? 8 : 0;
+        const laneOffset = (link.parallelIndex - (link.parallelCount - 1) * 0.5) * spread;
+        return {
+            fromX: fromX + normalX * laneOffset,
+            fromY: fromY + normalY * laneOffset,
+            toX: toX + normalX * laneOffset,
+            toY: toY + normalY * laneOffset
+        };
     }
 
     getPointerWorld() {
@@ -1580,9 +1624,8 @@ class CoreDemoScene extends Phaser.Scene {
         let bestDistance = threshold;
 
         this.links.forEach((link) => {
-            const first = this.activeNodes[link.a];
-            const second = this.activeNodes[link.b];
-            const distanceSq = distanceToSegmentSquared(x, y, first.displayX, first.displayY, second.displayX, second.displayY);
+            const render = this.getLinkRenderPoints(link);
+            const distanceSq = distanceToSegmentSquared(x, y, render.fromX, render.fromY, render.toX, render.toY);
             if (distanceSq >= bestDistance) {
                 return;
             }
@@ -1671,15 +1714,16 @@ class CoreDemoScene extends Phaser.Scene {
 
         const activeOrderByIndex = new Map(this.activeNodes.map((node) => [node.index, node.order]));
         const degreeByIndex = new Map(this.player.chain.map((poolIndex) => [poolIndex, 0]));
-        const neighborMap = new Map(this.player.chain.map((poolIndex) => [poolIndex, new Set()]));
+        const pairCountByKey = new Map();
+        const pairSeenByKey = new Map();
         this.player.topology.edges.forEach((edge) => {
             if (!degreeByIndex.has(edge.a) || !degreeByIndex.has(edge.b)) {
                 return;
             }
             degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
             degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
-            neighborMap.get(edge.a)?.add(edge.b);
-            neighborMap.get(edge.b)?.add(edge.a);
+            const pairKey = makeEdgeKey(edge.a, edge.b);
+            pairCountByKey.set(pairKey, (pairCountByKey.get(pairKey) || 0) + 1);
         });
         this.links = [];
         this.player.topology.edges.forEach((edge) => {
@@ -1700,28 +1744,22 @@ class CoreDemoScene extends Phaser.Scene {
             const invRestMul = T.inversePolarityRestMul ?? 1.08;
             const restMin = T.linkRestMin ?? 84;
             const restMax = T.linkRestMax ?? 206;
-            const neighborsA = neighborMap.get(edge.a) || new Set();
-            const neighborsB = neighborMap.get(edge.b) || new Set();
-            let sharedTriangleCount = 0;
-            const scanNeighbors = neighborsA.size <= neighborsB.size ? neighborsA : neighborsB;
-            const compareNeighbors = neighborsA.size <= neighborsB.size ? neighborsB : neighborsA;
-            scanNeighbors.forEach((index) => {
-                if (index !== edge.a && index !== edge.b && compareNeighbors.has(index)) {
-                    sharedTriangleCount += 1;
-                }
-            });
+            const pairKey = makeEdgeKey(edge.a, edge.b);
+            const parallelCount = pairCountByKey.get(pairKey) || 1;
+            const parallelIndex = pairSeenByKey.get(pairKey) || 0;
+            pairSeenByKey.set(pairKey, parallelIndex + 1);
             const profile = this.buildTopologyLinkProfile(
                 edge,
                 samePolarity,
-                degreeByIndex.get(edge.a) || 0,
-                degreeByIndex.get(edge.b) || 0,
-                sharedTriangleCount
+                parallelCount
             );
             this.links.push({
+                id: edge.id,
                 a,
                 b,
                 kind: edge.kind,
-                key: makeEdgeKey(edge.a, edge.b),
+                key: edge.id,
+                pairKey,
                 topologyA: edge.a,
                 topologyB: edge.b,
                 rest: clamp(distance * (samePolarity ? sameRestMul : invRestMul), restMin, restMax),
@@ -1730,7 +1768,8 @@ class CoreDemoScene extends Phaser.Scene {
                 stretchSlack: profile.stretchSlack,
                 pbdWeight: profile.pbdWeight,
                 rigidity: profile.rigidity,
-                triangleCount: sharedTriangleCount,
+                parallelCount,
+                parallelIndex,
                 samePolarity
             });
         });
@@ -1896,7 +1935,7 @@ class CoreDemoScene extends Phaser.Scene {
                 this.player.edit.dragWorldX = hitNode.x;
                 this.player.edit.dragWorldY = hitNode.y;
             } else if (hitLink) {
-                if (this.removeTopologyEdge(hitLink.topologyA, hitLink.topologyB)) {
+                if (this.removeTopologyEdge(hitLink.id)) {
                     this.rebuildFormation();
                 }
             }
@@ -1962,10 +2001,11 @@ class CoreDemoScene extends Phaser.Scene {
 
         if (pointerNode >= 0 && releasedNode && releasedNode.index === pointerNode) {
             if (edit.selectedNode >= 0 && edit.selectedNode !== releasedNode.index) {
-                if (this.addTopologyEdge(edit.selectedNode, releasedNode.index, 'support')) {
+                const sourceNode = edit.selectedNode;
+                if (this.addTopologyEdge(sourceNode, releasedNode.index, 'support')) {
                     this.rebuildFormation();
                 }
-                edit.selectedNode = -1;
+                edit.selectedNode = sourceNode;
                 return;
             }
 
@@ -3165,10 +3205,9 @@ class CoreDemoScene extends Phaser.Scene {
 
     drawFormation(g) {
         this.links.forEach((link) => {
-            const first = this.activeNodes[link.a];
-            const second = this.activeNodes[link.b];
-            const from = this.worldToScreen(first.displayX, first.displayY);
-            const to = this.worldToScreen(second.displayX, second.displayY);
+            const render = this.getLinkRenderPoints(link);
+            const from = this.worldToScreen(render.fromX, render.fromY);
+            const to = this.worldToScreen(render.toX, render.toY);
             const rigidityWidth = link.rigidity === 'rigid' ? 0.9 : link.rigidity === 'flex' ? -0.35 : 0.15;
             const width = clamp(((link.kind === 'support' ? 1.4 : 2.1) + rigidityWidth + link.tension * (link.kind === 'support' ? 8 : 12)) * this.cameraRig.zoom, 1, 9);
             const color = link.samePolarity ? COLORS.link : COLORS.pulse;
@@ -3260,10 +3299,9 @@ class CoreDemoScene extends Phaser.Scene {
 
         const hoverLink = edit.hoverLink ? this.links.find((link) => link.key === edit.hoverLink) : null;
         if (hoverLink) {
-            const first = this.activeNodes[hoverLink.a];
-            const second = this.activeNodes[hoverLink.b];
-            const from = this.worldToScreen(first.displayX, first.displayY);
-            const to = this.worldToScreen(second.displayX, second.displayY);
+            const render = this.getLinkRenderPoints(hoverLink);
+            const from = this.worldToScreen(render.fromX, render.fromY);
+            const to = this.worldToScreen(render.toX, render.toY);
             g.lineStyle(clamp(5 * this.cameraRig.zoom, 2, 6), COLORS.inverse, 0.68);
             g.lineBetween(from.x, from.y, to.x, to.y);
         }
