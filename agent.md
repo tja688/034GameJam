@@ -302,93 +302,65 @@ When making decisions:
 
 # Documentation Evolution Rule
 
-This project maintains a **living design document** located at:
+This project maintains a **technical architecture document** located at:
 
-`/game design.md`
+`/README.md`
 
-This file is the **single source of truth** for the current state of the game design.
+This file is the **single source of truth** for the current state of the game's codebase design.
 
-AI agents must treat this document as an evolving **Concept Charter**.
+AI agents must treat this document as an evolving **Technical Reference**.
 
 ---
 
 # Mandatory Documentation Updates
 
-Whenever an AI agent performs development tasks that change gameplay, the agent **must update `game design.md` accordingly.**
+Whenever an AI agent performs development tasks that change the structure, architecture, or core modules, the agent **must update `README.md` accordingly.**
 
 Examples of changes that require updates:
 
-- New gameplay mechanics
-- Removal of mechanics
-- Changes to node behavior
-- Changes to connection rules
-- Changes to movement behavior
-- Changes to combat logic
-- Changes to structure behavior
-- Major visual language changes
-- Shifts in game direction or interpretation of the theme
+- Adding or extracting new modules (e.g. `src/sceneCombat.js`)
+- Altering the main event loop (`update()`)
+- Changing data structures (e.g. how `node` connectivity is stored)
+- Refactoring UI, Save/Load systems, or Rendering pipelines
 
 The goal is to ensure that:
 
-> Any newcomer can read the document and **immediately understand the current state of the game.**
+> Any newcomer can read the document and **immediately understand the technical implementation and codebase architecture of the game.**
 
 ---
 
 # Evolution Log Requirement
 
-Every meaningful design change must be recorded in a new section.
+Every meaningful architectural change must be recorded in a new section or summarized concisely in the README.
 
 Each entry must contain:
 
-- Date or iteration label
-- What changed
-- Why the change was made
-- How the gameplay experience is affected
-
-Example format:
-
-Iteration 03 – Structure Movement Update
-
-Change:
-Movement now depends on chain length instead of node count.
-
-Reason:
-This makes longer structures feel heavier and more creature-like.
-
-Impact:
-Players must now balance mobility and structure size.
+- What module changed
+- Why the change was made architecture-wise
+- How files depend on each other
 
 ---
 
-# Updating the Concept Charter
+# Updating the Architecture Reference
 
-When gameplay changes significantly, AI agents should also update the main sections of the document, such as:
+When the codebase changes significantly, AI agents should also update the main sections of the document, such as:
 
-- Core gameplay description
-- Node type definitions
-- Connection logic
-- Movement philosophy
-- Combat philosophy
-
-Old concepts should **not simply be deleted**.
-
-Instead:
-
-- mark them as deprecated
-- or explain how the design evolved.
+- Core project structure & files
+- System loops
+- Data/State definitions
+- Mixin/Class structure
 
 ---
 
 # Documentation Priority
 
-Maintaining the clarity of `game design.md` is a **mandatory development task**, not optional documentation.
+Maintaining the clarity of `README.md` is a **mandatory development task**, not optional documentation.
 
 When finishing a development step, the AI agent should perform the following checklist:
 
-1. Did gameplay rules change?
-2. Did a mechanic appear or disappear?
-3. Did player interaction change?
-4. Did the interpretation of the theme evolve?
+1. Did the file structure change?
+2. Did a module's responsibility change?
+3. Did core state definitions change?
 
 If any answer is **yes**, the document must be updated.
 
@@ -396,14 +368,13 @@ If any answer is **yes**, the document must be updated.
 
 # Goal
 
-The design document should tell the **story of the game’s evolution**.
+The technical document should tell the **story of the game's architecture**.
 
 A reader should be able to understand:
 
-- what the game started as
-- what it has become
-- why the design changed
-- what direction the project is currently exploring
+- how the codebase is structured
+- where each sub-system is located
+- how the main game loop updates state
 
 ---
 
