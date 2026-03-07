@@ -8,7 +8,7 @@ window.TUNING = {
     legacyAllNodesMove: true,
 
     // ─── 力开关 ───────────────────────────────────
-    enableFormationPull: true,
+    enableFormationPull: false,
     enableDrift: true,
     enableCorePull: true,
     enableAnchor: true,
@@ -37,6 +37,18 @@ window.TUNING = {
     supportStiffness: 0.78,
     spineDamping: 0.24,
     supportDamping: 0.18,
+    flexStiffness: 0.18,
+    flexDamping: 0.16,
+    flexStretchSlack: 44,
+    flexPbdWeight: 0.14,
+    jointStiffness: 0.72,
+    jointDamping: 0.55,
+    jointStretchSlack: 12,
+    jointPbdWeight: 0.56,
+    rigidStiffness: 2.6,
+    rigidDamping: 1.45,
+    rigidStretchSlack: 2,
+    rigidPbdWeight: 2.1,
     inversePolarityStiffnessMul: 0.88,
     inversePolarityDampingMul: 0.86,
     samePolarityRestMul: 1.02,
@@ -60,6 +72,7 @@ window.TUNING = {
     // ─── PBD 约束求解 ────────────────────────────
     pbdIterations: 3,
     pbdCorrectionRate: 0.18,
+    pbdRigidPasses: 2,
 
     // ─── 转向与意图 ──────────────────────────────
     baseTurnRate: 3.1,
@@ -124,11 +137,14 @@ window.TUNING = {
     plantBladeAimBias: 0.38,
 
     // ─── 拓扑槽位 ────────────────────────────────
-    enableSunflowerTopologySlots: true,
+    enableSunflowerTopologySlots: false,
     slotSpacing: 102,
     slotYCompression: 0.84,
     slotRadiusScale: 0.94,
     forwardStep: 72,
+
+    // ─── 脉冲循环 ────────────────────────────────
+    pulseOrbCount: 1,
 
     // ─── 相机 ────────────────────────────────────
     cameraZoomDamp: 3.2,
@@ -191,8 +207,8 @@ const TUNING_DEFS = [
     { key: 'legacyAllNodesMove', label: '所有节点都主动移动', desc: '默认开启，保持当前版本：任何节点都能吃到脉冲牵引和漂移推进；关闭后切到只有方形保留移动能力的实验方案', type: 'toggle' },
 
     // ── 力开关 ──
-    { section: '⚡ 力场开关', sectionDesc: '关掉某个力可以观察剩余力的独立效果' },
-    { key: 'enableFormationPull', label: '编队拉力', desc: '将每个节点拉回其在拓扑中应处的编队目标位置；关掉后节点会散开', type: 'toggle' },
+    { section: '⚡ 力场开关', sectionDesc: '关掉某个力可以观察剩余力的独立效果；当前默认以“脉冲锚定 + 连线拖拽”为核心' },
+    { key: 'enableFormationPull', label: '旧编队拉回', desc: '旧范式遗留开关：把节点拉回拓扑槽位。当前默认关闭，用于和纯软体模式做对照', type: 'toggle' },
     { key: 'enableDrift', label: '漂移推进力', desc: 'WASD 驱动的实际移动推力；当前默认由所有节点施加，关闭“所有节点都主动移动”后仅有移动能力的方形节点会施加', type: 'toggle' },
     { key: 'enableCorePull', label: '核心收束力', desc: '仅对圆形节点(source/compressor)施加的向质心拉力；关掉后核心会被甩到外围', type: 'toggle' },
     { key: 'enableAnchor', label: '脉冲牵引力', desc: '脉冲触发时，将节点拉向目标点；当前默认所有节点都会被驱动，关闭“所有节点都主动移动”后仅方形会被真正驱动', type: 'toggle' },
@@ -202,10 +218,10 @@ const TUNING_DEFS = [
     { key: 'enablePulse', label: '脉冲系统', desc: '整个脉冲循环系统；关掉后不会有节点触发和植入', type: 'toggle' },
 
     // ── 编队拉力 ──
-    { section: '🧲 编队拉力', sectionDesc: '维持组织体形状的核心力，越大越紧凑' },
-    { key: 'formationPullAnchored', label: '锚定时编队拉力', desc: '节点被脉冲锚定时受到的编队目标拉力（较弱，让锚定力主导）', min: 0, max: 200, step: 1 },
-    { key: 'formationPullFreeBase', label: '自由态编队拉力', desc: '未锚定节点受到的编队目标拉力基础值（越大归队越快）', min: 0, max: 300, step: 1 },
-    { key: 'formationPullStabilityBonus', label: '稳定性加成', desc: '每单位 stability 额外增加的编队拉力（source/shell 积累 stability）', min: 0, max: 100, step: 1 },
+    { section: '🧲 旧编队拉回', sectionDesc: '旧系统遗留参数。只有打开“旧编队拉回”时才会生效，默认不参与当前软体方案' },
+    { key: 'formationPullAnchored', label: '锚定态拉回', desc: '节点被脉冲锚定时的旧版槽位拉回强度', min: 0, max: 200, step: 1 },
+    { key: 'formationPullFreeBase', label: '自由态拉回', desc: '未锚定节点的旧版槽位拉回基础值', min: 0, max: 300, step: 1 },
+    { key: 'formationPullStabilityBonus', label: '稳定性加成', desc: '旧版拉回里 stability 带来的额外回拽', min: 0, max: 100, step: 1 },
 
     // ── 漂移力 ──
     { section: '💨 漂移推进力', sectionDesc: '不同角色在 WASD 方向上的推进力大小差异；当前默认所有角色都会真正把推力施加到结构上' },
@@ -218,13 +234,26 @@ const TUNING_DEFS = [
     { key: 'corePullStrength', label: '收束力强度', desc: '圆形节点额外受到的向质心拉力系数（确保能量核心不被甩出去）', min: 0, max: 100, step: 1 },
 
     // ── 弹簧系统 ──
-    { section: '🔗 弹簧-阻尼系统', sectionDesc: '连线的弹性和粘滞系数，决定结构的刚柔' },
+    { section: '🔗 弹簧-阻尼系统', sectionDesc: '连线的基础弹性与粘滞；真正的刚柔分档由下面的“拓扑刚性”继续细分' },
     { key: 'springK', label: '弹簧基础刚度 K', desc: '弹簧回复力的基础系数（越大连线越硬）', min: 0, max: 800, step: 5 },
     { key: 'springDamping', label: '弹簧基础阻尼 C', desc: '弹簧相对速度阻尼的基础系数（越大震荡越少）', min: 0, max: 200, step: 1 },
     { key: 'spineStiffness', label: '骨干边刚度系数', desc: 'spine 类型连线（脉冲骨干）的刚度乘数', min: 0, max: 2, step: 0.01 },
     { key: 'supportStiffness', label: '支撑边刚度系数', desc: 'support 类型连线（辅助支撑）的刚度乘数', min: 0, max: 2, step: 0.01 },
     { key: 'spineDamping', label: '骨干边阻尼系数', desc: 'spine 类型连线的阻尼乘数', min: 0, max: 1, step: 0.01 },
     { key: 'supportDamping', label: '支撑边阻尼系数', desc: 'support 类型连线的阻尼乘数', min: 0, max: 1, step: 0.01 },
+    { section: '🦴 拓扑刚性', sectionDesc: '按局部连线密度分档：单边=柔性触须，双边=灵活关节，三角/高连接=硬骨架' },
+    { key: 'flexStiffness', label: '触须刚度', desc: '单边连接的额外刚度倍率，越低越软', min: 0, max: 1, step: 0.01 },
+    { key: 'flexDamping', label: '触须阻尼', desc: '单边连接的轴向阻尼倍率，越低越容易甩动', min: 0, max: 1, step: 0.01 },
+    { key: 'flexStretchSlack', label: '触须拉伸容差', desc: '单边连接在真正回拉之前允许额外伸长的距离 (px)', min: 0, max: 120, step: 1 },
+    { key: 'flexPbdWeight', label: '触须 PBD 权重', desc: '单边连接在位置校正阶段的硬度，低值意味着更像软肉', min: 0, max: 1, step: 0.01 },
+    { key: 'jointStiffness', label: '关节刚度', desc: '双边连接的额外刚度倍率', min: 0, max: 2, step: 0.01 },
+    { key: 'jointDamping', label: '关节阻尼', desc: '双边连接的额外阻尼倍率', min: 0, max: 2, step: 0.01 },
+    { key: 'jointStretchSlack', label: '关节拉伸容差', desc: '双边连接允许的额外伸长距离 (px)', min: 0, max: 80, step: 1 },
+    { key: 'jointPbdWeight', label: '关节 PBD 权重', desc: '双边连接的位置校正硬度', min: 0, max: 2, step: 0.01 },
+    { key: 'rigidStiffness', label: '骨架刚度', desc: '三角/高连接结构的额外刚度倍率', min: 0.5, max: 5, step: 0.05 },
+    { key: 'rigidDamping', label: '骨架阻尼', desc: '三角/高连接结构的额外阻尼倍率', min: 0.5, max: 3, step: 0.05 },
+    { key: 'rigidStretchSlack', label: '骨架拉伸容差', desc: '硬骨架允许的额外伸长距离 (px)，建议保持很低', min: 0, max: 20, step: 0.5 },
+    { key: 'rigidPbdWeight', label: '骨架 PBD 权重', desc: '硬骨架的距离约束权重，越高越接近焊死', min: 0.5, max: 5, step: 0.05 },
     { key: 'inversePolarityStiffnessMul', label: '异极性刚度折扣', desc: '不同极性节点之间连线的刚度倍率（<1 表示更软）', min: 0, max: 1.5, step: 0.01 },
     { key: 'inversePolarityDampingMul', label: '异极性阻尼折扣', desc: '不同极性节点之间连线的阻尼倍率（<1 表示更活跃）', min: 0, max: 1.5, step: 0.01 },
     { key: 'samePolarityRestMul', label: '同极性自然长度', desc: '同极性连线自然长度倍率（>1 会稍微松一点）', min: 0.5, max: 2.0, step: 0.01 },
@@ -247,9 +276,14 @@ const TUNING_DEFS = [
     { key: 'tensionDecay', label: '张力衰减', desc: '每帧张力值的衰减倍率（0~1 之间）', min: 0, max: 1, step: 0.01 },
 
     // ── PBD ──
-    { section: '📐 PBD 位置校正', sectionDesc: '力学积分后的约束求解，防止弹簧过度拉伸' },
+    { section: '📐 PBD 位置校正', sectionDesc: '力学积分后的约束求解；高连接骨架会在这里吃到额外的刚体校正' },
     { key: 'pbdIterations', label: '迭代次数', desc: '每帧位置校正的迭代轮数（越多越精确，但更耗性能）', min: 0, max: 12, step: 1 },
     { key: 'pbdCorrectionRate', label: '校正比例', desc: '每次迭代校正偏差的百分比（0.18 = 每次修正 18%）', min: 0, max: 0.8, step: 0.01 },
+    { key: 'pbdRigidPasses', label: '骨架额外轮数', desc: '对 rigid 连线追加的专用校正轮数，让三角/网格更不容易散架', min: 0, max: 8, step: 1 },
+
+    // ── 脉冲循环 ──
+    { section: '🫀 脉冲循环', sectionDesc: '控制有多少个能量脉冲球同时沿结构流动；新增球会尽量错相分布' },
+    { key: 'pulseOrbCount', label: '脉冲球数量', desc: '同时存在的能量脉冲球数量；越多触发越密、节奏越快', min: 1, max: 8, step: 1 },
 
     // ── 转向 ──
     { section: '🔄 转向与意图混合', sectionDesc: 'flow 方向的混合比例和朝向旋转速度' },
@@ -323,8 +357,8 @@ const TUNING_DEFS = [
     { key: 'plantBladeAimBias', label: 'aim 权重', desc: '锚点方向中瞄准方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
 
     // ── 拓扑 ──
-    { section: '🌐 拓扑与槽位', sectionDesc: '控制默认槽位生成方式，以及新节点扩张时的空间基准' },
-    { key: 'enableSunflowerTopologySlots', label: '向日葵槽位排列', desc: '默认开启：使用黄金角向日葵种子槽位分布。关闭时会冻结当前结构为新的编队基准，并让缺省槽位改用更线性的展开方式，方便观察是否还会被圆饼化', type: 'toggle' },
+    { section: '🌐 拓扑与槽位', sectionDesc: '控制结构生长时的空间基准；旧黄金角槽位已降级为实验开关' },
+    { key: 'enableSunflowerTopologySlots', label: '旧向日葵槽位', desc: '旧范式遗留开关：使用黄金角向日葵分布生成默认槽位。当前默认关闭，优先保留现有软体结构的局部轮廓', type: 'toggle' },
     { key: 'slotSpacing', label: '槽位间距', desc: '节点排布的基准间距 (px)——影响整体密度', min: 40, max: 250, step: 2 },
     { key: 'slotYCompression', label: 'Y 轴压缩', desc: '槽位在 Y 方向的压缩比 (0.84=稍扁)', min: 0.3, max: 1.5, step: 0.02 },
     { key: 'slotRadiusScale', label: '半径缩放', desc: '槽位散布半径的总缩放系数', min: 0.3, max: 2, step: 0.02 },

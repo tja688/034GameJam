@@ -416,11 +416,119 @@ class CoreDemoScene extends Phaser.Scene {
             turnAssist: 0,
             dead: false,
             deathTimer: 0,
+            pulseRunners: [this.createPulseRunner()],
             pulseCursor: 0,
             pulseTimer: 0.12,
             pulsePath: { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false },
             edit: this.createDefaultEditState()
         };
+    }
+
+    createDefaultPulsePath() {
+        return { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
+    }
+
+    createPulseRunner(cursor = 0, timer = 0.12, path = null) {
+        return {
+            cursor,
+            timer,
+            path: {
+                ...this.createDefaultPulsePath(),
+                ...(path || {})
+            }
+        };
+    }
+
+    getDesiredPulseOrbCount() {
+        const T = window.TUNING || {};
+        return clamp(Math.round(T.pulseOrbCount ?? 1), 1, 8);
+    }
+
+    syncLegacyPulseState() {
+        const leadRunner = Array.isArray(this.player?.pulseRunners) && this.player.pulseRunners.length > 0
+            ? this.player.pulseRunners[0]
+            : this.createPulseRunner();
+        this.player.pulseCursor = clamp(getFiniteNumber(leadRunner.cursor, 0), 0, Math.max(0, (this.activeNodes?.length || this.player.chain.length || 1) - 1));
+        this.player.pulseTimer = getFiniteNumber(leadRunner.timer, 0.12);
+        this.player.pulsePath = {
+            ...this.createDefaultPulsePath(),
+            ...(leadRunner.path || {})
+        };
+    }
+
+    getPulseRunnerPhase(runner, nodeCount) {
+        if (!runner || nodeCount <= 0) {
+            return 0;
+        }
+
+        const path = runner.path || this.createDefaultPulsePath();
+        const from = clamp(getFiniteNumber(path.from, 0), 0, Math.max(0, nodeCount - 1));
+        const duration = Math.max(0.0001, getFiniteNumber(path.duration, 0.12));
+        const timer = getFiniteNumber(path.timer, duration);
+        const progress = path.loopReset ? 0 : clamp(1 - timer / duration, 0, 1);
+        return (((from + progress) / nodeCount) % 1 + 1) % 1;
+    }
+
+    createPulseRunnerAtPhase(phase, nodeCount) {
+        if (nodeCount <= 1) {
+            return this.createPulseRunner(0, 0.12, this.createDefaultPulsePath());
+        }
+
+        const wrappedPhase = (((phase % 1) + 1) % 1);
+        const segmentCount = Math.max(1, nodeCount - 1);
+        const scaled = wrappedPhase * segmentCount;
+        const from = clamp(Math.floor(scaled), 0, Math.max(0, nodeCount - 2));
+        const progress = scaled - from;
+        const to = from + 1;
+        const current = this.activeNodes?.[from];
+        const next = this.activeNodes?.[to];
+        const duration = current && next ? this.getPulseInterval(current, next, false) : 0.22;
+        const timer = Math.max(0.0001, duration * (1 - progress));
+        return this.createPulseRunner(to, timer, {
+            from,
+            to,
+            timer,
+            duration,
+            loopReset: false
+        });
+    }
+
+    rebalancePulseRunners(forceReset = false) {
+        const nodeCount = Math.max(
+            1,
+            this.activeNodes?.length === this.player.chain.length
+                ? this.activeNodes.length
+                : this.player.chain.length || 1
+        );
+        const desiredCount = nodeCount <= 1 ? 1 : this.getDesiredPulseOrbCount();
+        const existing = Array.isArray(this.player.pulseRunners)
+            ? this.player.pulseRunners.map((runner) => this.createPulseRunner(
+                clamp(getFiniteNumber(runner.cursor, 0), 0, Math.max(0, nodeCount - 1)),
+                getFiniteNumber(runner.timer, 0.12),
+                runner.path
+            ))
+            : [];
+        const needsRedistribute = forceReset
+            || existing.length !== desiredCount
+            || existing.some((runner) => !runner.path
+                || !Number.isFinite(runner.path.duration)
+                || runner.path.duration <= 0
+                || runner.path.from < 0
+                || runner.path.from >= nodeCount
+                || runner.path.to < 0
+                || runner.path.to >= nodeCount);
+
+        if (needsRedistribute) {
+            const anchorPhase = forceReset ? 0 : this.getPulseRunnerPhase(existing[0], nodeCount);
+            this.player.pulseRunners = Array.from({ length: desiredCount }, (_, index) => {
+                const phase = (anchorPhase + index / desiredCount) % 1;
+                return this.createPulseRunnerAtPhase(phase, nodeCount);
+            });
+        } else {
+            this.player.pulseRunners = existing;
+        }
+
+        this.syncLegacyPulseState();
     }
 
     createDefaultIntent() {
@@ -549,8 +657,9 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     buildSaveData() {
+        this.rebalancePulseRunners();
         return {
-            version: 1,
+            version: 2,
             savedAt: Date.now(),
             baseChain: [...this.baseChain],
             player: {
@@ -573,6 +682,7 @@ class CoreDemoScene extends Phaser.Scene {
                 turnAssist: this.player.turnAssist,
                 dead: this.player.dead,
                 deathTimer: this.player.deathTimer,
+                pulseRunners: cloneData(this.player.pulseRunners || []),
                 pulseCursor: this.player.pulseCursor,
                 pulseTimer: this.player.pulseTimer,
                 pulsePath: cloneData(this.player.pulsePath),
@@ -674,6 +784,13 @@ class CoreDemoScene extends Phaser.Scene {
             turnAssist: getFiniteNumber(data.player.turnAssist, this.player.turnAssist),
             dead: !!data.player.dead,
             deathTimer: getFiniteNumber(data.player.deathTimer, this.player.deathTimer),
+            pulseRunners: Array.isArray(data.player.pulseRunners) && data.player.pulseRunners.length > 0
+                ? cloneData(data.player.pulseRunners)
+                : [this.createPulseRunner(
+                    clamp(getFiniteNumber(data.player.pulseCursor, 0), 0, Math.max(0, chain.length - 1)),
+                    getFiniteNumber(data.player.pulseTimer, this.player.pulseTimer),
+                    data.player.pulsePath
+                )],
             pulseCursor: clamp(getFiniteNumber(data.player.pulseCursor, 0), 0, Math.max(0, chain.length - 1)),
             pulseTimer: getFiniteNumber(data.player.pulseTimer, this.player.pulseTimer),
             pulsePath: {
@@ -723,6 +840,7 @@ class CoreDemoScene extends Phaser.Scene {
         });
 
         this.computeCentroid();
+        this.rebalancePulseRunners();
         this.updateDisplay(0);
         this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
         this.menuMode = null;
@@ -1251,9 +1369,8 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     resetPulseFlow() {
-        this.player.pulseCursor = 0;
-        this.player.pulseTimer = 0.12;
-        this.player.pulsePath = { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
+        this.player.pulseRunners = [];
+        this.rebalancePulseRunners(true);
     }
 
     getTopologyDegree(index) {
@@ -1307,7 +1424,6 @@ class CoreDemoScene extends Phaser.Scene {
         this.player.tempoBoost = 0;
         this.player.stability = 0.35;
         this.player.turnAssist = 0;
-        this.resetPulseFlow();
         if (this.player.edit.selectedNode === index) {
             this.player.edit.selectedNode = -1;
         }
@@ -1326,7 +1442,88 @@ class CoreDemoScene extends Phaser.Scene {
             this.player.edit.deleteProgress = 0;
         }
         this.rebuildFormation();
+        this.resetPulseFlow();
         return true;
+    }
+
+    getTopologyLinkRigidity(degreeA, degreeB, sharedTriangleCount) {
+        if (sharedTriangleCount > 0 || (degreeA >= 3 && degreeB >= 3)) {
+            return 'rigid';
+        }
+        if (degreeA <= 1 || degreeB <= 1) {
+            return 'flex';
+        }
+        return 'joint';
+    }
+
+    buildTopologyLinkProfile(edge, samePolarity, degreeA, degreeB, sharedTriangleCount) {
+        const T = window.TUNING || {};
+        const kindStiffness = edge.kind === 'support' ? (T.supportStiffness ?? 0.78) : (T.spineStiffness ?? 0.98);
+        const kindDamping = edge.kind === 'support' ? (T.supportDamping ?? 0.18) : (T.spineDamping ?? 0.24);
+        const inverseStiffMul = samePolarity ? 1 : (T.inversePolarityStiffnessMul ?? 0.88) * (edge.kind === 'support' ? (T.supportSoftness ?? 0.88) : 1);
+        const inverseDampMul = samePolarity ? 1 : (T.inversePolarityDampingMul ?? 0.86);
+        const rigidity = this.getTopologyLinkRigidity(degreeA, degreeB, sharedTriangleCount);
+
+        let stiffnessBase = T.jointStiffness ?? 0.72;
+        let dampingBase = T.jointDamping ?? 0.55;
+        let stretchSlack = T.jointStretchSlack ?? 12;
+        let pbdWeight = T.jointPbdWeight ?? 0.56;
+
+        if (rigidity === 'flex') {
+            stiffnessBase = T.flexStiffness ?? 0.18;
+            dampingBase = T.flexDamping ?? 0.16;
+            stretchSlack = T.flexStretchSlack ?? 44;
+            pbdWeight = T.flexPbdWeight ?? 0.14;
+        } else if (rigidity === 'rigid') {
+            stiffnessBase = T.rigidStiffness ?? 2.6;
+            dampingBase = T.rigidDamping ?? 1.45;
+            stretchSlack = T.rigidStretchSlack ?? 2;
+            pbdWeight = (T.rigidPbdWeight ?? 2.1) + sharedTriangleCount * 0.35;
+        }
+
+        return {
+            rigidity,
+            stiffness: stiffnessBase * kindStiffness * inverseStiffMul,
+            damping: dampingBase * kindDamping * inverseDampMul,
+            stretchSlack,
+            pbdWeight
+        };
+    }
+
+    getLinkConstraintError(distance, link) {
+        let error = distance - link.rest;
+        if (error > 0) {
+            error = Math.max(0, error - (link.stretchSlack || 0));
+        }
+        return error;
+    }
+
+    solveLinkConstraint(link, correctionRate, draggedIndex = -1) {
+        const first = this.activeNodes[link.a];
+        const second = this.activeNodes[link.b];
+        const dx = second.x - first.x;
+        const dy = second.y - first.y;
+        const distance = Math.hypot(dx, dy) || 0.0001;
+        const error = this.getLinkConstraintError(distance, link);
+        if (Math.abs(error) < 0.0001) {
+            return;
+        }
+
+        const moveA = first.index === draggedIndex ? 0 : (first.anchored ? 0.18 : 1) / Math.max(first.mass, 0.1);
+        const moveB = second.index === draggedIndex ? 0 : (second.anchored ? 0.18 : 1) / Math.max(second.mass, 0.1);
+        const moveTotal = moveA + moveB;
+        if (moveTotal <= 0) {
+            return;
+        }
+
+        const strength = clamp(correctionRate * link.pbdWeight, 0, 0.92);
+        const correction = (error / distance) * strength;
+        const correctionX = dx * correction;
+        const correctionY = dy * correction;
+        first.x += correctionX * (moveA / moveTotal);
+        first.y += correctionY * (moveA / moveTotal);
+        second.x -= correctionX * (moveB / moveTotal);
+        second.y -= correctionY * (moveB / moveTotal);
     }
 
     getPointerWorld() {
@@ -1474,6 +1671,16 @@ class CoreDemoScene extends Phaser.Scene {
 
         const activeOrderByIndex = new Map(this.activeNodes.map((node) => [node.index, node.order]));
         const degreeByIndex = new Map(this.player.chain.map((poolIndex) => [poolIndex, 0]));
+        const neighborMap = new Map(this.player.chain.map((poolIndex) => [poolIndex, new Set()]));
+        this.player.topology.edges.forEach((edge) => {
+            if (!degreeByIndex.has(edge.a) || !degreeByIndex.has(edge.b)) {
+                return;
+            }
+            degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
+            degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
+            neighborMap.get(edge.a)?.add(edge.b);
+            neighborMap.get(edge.b)?.add(edge.a);
+        });
         this.links = [];
         this.player.topology.edges.forEach((edge) => {
             const a = activeOrderByIndex.get(edge.a);
@@ -1489,15 +1696,27 @@ class CoreDemoScene extends Phaser.Scene {
             const slotB = slots[edge.b];
             const distance = Math.hypot(slotA.x - slotB.x, slotA.y - slotB.y);
             const T = window.TUNING || {};
-            const softness = edge.kind === 'support' ? (T.supportSoftness ?? 0.88) : 1;
-            const stiffness = edge.kind === 'support' ? (T.supportStiffness ?? 0.78) : (T.spineStiffness ?? 0.98);
-            const edgeDamping = edge.kind === 'support' ? (T.supportDamping ?? 0.18) : (T.spineDamping ?? 0.24);
-            const invStiffMul = T.inversePolarityStiffnessMul ?? 0.88;
-            const invDampMul = T.inversePolarityDampingMul ?? 0.86;
             const sameRestMul = T.samePolarityRestMul ?? 1.02;
             const invRestMul = T.inversePolarityRestMul ?? 1.08;
             const restMin = T.linkRestMin ?? 84;
             const restMax = T.linkRestMax ?? 206;
+            const neighborsA = neighborMap.get(edge.a) || new Set();
+            const neighborsB = neighborMap.get(edge.b) || new Set();
+            let sharedTriangleCount = 0;
+            const scanNeighbors = neighborsA.size <= neighborsB.size ? neighborsA : neighborsB;
+            const compareNeighbors = neighborsA.size <= neighborsB.size ? neighborsB : neighborsA;
+            scanNeighbors.forEach((index) => {
+                if (index !== edge.a && index !== edge.b && compareNeighbors.has(index)) {
+                    sharedTriangleCount += 1;
+                }
+            });
+            const profile = this.buildTopologyLinkProfile(
+                edge,
+                samePolarity,
+                degreeByIndex.get(edge.a) || 0,
+                degreeByIndex.get(edge.b) || 0,
+                sharedTriangleCount
+            );
             this.links.push({
                 a,
                 b,
@@ -1506,12 +1725,14 @@ class CoreDemoScene extends Phaser.Scene {
                 topologyA: edge.a,
                 topologyB: edge.b,
                 rest: clamp(distance * (samePolarity ? sameRestMul : invRestMul), restMin, restMax),
-                stiffness: samePolarity ? stiffness : stiffness * softness * invStiffMul,
-                damping: samePolarity ? edgeDamping : edgeDamping * invDampMul,
+                stiffness: profile.stiffness,
+                damping: profile.damping,
+                stretchSlack: profile.stretchSlack,
+                pbdWeight: profile.pbdWeight,
+                rigidity: profile.rigidity,
+                triangleCount: sharedTriangleCount,
                 samePolarity
             });
-            degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
-            degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
         });
 
         this.activeNodes.forEach((node) => {
@@ -1866,8 +2087,8 @@ class CoreDemoScene extends Phaser.Scene {
         this.player.tempoBoost = 0;
         this.player.stability = 0.35;
         this.player.turnAssist = 0;
-        this.resetPulseFlow();
         this.rebuildFormation();
+        this.resetPulseFlow();
     }
 
     computeCentroid() {
@@ -1926,31 +2147,56 @@ class CoreDemoScene extends Phaser.Scene {
 
     updatePulse(simDt) {
         const T = window.TUNING || {};
-        if (!(T.enablePulse ?? true)) return;
-        this.player.pulseTimer -= simDt;
-        this.player.pulsePath.timer -= simDt;
+        if (!(T.enablePulse ?? true) || this.activeNodes.length === 0) return;
+        this.rebalancePulseRunners();
 
-        while (this.player.pulseTimer <= 0) {
-            const chainIndex = this.player.pulseCursor;
-            const current = this.activeNodes[chainIndex];
-            const edge = this.getEdgeModifier(chainIndex);
-            this.triggerNode(current, edge);
+        this.player.pulseRunners.forEach((runner) => {
+            runner.timer -= simDt;
+            runner.path.timer -= simDt;
 
-            const loopReset = chainIndex === this.activeNodes.length - 1;
-            const nextIndex = loopReset ? 0 : chainIndex + 1;
-            const nextNode = this.activeNodes[nextIndex];
-            const duration = this.getPulseInterval(current, nextNode, loopReset);
+            while (runner.timer <= 0) {
+                const chainIndex = clamp(getFiniteNumber(runner.cursor, 0), 0, Math.max(0, this.activeNodes.length - 1));
+                const current = this.activeNodes[chainIndex];
+                const edge = this.getEdgeModifier(chainIndex);
+                this.triggerNode(current, edge);
 
-            this.player.pulseCursor = nextIndex;
-            this.player.pulseTimer += duration;
-            this.player.pulsePath = {
-                from: chainIndex,
-                to: nextIndex,
-                timer: duration,
-                duration,
-                loopReset
-            };
+                const loopReset = chainIndex === this.activeNodes.length - 1;
+                const nextIndex = loopReset ? 0 : chainIndex + 1;
+                const nextNode = this.activeNodes[nextIndex];
+                const duration = this.getPulseInterval(current, nextNode, loopReset);
+
+                runner.cursor = nextIndex;
+                runner.timer += duration;
+                runner.path = {
+                    from: chainIndex,
+                    to: nextIndex,
+                    timer: duration,
+                    duration,
+                    loopReset
+                };
+            }
+        });
+
+        this.syncLegacyPulseState();
+    }
+
+    getPulseVisualState(runner) {
+        const path = runner?.path;
+        if (!path) {
+            return null;
         }
+
+        const fromNode = this.activeNodes[path.from];
+        const toNode = this.activeNodes[path.to];
+        if (!fromNode || !toNode) {
+            return null;
+        }
+
+        const progress = path.loopReset ? 1 : clamp(1 - path.timer / Math.max(path.duration, 0.0001), 0, 1);
+        return {
+            x: path.loopReset ? fromNode.displayX : lerp(fromNode.displayX, toNode.displayX, progress),
+            y: path.loopReset ? fromNode.displayY : lerp(fromNode.displayY, toNode.displayY, progress)
+        };
     }
 
     getEdgeModifier(chainIndex) {
@@ -2159,14 +2405,14 @@ class CoreDemoScene extends Phaser.Scene {
                 const distance = Math.hypot(dx, dy) || 0.0001;
                 const dirX = dx / distance;
                 const dirY = dy / distance;
-                const stretch = distance - link.rest;
+                const stretch = this.getLinkConstraintError(distance, link);
                 const relVel = (second.vx - first.vx) * dirX + (second.vy - first.vy) * dirY;
                 const force = stretch * (sK * link.stiffness) + relVel * (sD * link.damping);
                 first.fx += dirX * force;
                 first.fy += dirY * force;
                 second.fx -= dirX * force;
                 second.fy -= dirY * force;
-                link.tension = Math.abs(stretch) / link.rest;
+                link.tension = Math.abs(stretch) / Math.max(link.rest, 0.0001);
                 first.tension = Math.max(first.tension * 0.82, link.tension);
                 second.tension = Math.max(second.tension * 0.82, link.tension);
             });
@@ -2218,19 +2464,19 @@ class CoreDemoScene extends Phaser.Scene {
         if (T.enablePBD ?? true) {
             const pbdIter = T.pbdIterations ?? 3;
             const pbdRate = T.pbdCorrectionRate ?? 0.18;
+            const rigidPasses = T.pbdRigidPasses ?? 2;
+            const draggedIndex = draggedTarget ? draggedTarget.index : -1;
             for (let iteration = 0; iteration < pbdIter; iteration += 1) {
                 this.links.forEach((link) => {
-                    const first = this.activeNodes[link.a];
-                    const second = this.activeNodes[link.b];
-                    const dx = second.x - first.x;
-                    const dy = second.y - first.y;
-                    const distance = Math.hypot(dx, dy) || 0.0001;
-                    const difference = (distance - link.rest) / distance;
-                    const adjust = difference * pbdRate * link.stiffness;
-                    first.x += dx * adjust;
-                    first.y += dy * adjust;
-                    second.x -= dx * adjust;
-                    second.y -= dy * adjust;
+                    this.solveLinkConstraint(link, pbdRate, draggedIndex);
+                });
+            }
+            for (let extraPass = 0; extraPass < rigidPasses; extraPass += 1) {
+                this.links.forEach((link) => {
+                    if (link.rigidity !== 'rigid') {
+                        return;
+                    }
+                    this.solveLinkConstraint(link, pbdRate, draggedIndex);
                 });
             }
         }
@@ -2923,26 +3169,28 @@ class CoreDemoScene extends Phaser.Scene {
             const second = this.activeNodes[link.b];
             const from = this.worldToScreen(first.displayX, first.displayY);
             const to = this.worldToScreen(second.displayX, second.displayY);
-            const width = clamp(((link.kind === 'support' ? 1.4 : 2.1) + link.tension * (link.kind === 'support' ? 8 : 12)) * this.cameraRig.zoom, 1, 8);
+            const rigidityWidth = link.rigidity === 'rigid' ? 0.9 : link.rigidity === 'flex' ? -0.35 : 0.15;
+            const width = clamp(((link.kind === 'support' ? 1.4 : 2.1) + rigidityWidth + link.tension * (link.kind === 'support' ? 8 : 12)) * this.cameraRig.zoom, 1, 9);
             const color = link.samePolarity ? COLORS.link : COLORS.pulse;
-            const alpha = link.samePolarity
+            const baseAlpha = link.samePolarity
                 ? (link.kind === 'support' ? 0.3 : 0.52)
                 : (link.kind === 'support' ? 0.54 : 0.76);
+            const alpha = clamp(baseAlpha + (link.rigidity === 'rigid' ? 0.12 : link.rigidity === 'flex' ? -0.08 : 0), 0.18, 0.95);
             g.lineStyle(width, color, alpha);
             g.lineBetween(from.x, from.y, to.x, to.y);
         });
 
-        const path = this.player.pulsePath;
-        const fromNode = this.activeNodes[path.from];
-        const toNode = this.activeNodes[path.to];
-        if (fromNode && toNode) {
-            const progress = path.loopReset ? 1 : clamp(1 - path.timer / path.duration, 0, 1);
-            const pulseWorldX = path.loopReset ? fromNode.displayX : lerp(fromNode.displayX, toNode.displayX, progress);
-            const pulseWorldY = path.loopReset ? fromNode.displayY : lerp(fromNode.displayY, toNode.displayY, progress);
-            const pulse = this.worldToScreen(pulseWorldX, pulseWorldY);
-            g.fillStyle(COLORS.pulse, 0.92);
-            g.fillCircle(pulse.x, pulse.y, clamp(8 * this.cameraRig.zoom, 4, 8));
-        }
+        (this.player.pulseRunners || []).forEach((runner, index) => {
+            const pulseState = this.getPulseVisualState(runner);
+            if (!pulseState) {
+                return;
+            }
+            const pulse = this.worldToScreen(pulseState.x, pulseState.y);
+            const radius = clamp((8 - Math.min(index, 3) * 0.6) * this.cameraRig.zoom, 3.5, 8);
+            const alpha = clamp(0.94 - index * 0.06, 0.55, 0.94);
+            g.fillStyle(COLORS.pulse, alpha);
+            g.fillCircle(pulse.x, pulse.y, radius);
+        });
 
         this.activeNodes.forEach((node) => {
             const nodePos = this.worldToScreen(node.displayX, node.displayY);
