@@ -20,8 +20,10 @@ const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const PARTIAL_MESH_RULES = {
     slotSpacing: 102,
     supportRadius: 208,
-    maxDegree: 4,
-    forwardStep: 72
+    autoMaxDegree: 4,
+    manualMaxDegree: 6,
+    forwardStep: 72,
+    deleteHoldDuration: 0.72
 };
 const NODE_LIBRARY = [
     { id: 'source', shape: 'circle', polarity: 'base', role: 'source', color: COLORS.base },
@@ -78,6 +80,24 @@ function angleDistance(a, b) {
     return Math.abs(Phaser.Math.Angle.Wrap(a - b));
 }
 
+function distanceToSegmentSquared(px, py, ax, ay, bx, by) {
+    const abx = bx - ax;
+    const aby = by - ay;
+    const lengthSq = abx * abx + aby * aby;
+    if (lengthSq <= 0.0001) {
+        const dx = px - ax;
+        const dy = py - ay;
+        return dx * dx + dy * dy;
+    }
+
+    const t = clamp(((px - ax) * abx + (py - ay) * aby) / lengthSq, 0, 1);
+    const closestX = ax + abx * t;
+    const closestY = ay + aby * t;
+    const dx = px - closestX;
+    const dy = py - closestY;
+    return dx * dx + dy * dy;
+}
+
 function polygonPoints(x, y, radius, sides, rotation) {
     const points = [];
     for (let i = 0; i < sides; i += 1) {
@@ -131,13 +151,11 @@ class CoreDemoScene extends Phaser.Scene {
             right: Phaser.Input.Keyboard.KeyCodes.D,
             expand: Phaser.Input.Keyboard.KeyCodes.E,
             shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
-            reconnect: Phaser.Input.Keyboard.KeyCodes.SPACE,
-            confirm: Phaser.Input.Keyboard.KeyCodes.ENTER,
             cancel: Phaser.Input.Keyboard.KeyCodes.ESC,
-            clear: Phaser.Input.Keyboard.KeyCodes.Q,
             restart: Phaser.Input.Keyboard.KeyCodes.R
         });
         this.input.on('pointerdown', this.handlePointerDown, this);
+        this.input.on('pointerup', this.handlePointerUp, this);
         this.cameraZoomScale = 1;
         this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
             this.cameraZoomScale = clamp(this.cameraZoomScale - deltaY * 0.001, 0.1, 5.0);
@@ -186,10 +204,22 @@ class CoreDemoScene extends Phaser.Scene {
             pulseCursor: 0,
             pulseTimer: 0.12,
             pulsePath: { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false },
-            reconnect: {
+            edit: {
                 active: false,
-                draft: [...this.baseChain],
-                hoverIndex: -1
+                ambience: 0,
+                hoverNode: -1,
+                hoverLink: '',
+                selectedNode: -1,
+                pointerNode: -1,
+                dragNode: -1,
+                dragStartX: 0,
+                dragStartY: 0,
+                dragOffsetX: 0,
+                dragOffsetY: 0,
+                dragWorldX: 0,
+                dragWorldY: 0,
+                deleteNode: -1,
+                deleteProgress: 0
             }
         };
 
@@ -251,7 +281,7 @@ class CoreDemoScene extends Phaser.Scene {
                 return false;
             }
 
-            if ((degreeByIndex.get(a) || 0) >= PARTIAL_MESH_RULES.maxDegree || (degreeByIndex.get(b) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+            if ((degreeByIndex.get(a) || 0) >= PARTIAL_MESH_RULES.autoMaxDegree || (degreeByIndex.get(b) || 0) >= PARTIAL_MESH_RULES.autoMaxDegree) {
                 return false;
             }
 
@@ -283,7 +313,7 @@ class CoreDemoScene extends Phaser.Scene {
 
         const supportRadius = PARTIAL_MESH_RULES.supportRadius + Math.min(chain.length, 24) * 2.5;
         entries.forEach((entry) => {
-            if ((degreeByIndex.get(entry.index) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+            if ((degreeByIndex.get(entry.index) || 0) >= PARTIAL_MESH_RULES.autoMaxDegree) {
                 return;
             }
 
@@ -314,10 +344,10 @@ class CoreDemoScene extends Phaser.Scene {
                 if (candidate.distance > supportRadius) {
                     break;
                 }
-                if ((degreeByIndex.get(entry.index) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+                if ((degreeByIndex.get(entry.index) || 0) >= PARTIAL_MESH_RULES.autoMaxDegree) {
                     break;
                 }
-                if ((degreeByIndex.get(candidate.other.index) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+                if ((degreeByIndex.get(candidate.other.index) || 0) >= PARTIAL_MESH_RULES.autoMaxDegree) {
                     continue;
                 }
                 if (linkedAngles.some((existingAngle) => angleDistance(existingAngle, candidate.angle) < 0.42)) {
@@ -396,7 +426,7 @@ class CoreDemoScene extends Phaser.Scene {
             const radial = normalize(entry.x, entry.y, desiredLocal.x, desiredLocal.y);
             const projection = entry.x * desiredLocal.x + entry.y * desiredLocal.y;
             const directional = radial.x * desiredLocal.x + radial.y * desiredLocal.y;
-            const openness = 1 - clamp((entry.degree - 1) / PARTIAL_MESH_RULES.maxDegree, 0, 1);
+            const openness = 1 - clamp((entry.degree - 1) / PARTIAL_MESH_RULES.autoMaxDegree, 0, 1);
             const score = projection + directional * 54 + radial.length * 0.18 + openness * 46;
             if (score > bestScore) {
                 bestScore = score;
@@ -486,6 +516,220 @@ class CoreDemoScene extends Phaser.Scene {
         return bestIndex;
     }
 
+    pickExpansionNeighbors(slot, entries, anchorIndex) {
+        const neighbors = [];
+        const usedAngles = [];
+        const anchor = entries.find((entry) => entry.index === anchorIndex);
+        const pushNeighbor = (entry, allowTightAngle = false) => {
+            if (!entry || neighbors.includes(entry.index)) {
+                return false;
+            }
+            if (entry.degree >= PARTIAL_MESH_RULES.manualMaxDegree) {
+                return false;
+            }
+
+            const angle = Math.atan2(entry.y - slot.y, entry.x - slot.x);
+            if (!allowTightAngle && usedAngles.some((existingAngle) => angleDistance(existingAngle, angle) < 0.4)) {
+                return false;
+            }
+
+            neighbors.push(entry.index);
+            usedAngles.push(angle);
+            return true;
+        };
+
+        pushNeighbor(anchor, true);
+
+        const candidates = entries
+            .filter((entry) => entry.index !== anchorIndex)
+            .map((entry) => ({
+                entry,
+                distance: Math.hypot(entry.x - slot.x, entry.y - slot.y)
+            }))
+            .sort((a, b) => a.distance - b.distance);
+
+        for (let i = 0; i < candidates.length; i += 1) {
+            if (neighbors.length >= 3) {
+                break;
+            }
+            const candidate = candidates[i];
+            if (candidate.distance > PARTIAL_MESH_RULES.supportRadius + 48) {
+                break;
+            }
+            pushNeighbor(candidate.entry);
+        }
+
+        for (let i = 0; i < candidates.length && neighbors.length < 2; i += 1) {
+            pushNeighbor(candidates[i].entry, true);
+        }
+
+        return neighbors;
+    }
+
+    resetPulseFlow() {
+        this.player.pulseCursor = 0;
+        this.player.pulseTimer = 0.12;
+        this.player.pulsePath = { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
+    }
+
+    getTopologyDegree(index) {
+        let degree = 0;
+        this.player.topology.edges.forEach((edge) => {
+            if (edge.a === index || edge.b === index) {
+                degree += 1;
+            }
+        });
+        return degree;
+    }
+
+    hasTopologyEdge(a, b) {
+        const key = makeEdgeKey(a, b);
+        return this.player.topology.edges.some((edge) => makeEdgeKey(edge.a, edge.b) === key);
+    }
+
+    addTopologyEdge(a, b, kind = 'support') {
+        if (a === b || this.hasTopologyEdge(a, b)) {
+            return false;
+        }
+        if (this.getTopologyDegree(a) >= PARTIAL_MESH_RULES.manualMaxDegree || this.getTopologyDegree(b) >= PARTIAL_MESH_RULES.manualMaxDegree) {
+            return false;
+        }
+        this.player.topology.edges.push({ a, b, kind });
+        return true;
+    }
+
+    removeTopologyEdge(a, b) {
+        const key = makeEdgeKey(a, b);
+        const nextEdges = this.player.topology.edges.filter((edge) => makeEdgeKey(edge.a, edge.b) !== key);
+        if (nextEdges.length === this.player.topology.edges.length) {
+            return false;
+        }
+        this.player.topology.edges = nextEdges;
+        return true;
+    }
+
+    removeNodeFromTopology(index) {
+        if (this.player.chain.length <= 3) {
+            return false;
+        }
+
+        this.player.chain = this.player.chain.filter((entry) => entry !== index);
+        delete this.player.topology.slots[index];
+        this.player.topology.edges = this.player.topology.edges.filter((edge) => edge.a !== index && edge.b !== index);
+        this.player.energy = 0;
+        this.player.guard = 0;
+        this.player.overload = 0;
+        this.player.echo = 0;
+        this.player.tempoBoost = 0;
+        this.player.stability = 0.35;
+        this.player.turnAssist = 0;
+        this.resetPulseFlow();
+        if (this.player.edit.selectedNode === index) {
+            this.player.edit.selectedNode = -1;
+        }
+        if (this.player.edit.hoverNode === index) {
+            this.player.edit.hoverNode = -1;
+        }
+        this.player.edit.hoverLink = '';
+        if (this.player.edit.pointerNode === index) {
+            this.player.edit.pointerNode = -1;
+        }
+        if (this.player.edit.dragNode === index) {
+            this.player.edit.dragNode = -1;
+        }
+        if (this.player.edit.deleteNode === index) {
+            this.player.edit.deleteNode = -1;
+            this.player.edit.deleteProgress = 0;
+        }
+        this.rebuildFormation();
+        return true;
+    }
+
+    getPointerWorld() {
+        return this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
+    }
+
+    enterEditMode() {
+        const edit = this.player.edit;
+        edit.active = true;
+        edit.hoverNode = -1;
+        edit.hoverLink = '';
+        edit.selectedNode = -1;
+        edit.pointerNode = -1;
+        edit.dragNode = -1;
+        edit.deleteNode = -1;
+        edit.deleteProgress = 0;
+    }
+
+    exitEditMode() {
+        const edit = this.player.edit;
+        edit.active = false;
+        edit.hoverNode = -1;
+        edit.hoverLink = '';
+        edit.selectedNode = -1;
+        edit.pointerNode = -1;
+        edit.dragNode = -1;
+        edit.deleteNode = -1;
+        edit.deleteProgress = 0;
+    }
+
+    findActiveNodeAtWorld(x, y, extraRadius = 0) {
+        const radius = 28 / this.cameraRig.zoom + extraRadius;
+        const radiusSq = radius * radius;
+        let best = null;
+        let bestDistance = Infinity;
+
+        this.activeNodes.forEach((node) => {
+            const dx = node.displayX - x;
+            const dy = node.displayY - y;
+            const distanceSq = dx * dx + dy * dy;
+            if (distanceSq > radiusSq || distanceSq >= bestDistance) {
+                return;
+            }
+            best = node;
+            bestDistance = distanceSq;
+        });
+
+        return best;
+    }
+
+    findActiveLinkAtWorld(x, y) {
+        const threshold = (18 / this.cameraRig.zoom) ** 2;
+        let best = null;
+        let bestDistance = threshold;
+
+        this.links.forEach((link) => {
+            const first = this.activeNodes[link.a];
+            const second = this.activeNodes[link.b];
+            const distanceSq = distanceToSegmentSquared(x, y, first.displayX, first.displayY, second.displayX, second.displayY);
+            if (distanceSq >= bestDistance) {
+                return;
+            }
+            best = link;
+            bestDistance = distanceSq;
+        });
+
+        return best;
+    }
+
+    shouldExitEditMode(x, y) {
+        return Math.hypot(x - this.player.centroidX, y - this.player.centroidY) > this.getFormationSpan() + 96;
+    }
+
+    refreshEditHover() {
+        const edit = this.player.edit;
+        const pointerWorld = this.getPointerWorld();
+        const hoverNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
+        const hoverLink = hoverNode ? null : this.findActiveLinkAtWorld(pointerWorld.x, pointerWorld.y);
+        edit.hoverNode = hoverNode ? hoverNode.index : -1;
+        edit.hoverLink = hoverLink ? hoverLink.key : '';
+    }
+
+    setNodeSlotFromWorld(index, worldX, worldY) {
+        const local = rotateLocal(worldX - this.player.centroidX, worldY - this.player.centroidY, -this.player.heading);
+        this.player.topology.slots[index] = { x: local.x, y: local.y };
+    }
+
     rebuildFormation(forceReset = false) {
         const count = this.player.chain.length;
         if (!this.player.topology || this.player.chain.some((poolIndex) => !Object.prototype.hasOwnProperty.call(this.player.topology.slots || {}, poolIndex))) {
@@ -566,6 +810,9 @@ class CoreDemoScene extends Phaser.Scene {
                 a,
                 b,
                 kind: edge.kind,
+                key: makeEdgeKey(edge.a, edge.b),
+                topologyA: edge.a,
+                topologyB: edge.b,
                 rest: clamp(distance * (samePolarity ? 1.02 : 1.08), 84, 206),
                 stiffness: samePolarity ? stiffness : stiffness * softness,
                 damping: samePolarity ? damping : damping * 0.86,
@@ -587,22 +834,23 @@ class CoreDemoScene extends Phaser.Scene {
 
         if (this.player.dead) {
             this.player.deathTimer -= frameDt;
-            if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.reconnect) || this.player.deathTimer <= 0) {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
                 this.resetSimulation();
                 return;
             }
         }
 
-        if (!this.player.dead && !this.player.reconnect.active && Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
+        if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
             this.addDebugNode();
         }
-        if (!this.player.dead && !this.player.reconnect.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+        if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
             this.resetSimulation();
             return;
         }
 
         this.handleModeInputs();
         this.readIntent();
+        this.updateEditMode(frameDt);
 
         const simDt = frameDt * this.timeScaleFactor;
         this.worldTime += simDt;
@@ -641,8 +889,8 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     readIntent() {
-        const moveX = (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
-        const moveY = (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0);
+        const moveX = this.player.edit.active ? 0 : (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
+        const moveY = this.player.edit.active ? 0 : (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0);
         const move = normalize(moveX, moveY);
 
         const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
@@ -662,45 +910,16 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     handleModeInputs() {
-        if (!this.player.reconnect.active && Phaser.Input.Keyboard.JustDown(this.keys.reconnect) && !this.player.dead) {
-            this.player.reconnect.active = true;
-            this.player.reconnect.draft = [...this.player.chain];
-        }
-
-        if (!this.player.reconnect.active) {
+        if (!this.player.edit.active) {
             this.timeScaleFactor = 1;
             return;
         }
 
-        this.timeScaleFactor = 0.18;
-        this.player.reconnect.hoverIndex = this.findReconnectNodeAt(this.input.activePointer.x, this.input.activePointer.y);
+        this.timeScaleFactor = this.player.edit.deleteNode >= 0 ? 0.05 : 0.08;
+        this.refreshEditHover();
 
         if (Phaser.Input.Keyboard.JustDown(this.keys.cancel)) {
-            this.player.reconnect.active = false;
-            this.player.reconnect.draft = [...this.player.chain];
-        }
-
-        if (Phaser.Input.Keyboard.JustDown(this.keys.clear)) {
-            this.player.reconnect.draft = [];
-        }
-
-        if (Phaser.Input.Keyboard.JustDown(this.keys.confirm)) {
-            if (this.player.reconnect.draft.length >= 3) {
-                this.player.chain = [...this.player.reconnect.draft];
-                this.player.reconnect.active = false;
-                this.player.topology = this.rebuildTopologyFromCurrentChain(true);
-                this.player.energy = 0;
-                this.player.guard = 0;
-                this.player.overload = 0;
-                this.player.echo = 0;
-                this.player.tempoBoost = 0;
-                this.player.stability = 0.35;
-                this.player.turnAssist = 0;
-                this.player.pulseCursor = 0;
-                this.player.pulseTimer = 0.12;
-                this.player.pulsePath = { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
-                this.rebuildFormation();
-            }
+            this.exitEditMode();
         }
     }
 
@@ -709,21 +928,164 @@ class CoreDemoScene extends Phaser.Scene {
             this.resetSimulation();
             return;
         }
-        if (!this.player.reconnect.active) {
+
+        const pointerWorld = this.screenToWorld(pointer.x, pointer.y);
+        const hitNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
+        const hitLink = hitNode ? null : this.findActiveLinkAtWorld(pointerWorld.x, pointerWorld.y);
+
+        if (!this.player.edit.active) {
+            if (hitNode || hitLink) {
+                this.enterEditMode();
+            }
             return;
         }
-        if (pointer.rightButtonDown()) {
-            this.player.reconnect.draft.pop();
+
+        if (pointer.button === 2) {
+            if (hitNode) {
+                this.player.edit.deleteNode = hitNode.index;
+                this.player.edit.deleteProgress = 0;
+                this.player.edit.selectedNode = -1;
+                this.player.edit.pointerNode = -1;
+                this.player.edit.dragNode = hitNode.index;
+                this.player.edit.dragWorldX = hitNode.x;
+                this.player.edit.dragWorldY = hitNode.y;
+            } else if (hitLink) {
+                if (this.removeTopologyEdge(hitLink.topologyA, hitLink.topologyB)) {
+                    this.rebuildFormation();
+                }
+            }
             return;
         }
-        const nodeIndex = this.findReconnectNodeAt(pointer.x, pointer.y);
-        if (nodeIndex < 0) {
+
+        if (pointer.button !== 0) {
             return;
         }
-        if (this.player.reconnect.draft.includes(nodeIndex) || this.player.reconnect.draft.length >= 96) {
+
+        if (!hitNode) {
+            if (this.shouldExitEditMode(pointerWorld.x, pointerWorld.y)) {
+                this.exitEditMode();
+            } else {
+                this.player.edit.selectedNode = -1;
+            }
             return;
         }
-        this.player.reconnect.draft.push(nodeIndex);
+
+        this.player.edit.pointerNode = hitNode.index;
+        this.player.edit.dragNode = -1;
+        this.player.edit.dragStartX = pointerWorld.x;
+        this.player.edit.dragStartY = pointerWorld.y;
+        this.player.edit.dragOffsetX = pointerWorld.x - hitNode.x;
+        this.player.edit.dragOffsetY = pointerWorld.y - hitNode.y;
+        this.player.edit.dragWorldX = hitNode.x;
+        this.player.edit.dragWorldY = hitNode.y;
+    }
+
+    handlePointerUp(pointer) {
+        if (!this.player.edit.active) {
+            return;
+        }
+
+        if (pointer.button === 2) {
+            this.player.edit.deleteNode = -1;
+            this.player.edit.deleteProgress = 0;
+            this.player.edit.dragNode = -1;
+            this.player.edit.pointerNode = -1;
+            return;
+        }
+
+        if (pointer.button !== 0) {
+            return;
+        }
+
+        const edit = this.player.edit;
+        const pointerWorld = this.screenToWorld(pointer.x, pointer.y);
+        const releasedNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
+        const pointerNode = edit.pointerNode;
+        const draggedNode = edit.dragNode;
+
+        edit.pointerNode = -1;
+        edit.dragNode = -1;
+
+        if (draggedNode >= 0) {
+            return;
+        }
+
+        if (pointerNode >= 0 && releasedNode && releasedNode.index === pointerNode) {
+            if (edit.selectedNode >= 0 && edit.selectedNode !== releasedNode.index) {
+                if (this.addTopologyEdge(edit.selectedNode, releasedNode.index, 'support')) {
+                    this.rebuildFormation();
+                }
+                edit.selectedNode = -1;
+                return;
+            }
+
+            edit.selectedNode = edit.selectedNode === releasedNode.index ? -1 : releasedNode.index;
+            return;
+        }
+
+        if (this.shouldExitEditMode(pointerWorld.x, pointerWorld.y)) {
+            this.exitEditMode();
+        }
+    }
+
+    updateEditMode(frameDt) {
+        const edit = this.player.edit;
+        edit.ambience = damp(edit.ambience, edit.active ? 1 : 0, 8.5, frameDt);
+
+        if (!edit.active) {
+            return;
+        }
+
+        this.refreshEditHover();
+        const pointer = this.input.activePointer;
+        const pointerWorld = this.getPointerWorld();
+
+        if (pointer.leftButtonDown() && edit.pointerNode >= 0) {
+            const dragThreshold = 16 / this.cameraRig.zoom;
+            const dragDistance = Math.hypot(pointerWorld.x - edit.dragStartX, pointerWorld.y - edit.dragStartY);
+            if (edit.dragNode < 0 && dragDistance >= dragThreshold) {
+                edit.dragNode = edit.pointerNode;
+                edit.selectedNode = -1;
+            }
+        }
+
+        if (pointer.leftButtonDown() && edit.dragNode >= 0) {
+            edit.dragWorldX = pointerWorld.x - edit.dragOffsetX;
+            edit.dragWorldY = pointerWorld.y - edit.dragOffsetY;
+            this.setNodeSlotFromWorld(edit.dragNode, edit.dragWorldX, edit.dragWorldY);
+
+            const dragged = this.activeNodes.find((node) => node.index === edit.dragNode);
+            if (dragged) {
+                dragged.x = edit.dragWorldX;
+                dragged.y = edit.dragWorldY;
+                dragged.displayX = edit.dragWorldX;
+                dragged.displayY = edit.dragWorldY;
+                dragged.vx = 0;
+                dragged.vy = 0;
+            }
+        }
+
+        if (edit.deleteNode >= 0) {
+            const deleteTarget = this.activeNodes.find((node) => node.index === edit.deleteNode);
+            const stillHovering = deleteTarget
+                && this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y, 8)?.index === edit.deleteNode
+                && pointer.rightButtonDown();
+
+            if (!stillHovering) {
+                edit.deleteNode = -1;
+                edit.deleteProgress = 0;
+                edit.dragNode = -1;
+                return;
+            }
+
+            edit.deleteProgress = clamp(edit.deleteProgress + frameDt / PARTIAL_MESH_RULES.deleteHoldDuration, 0, 1);
+            if (edit.deleteProgress >= 1) {
+                this.removeNodeFromTopology(edit.deleteNode);
+                edit.deleteNode = -1;
+                edit.deleteProgress = 0;
+                edit.dragNode = -1;
+            }
+        }
     }
 
     addDebugNode() {
@@ -761,17 +1123,13 @@ class CoreDemoScene extends Phaser.Scene {
         };
         const slot = this.relaxExpansionSlot(candidateSlot, entries, expansion.local);
         const insertIndex = this.findBestPulseInsertionIndex(slot, anchor.index);
+        const neighborIndices = this.pickExpansionNeighbors(slot, entries, anchor.index);
 
         this.player.chain.splice(insertIndex, 0, index);
-        this.player.topology = {
-            slots: {
-                ...(this.player.topology?.slots || {}),
-                [index]: slot
-            },
-            edges: []
-        };
-        this.player.topology = this.rebuildTopologyFromCurrentChain(true);
-        this.player.reconnect.draft = [...this.player.chain];
+        this.player.topology.slots[index] = slot;
+        neighborIndices.forEach((neighborIndex, neighborOrder) => {
+            this.addTopologyEdge(index, neighborIndex, neighborOrder === 0 ? 'spine' : 'support');
+        });
         this.player.energy = 0;
         this.player.guard = 0;
         this.player.overload = 0;
@@ -779,9 +1137,7 @@ class CoreDemoScene extends Phaser.Scene {
         this.player.tempoBoost = 0;
         this.player.stability = 0.35;
         this.player.turnAssist = 0;
-        this.player.pulseCursor = 0;
-        this.player.pulseTimer = 0.12;
-        this.player.pulsePath = { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
+        this.resetPulseFlow();
         this.rebuildFormation();
     }
 
@@ -816,6 +1172,7 @@ class CoreDemoScene extends Phaser.Scene {
         const widthFit = this.cameraRig.viewportWidth / (span * 2.2);
         const heightFit = this.cameraRig.viewportHeight / (span * 1.85);
         let targetZ = clamp(Math.min(widthFit, heightFit), 0.36, 1.08);
+        targetZ *= lerp(1, 1.12, this.player.edit.ambience || 0);
         targetZ *= (this.cameraZoomScale || 1);
         this.cameraRig.targetZoom = targetZ;
         this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, 3.2, frameDt);
@@ -956,12 +1313,27 @@ class CoreDemoScene extends Phaser.Scene {
     updateFormation(simDt) {
         const forward = vectorFromAngle(this.player.heading);
         const drift = normalize(this.intent.flowX, this.intent.flowY, forward.x, forward.y);
+        const draggedTarget = this.player.edit.active && this.player.edit.dragNode >= 0
+            ? {
+                index: this.player.edit.dragNode,
+                x: this.player.edit.dragWorldX,
+                y: this.player.edit.dragWorldY
+            }
+            : null;
 
         this.computeCentroid();
 
         this.activeNodes.forEach((node) => {
             node.fx = 0;
             node.fy = 0;
+            if (draggedTarget && node.index === draggedTarget.index) {
+                node.x = draggedTarget.x;
+                node.y = draggedTarget.y;
+                node.vx = 0;
+                node.vy = 0;
+                node.anchored = false;
+                node.anchorStrength = 0;
+            }
             if (node.anchored) {
                 node.stanceTimer -= simDt;
                 if (node.stanceTimer <= 0) {
@@ -998,6 +1370,11 @@ class CoreDemoScene extends Phaser.Scene {
             if (node.anchored) {
                 node.fx += (node.anchorX - node.x) * node.anchorStrength;
                 node.fy += (node.anchorY - node.y) * node.anchorStrength;
+            }
+
+            if (draggedTarget && node.index === draggedTarget.index) {
+                node.fx = 0;
+                node.fy = 0;
             }
         });
 
@@ -1065,6 +1442,16 @@ class CoreDemoScene extends Phaser.Scene {
                 second.x -= dx * adjust;
                 second.y -= dy * adjust;
             });
+        }
+
+        if (draggedTarget) {
+            const draggedNode = this.activeNodes.find((node) => node.index === draggedTarget.index);
+            if (draggedNode) {
+                draggedNode.x = draggedTarget.x;
+                draggedNode.y = draggedTarget.y;
+                draggedNode.vx = 0;
+                draggedNode.vy = 0;
+            }
         }
 
         this.computeCentroid();
@@ -1674,10 +2061,10 @@ class CoreDemoScene extends Phaser.Scene {
         this.drawEnemies(g);
         this.drawProjectiles(g);
         this.drawFormation(g);
-        this.drawHud(g);
-        if (this.player.reconnect.active) {
-            this.drawReconnectOverlay(g);
+        if (this.player.edit.active || this.player.edit.ambience > 0.01) {
+            this.drawEditOverlay(g);
         }
+        this.drawHud(g);
     }
 
     drawWorld(g) {
@@ -1807,68 +2194,73 @@ class CoreDemoScene extends Phaser.Scene {
         g.fillRect(left, top + 40, healthWidth * pressure, 6);
     }
 
-    getReconnectLayout() {
-        const radius = Math.max(150, this.poolNodes.length * 16);
-        const positions = [];
-        for (let i = 0; i < this.poolNodes.length; i += 1) {
-            const angle = -Math.PI * 0.5 + (Math.PI * 2 * i) / this.poolNodes.length;
-            positions.push({
-                index: i,
-                x: this.cameraRig.viewportWidth * 0.5 + Math.cos(angle) * radius,
-                y: this.cameraRig.viewportHeight * 0.5 + Math.sin(angle) * radius
-            });
-        }
-        return positions;
-    }
-
-    findReconnectNodeAt(x, y) {
-        const positions = this.getReconnectLayout();
-        for (let i = 0; i < positions.length; i += 1) {
-            const entry = positions[i];
-            const dx = entry.x - x;
-            const dy = entry.y - y;
-            if (dx * dx + dy * dy <= 22 * 22) {
-                return entry.index;
-            }
-        }
-        return -1;
-    }
-
-    drawReconnectOverlay(g) {
-        const positions = this.getReconnectLayout();
-        const positionByIndex = new Map(positions.map((entry) => [entry.index, entry]));
-        g.fillStyle(COLORS.shadow, 0.58);
-        g.fillRect(0, 0, this.cameraRig.viewportWidth, this.cameraRig.viewportHeight);
-        g.lineStyle(3, COLORS.pulse, 0.3);
-        g.strokeCircle(this.cameraRig.viewportWidth * 0.5, this.cameraRig.viewportHeight * 0.5, Math.max(170, this.poolNodes.length * 16 + 20));
-
-        for (let i = 1; i < this.player.reconnect.draft.length; i += 1) {
-            const previous = positionByIndex.get(this.player.reconnect.draft[i - 1]);
-            const current = positionByIndex.get(this.player.reconnect.draft[i]);
-            g.lineStyle(5, COLORS.pulse, 0.72);
-            g.lineBetween(previous.x, previous.y, current.x, current.y);
+    drawEditOverlay(g) {
+        const edit = this.player.edit;
+        const ambience = edit.ambience;
+        if (ambience <= 0.01) {
+            return;
         }
 
-        positions.forEach((entry) => {
-            const node = this.poolNodes[entry.index];
-            const selectedOrder = this.player.reconnect.draft.indexOf(entry.index);
-            const isHover = this.player.reconnect.hoverIndex === entry.index;
-            const size = selectedOrder >= 0 ? 30 : 24;
+        const width = this.cameraRig.viewportWidth;
+        const height = this.cameraRig.viewportHeight;
+        const center = this.worldToScreen(this.player.centroidX, this.player.centroidY);
+        const focusRadius = (this.getFormationSpan() + 108) * this.cameraRig.zoom;
 
-            if (selectedOrder >= 0 || isHover) {
-                g.lineStyle(3, selectedOrder >= 0 ? COLORS.pulse : COLORS.base, 0.9);
-                g.strokeCircle(entry.x, entry.y, size * 0.62);
-            }
+        g.fillStyle(COLORS.shadow, 0.16 * ambience);
+        g.fillRect(0, 0, width, height);
+        g.lineStyle(2, COLORS.pulse, 0.22 * ambience);
+        g.strokeCircle(center.x, center.y, focusRadius);
+        g.lineStyle(4, COLORS.base, 0.08 * ambience);
+        g.strokeCircle(center.x, center.y, focusRadius + 16);
 
-            drawShape(g, node.shape, entry.x, entry.y, size, node.color, 0.96, this.player.heading);
+        const hoverLink = edit.hoverLink ? this.links.find((link) => link.key === edit.hoverLink) : null;
+        if (hoverLink) {
+            const first = this.activeNodes[hoverLink.a];
+            const second = this.activeNodes[hoverLink.b];
+            const from = this.worldToScreen(first.displayX, first.displayY);
+            const to = this.worldToScreen(second.displayX, second.displayY);
+            g.lineStyle(clamp(5 * this.cameraRig.zoom, 2, 6), COLORS.inverse, 0.68);
+            g.lineBetween(from.x, from.y, to.x, to.y);
+        }
 
-            if (selectedOrder >= 0) {
-                for (let i = 0; i <= selectedOrder; i += 1) {
-                    g.fillStyle(COLORS.pulse, 0.95);
-                    g.fillCircle(entry.x - 8 + i * 4, entry.y + 18, 2);
+        if (edit.selectedNode >= 0) {
+            const selected = this.activeNodes.find((node) => node.index === edit.selectedNode);
+            if (selected) {
+                const selectedPos = this.worldToScreen(selected.displayX, selected.displayY);
+                const pulse = 20 + Math.sin(this.worldTime * 10) * 4;
+                g.lineStyle(3, COLORS.pulse, 0.9);
+                g.strokeCircle(selectedPos.x, selectedPos.y, clamp(pulse * this.cameraRig.zoom, 10, 26));
+                if (edit.active && edit.dragNode < 0) {
+                    const pointerWorld = this.getPointerWorld();
+                    const pointerPos = this.worldToScreen(pointerWorld.x, pointerWorld.y);
+                    g.lineStyle(2, COLORS.base, 0.55);
+                    g.lineBetween(selectedPos.x, selectedPos.y, pointerPos.x, pointerPos.y);
                 }
             }
-        });
+        }
+
+        if (edit.hoverNode >= 0) {
+            const hovered = this.activeNodes.find((node) => node.index === edit.hoverNode);
+            if (hovered) {
+                const hoveredPos = this.worldToScreen(hovered.displayX, hovered.displayY);
+                g.lineStyle(3, COLORS.base, 0.9);
+                g.strokeCircle(hoveredPos.x, hoveredPos.y, clamp(18 * this.cameraRig.zoom, 9, 20));
+            }
+        }
+
+        if (edit.deleteNode >= 0) {
+            const target = this.activeNodes.find((node) => node.index === edit.deleteNode);
+            if (target) {
+                const targetPos = this.worldToScreen(target.displayX, target.displayY);
+                const radius = clamp(26 * this.cameraRig.zoom, 12, 28);
+                g.lineStyle(4, COLORS.shadow, 0.6);
+                g.strokeCircle(targetPos.x, targetPos.y, radius);
+                g.lineStyle(4, COLORS.inverse, 0.95);
+                g.beginPath();
+                g.arc(targetPos.x, targetPos.y, radius, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * edit.deleteProgress, false);
+                g.strokePath();
+            }
+        }
     }
 }
 
