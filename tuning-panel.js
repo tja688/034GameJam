@@ -203,15 +203,15 @@ function savePersistedTuning() {
 
 const TUNING_DEFS = [
     // ── 移动能力对比 ──
-    { section: '🧪 移动能力对比', sectionDesc: '当前默认开启“所有节点都主动移动”；关闭后可对比只有方形节点(shell/prism)主动移动的新方案' },
-    { key: 'legacyAllNodesMove', label: '所有节点都主动移动', desc: '默认开启，保持当前版本：任何节点都能吃到脉冲牵引和漂移推进；关闭后切到只有方形保留移动能力的实验方案', type: 'toggle' },
+    { section: '🧪 移动能力对比', sectionDesc: '当前默认开启“所有节点都主动移动”；关闭后切到调试模式，只允许蓝色节点主动驱动，红色节点暂时屏蔽主动移动与功能触发' },
+    { key: 'legacyAllNodesMove', label: '全节点主动移动（关=仅蓝色驱动）', desc: '默认开启，保持当前版本：所有节点都能参与脉冲牵引、漂移推进和功能触发；关闭后只保留蓝色节点的主动移动与功能，红色节点只保留结构上的被动跟随', type: 'toggle' },
 
     // ── 力开关 ──
     { section: '⚡ 力场开关', sectionDesc: '关掉某个力可以观察剩余力的独立效果；当前默认以“脉冲锚定 + 连线拖拽”为核心' },
     { key: 'enableFormationPull', label: '旧编队拉回', desc: '旧范式遗留开关：把节点拉回拓扑槽位。当前默认关闭，用于和纯软体模式做对照', type: 'toggle' },
-    { key: 'enableDrift', label: '漂移推进力', desc: 'WASD 驱动的实际移动推力；当前默认由所有节点施加，关闭“所有节点都主动移动”后仅有移动能力的方形节点会施加', type: 'toggle' },
+    { key: 'enableDrift', label: '漂移推进力', desc: 'WASD 驱动的实际移动推力；当前默认由所有节点施加，关闭“全节点主动移动”后只会由蓝色节点施加', type: 'toggle' },
     { key: 'enableCorePull', label: '核心收束力', desc: '仅对圆形节点(source/compressor)施加的向质心拉力；关掉后核心会被甩到外围', type: 'toggle' },
-    { key: 'enableAnchor', label: '脉冲牵引力', desc: '脉冲触发时，将节点拉向目标点；当前默认所有节点都会被驱动，关闭“所有节点都主动移动”后仅方形会被真正驱动', type: 'toggle' },
+    { key: 'enableAnchor', label: '脉冲牵引力', desc: '脉冲触发时，将节点拉向目标点；当前默认所有节点都会被驱动，关闭“全节点主动移动”后只保留蓝色节点的主动牵引', type: 'toggle' },
     { key: 'enableSpring', label: '弹簧连线力', desc: '连线的弹簧-阻尼约束力；关掉后节点间没有弹性联系', type: 'toggle' },
     { key: 'enableRepulsion', label: '节点排斥力', desc: '防止节点互相重叠的短程排斥力；关掉后节点可能堆在一起', type: 'toggle' },
     { key: 'enablePBD', label: 'PBD 位置校正', desc: '力学积分后的约束求解迭代；关掉后弹簧更容易过度拉伸', type: 'toggle' },
@@ -225,9 +225,9 @@ const TUNING_DEFS = [
 
     // ── 漂移力 ──
     { section: '💨 漂移推进力', sectionDesc: '不同角色在 WASD 方向上的推进力大小差异；当前默认所有角色都会真正把推力施加到结构上' },
-    { key: 'driftAttack', label: '攻击节点漂移力', desc: 'dart(远程)/blade(近战) 的推进力；当前默认生效，关闭“所有节点都主动移动”后这项只保留作实验对比', min: 0, max: 200, step: 1 },
+    { key: 'driftAttack', label: '攻击节点漂移力', desc: 'dart(远程)/blade(近战) 的推进力；关闭“全节点主动移动”后只有蓝色攻击节点还会实际施加推进', min: 0, max: 200, step: 1 },
     { key: 'driftShell', label: '护盾节点漂移力', desc: 'shell(方形/本色) 的推进力；无论哪种模式它都是主要移动来源之一', min: 0, max: 200, step: 1 },
-    { key: 'driftDefault', label: '标准移动节点漂移力', desc: '当前用于 source/compressor/prism 等默认移动节点；关闭“所有节点都主动移动”后主要只剩 prism 使用', min: 0, max: 200, step: 1 },
+    { key: 'driftDefault', label: '标准移动节点漂移力', desc: '当前用于 source/compressor/prism 等默认移动节点；关闭“全节点主动移动”后主要只剩蓝色 source 使用', min: 0, max: 200, step: 1 },
 
     // ── 核心收束 ──
     { section: '🎯 核心收束力', sectionDesc: '仅对圆形节点(source/compressor)的额外向心力' },

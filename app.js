@@ -2302,9 +2302,20 @@ class CoreDemoScene extends Phaser.Scene {
         };
     }
 
-    nodeHasMoveAbility(node) {
+    isBlueOnlyDriveMode() {
         const T = window.TUNING || {};
-        return !!(T.legacyAllNodesMove ?? false) || node.shape === 'square';
+        return !(T.legacyAllNodesMove ?? true);
+    }
+
+    nodeIsFunctionSuppressed(node) {
+        return this.isBlueOnlyDriveMode() && node.polarity === 'inverse';
+    }
+
+    nodeHasMoveAbility(node) {
+        if (!this.isBlueOnlyDriveMode()) {
+            return true;
+        }
+        return node.polarity === 'base';
     }
 
     plantNode(node, profile) {
@@ -2334,6 +2345,13 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     triggerNode(node, edge) {
+        if (this.nodeIsFunctionSuppressed(node)) {
+            node.anchorStrength = 0;
+            node.stanceTimer = 0;
+            node.anchored = false;
+            return;
+        }
+
         if (edge.kind === 'inverse') {
             this.player.agitation = clamp(this.player.agitation + 0.22, 0, 2);
         } else if (edge.kind === 'steady') {
@@ -2416,8 +2434,9 @@ class CoreDemoScene extends Phaser.Scene {
         });
 
         this.activeNodes.forEach((node) => {
+            const canDrive = this.nodeHasMoveAbility(node);
             // ── 编队拉力 ──
-            if (T.enableFormationPull ?? true) {
+            if ((T.enableFormationPull ?? true) && canDrive) {
                 const nominal = this.computeNominalOffset(node);
                 const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
                 const targetX = this.player.centroidX + rotated.x;
@@ -2432,7 +2451,7 @@ class CoreDemoScene extends Phaser.Scene {
             }
 
             // ── 漂移力 ──
-            if ((T.enableDrift ?? true) && !node.anchored && this.nodeHasMoveAbility(node)) {
+            if ((T.enableDrift ?? true) && !node.anchored && canDrive) {
                 const drive = node.role === 'blade' || node.role === 'dart'
                     ? (T.driftAttack ?? 54)
                     : node.role === 'shell'
@@ -2443,7 +2462,7 @@ class CoreDemoScene extends Phaser.Scene {
             }
 
             // ── 核心收束力 ──
-            if ((T.enableCorePull ?? true) && (node.role === 'source' || node.role === 'compressor')) {
+            if ((T.enableCorePull ?? true) && canDrive && (node.role === 'source' || node.role === 'compressor')) {
                 const pullToCoreX = this.player.centroidX - node.x;
                 const pullToCoreY = this.player.centroidY - node.y;
                 const coreStr = T.corePullStrength ?? 24;
@@ -2452,7 +2471,7 @@ class CoreDemoScene extends Phaser.Scene {
             }
 
             // ── 锚定力 ──
-            if ((T.enableAnchor ?? true) && node.anchored) {
+            if ((T.enableAnchor ?? true) && node.anchored && canDrive) {
                 node.fx += (node.anchorX - node.x) * node.anchorStrength;
                 node.fy += (node.anchorY - node.y) * node.anchorStrength;
             }
