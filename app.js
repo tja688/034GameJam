@@ -138,6 +138,10 @@ class CoreDemoScene extends Phaser.Scene {
             restart: Phaser.Input.Keyboard.KeyCodes.R
         });
         this.input.on('pointerdown', this.handlePointerDown, this);
+        this.cameraZoomScale = 1;
+        this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+            this.cameraZoomScale = clamp(this.cameraZoomScale - deltaY * 0.001, 0.1, 5.0);
+        });
         this.resetSimulation();
     }
 
@@ -811,7 +815,9 @@ class CoreDemoScene extends Phaser.Scene {
         const span = this.getFormationSpan() + 180;
         const widthFit = this.cameraRig.viewportWidth / (span * 2.2);
         const heightFit = this.cameraRig.viewportHeight / (span * 1.85);
-        this.cameraRig.targetZoom = clamp(Math.min(widthFit, heightFit), 0.36, 1.08);
+        let targetZ = clamp(Math.min(widthFit, heightFit), 0.36, 1.08);
+        targetZ *= (this.cameraZoomScale || 1);
+        this.cameraRig.targetZoom = targetZ;
         this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, 3.2, frameDt);
         this.cameraRig.x = damp(this.cameraRig.x, this.player.centroidX, 3.4, frameDt);
         this.cameraRig.y = damp(this.cameraRig.y, this.player.centroidY, 3.4, frameDt);
@@ -1617,7 +1623,7 @@ class CoreDemoScene extends Phaser.Scene {
             }
         }
 
-        this.player.health -= remaining;
+        // // this.player.health -= remaining; // Infinite health currently enabled // infinite health
         node.vx -= dirX * push * 0.22;
         node.vy -= dirY * push * 0.22;
         this.createRing(node.x, node.y, 34, COLORS.health, 0.2, 3);
