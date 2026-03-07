@@ -1,106 +1,1520 @@
-const config = {
-    type: Phaser.AUTO,
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundColor: '#222222',
-    physics: {
-        default: 'arcade',
-        arcade: {
-            debug: false,
-            gravity: { y: 0 }
-        }
-    },
-    scene: {
-        preload: preload,
-        create: create,
-        update: update
-    }
+const COLORS = {
+    background: 0x071017,
+    arena: 0x0d1e28,
+    grid: 0x183242,
+    pulse: 0xf4f0d7,
+    base: 0x36d6ff,
+    inverse: 0xff5d49,
+    shield: 0xfff4bf,
+    health: 0xff5663,
+    swarm: 0x98ff4d,
+    stinger: 0xffd147,
+    brute: 0xffffff,
+    shadow: 0x02070b,
+    link: 0x4fa9c6
 };
 
-const game = new Phaser.Game(config);
+const MASS_BY_COUNT = { 3: 1.0, 4: 1.18, 5: 1.42, 6: 1.72 };
+const CHAIN_SPAN_BY_COUNT = { 3: 150, 4: 200, 5: 250, 6: 310 };
+const NODE_LIBRARY = [
+    { id: 'source', shape: 'circle', polarity: 'base', role: 'source', color: COLORS.base },
+    { id: 'compressor', shape: 'circle', polarity: 'inverse', role: 'compressor', color: COLORS.inverse },
+    { id: 'shell-a', shape: 'square', polarity: 'base', role: 'shell', color: COLORS.base },
+    { id: 'shell-b', shape: 'square', polarity: 'base', role: 'shell', color: COLORS.base },
+    { id: 'prism', shape: 'square', polarity: 'inverse', role: 'prism', color: COLORS.inverse },
+    { id: 'dart-a', shape: 'triangle', polarity: 'base', role: 'dart', color: COLORS.base },
+    { id: 'dart-b', shape: 'triangle', polarity: 'base', role: 'dart', color: COLORS.base },
+    { id: 'blade', shape: 'triangle', polarity: 'inverse', role: 'blade', color: COLORS.inverse }
+];
 
-function preload() {
-    // No external assets required, we use basic Phaser shapes
+const ENEMY_DEFS = {
+    swarm: { color: COLORS.swarm, radius: 18, maxHealth: 12, speed: 86, accel: 170, mass: 0.9, touchDamage: 8, push: 70, shape: 'circle' },
+    stinger: { color: COLORS.stinger, radius: 16, maxHealth: 8, speed: 118, accel: 190, mass: 0.75, touchDamage: 12, push: 88, shape: 'triangle' },
+    brute: { color: COLORS.brute, radius: 28, maxHealth: 40, speed: 52, accel: 96, mass: 2.4, touchDamage: 18, push: 124, shape: 'square' }
+};
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
 }
 
-let shapesGroup;
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
 
-function create() {
-    // Set world bounds to canvas edges
-    this.physics.world.setBoundsCollision(true, true, true, true);
+function damp(current, target, rate, dt) {
+    return Phaser.Math.Linear(current, target, 1 - Math.exp(-rate * dt));
+}
 
-    shapesGroup = this.physics.add.group({
-        bounceX: 1, // Perfectly bouncy
-        bounceY: 1,
-        collideWorldBounds: true
-    });
+function normalize(x, y, fallbackX = 0, fallbackY = 0) {
+    const length = Math.hypot(x, y);
+    if (length < 0.0001) {
+        return { x: fallbackX, y: fallbackY, length: 0 };
+    }
+    return { x: x / length, y: y / length, length };
+}
 
-    const numObjects = 60; // How many scattered shapes
-    // A palette of nice vibrant colors
-    const colors = [0xff3333, 0x33ff33, 0x3333ff, 0xffff33, 0xff33ff, 0x33ffff, 0xffffff, 0xff8833];
+function vectorFromAngle(angle) {
+    return { x: Math.cos(angle), y: Math.sin(angle) };
+}
 
-    for (let i = 0; i < numObjects; i++) {
-        // Random locations within the screen
-        const x = Phaser.Math.Between(50, config.width - 50);
-        const y = Phaser.Math.Between(50, config.height - 50);
-        
-        // Random shape type: 0 = Rectangle, 1 = Circle, 2 = Triangle
-        const type = Phaser.Math.Between(0, 2);
-        
-        const color = Phaser.Math.RND.pick(colors);
-        const size = Phaser.Math.Between(20, 60);
+function rotateLocal(x, y, angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
 
-        let shape;
+function polygonPoints(x, y, radius, sides, rotation) {
+    const points = [];
+    for (let i = 0; i < sides; i += 1) {
+        const angle = rotation + (Math.PI * 2 * i) / sides;
+        points.push(new Phaser.Geom.Point(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius));
+    }
+    return points;
+}
 
-        if (type === 0) {
-            // Rectangle / Square
-            shape = this.add.rectangle(x, y, size, size, color);
-            this.physics.add.existing(shape);
-        } else if (type === 1) {
-            // Circle
-            shape = this.add.circle(x, y, size/2, color);
-            this.physics.add.existing(shape);
-            shape.body.setCircle(size/2); // use circular body
-        } else {
-            // Triangle
-            // Draw an equilateral-ish triangle (0, size), (size/2, 0), (size, size)
-            shape = this.add.triangle(x, y, 0, size, size/2, 0, size, size, color);
-            this.physics.add.existing(shape);
-            shape.body.setSize(size, size);
-        }
+function drawShape(graphics, shape, x, y, size, color, alpha, rotation = 0) {
+    graphics.fillStyle(color, alpha);
+    if (shape === 'circle') {
+        graphics.fillCircle(x, y, size * 0.5);
+        return;
+    }
+    if (shape === 'square') {
+        graphics.fillPoints(polygonPoints(x, y, size * 0.78, 4, rotation + Math.PI * 0.25), true);
+        return;
+    }
+    graphics.fillPoints(polygonPoints(x, y, size * 0.82, 3, rotation - Math.PI * 0.5), true);
+}
 
-        shapesGroup.add(shape);
+function getChainMass(count) {
+    if (MASS_BY_COUNT[count]) {
+        return MASS_BY_COUNT[count];
+    }
+    return 1.72 + (count - 6) * 0.14;
+}
 
-        // Assign random initial velocity (-150 to 150), ensure it isn't zero
-        let speedX = Phaser.Math.Between(-150, 150);
-        let speedY = Phaser.Math.Between(-150, 150);
-        if (speedX === 0) speedX = 50;
-        if (speedY === 0) speedY = 50;
+function getChainSpan(count) {
+    if (CHAIN_SPAN_BY_COUNT[count]) {
+        return CHAIN_SPAN_BY_COUNT[count];
+    }
+    return 310 + (count - 6) * 42;
+}
 
-        shape.body.setVelocity(speedX, speedY);
-
-        // Store custom property for rotation logic
-        shape.shapeType = type;
-        shape.rotSpeed = Phaser.Math.FloatBetween(-3, 3);
+class CoreDemoScene extends Phaser.Scene {
+    constructor() {
+        super('core-demo');
     }
 
-    // Enable collisions between all shapes
-    this.physics.add.collider(shapesGroup, shapesGroup);
+    create() {
+        this.cameras.main.setBackgroundColor(COLORS.background);
+        this.graphics = this.add.graphics();
+        this.input.mouse?.disableContextMenu();
+        this.scale.on('resize', this.handleResize, this);
+        this.keys = this.input.keyboard.addKeys({
+            up: Phaser.Input.Keyboard.KeyCodes.W,
+            down: Phaser.Input.Keyboard.KeyCodes.S,
+            left: Phaser.Input.Keyboard.KeyCodes.A,
+            right: Phaser.Input.Keyboard.KeyCodes.D,
+            expand: Phaser.Input.Keyboard.KeyCodes.E,
+            shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+            reconnect: Phaser.Input.Keyboard.KeyCodes.SPACE,
+            confirm: Phaser.Input.Keyboard.KeyCodes.ENTER,
+            cancel: Phaser.Input.Keyboard.KeyCodes.ESC,
+            clear: Phaser.Input.Keyboard.KeyCodes.Q,
+            restart: Phaser.Input.Keyboard.KeyCodes.R
+        });
+        this.input.on('pointerdown', this.handlePointerDown, this);
+        this.resetSimulation();
+    }
 
-    // Responsive generic resizing
-    window.addEventListener('resize', () => {
-        game.scale.resize(window.innerWidth, window.innerHeight);
-        this.physics.world.setBounds(0, 0, window.innerWidth, window.innerHeight);
-    });
-}
-
-function update() {
-    // Add visual rotation for squares and triangles based on their random rotSpeed property
-    // Arcade physics uses Axis-Aligned Bounding Boxes (AABB) that won't visually rotate,
-    // so this is just a visual effect!
-    shapesGroup.getChildren().forEach(shape => {
-        if (shape.shapeType !== 1) { // 1 is Circle, skip rotating circles since they're uniform
-            shape.angle += shape.rotSpeed;
+    handleResize() {
+        if (!this.cameraRig || !this.player) {
+            return;
         }
-    });
+        this.cameraRig.viewportWidth = this.scale.width;
+        this.cameraRig.viewportHeight = this.scale.height;
+    }
+
+    resetSimulation() {
+        this.timeScaleFactor = 1;
+        this.worldTime = 0;
+        this.effects = [];
+        this.projectiles = [];
+        this.echoQueue = [];
+        this.enemies = [];
+        this.spawnTimers = { swarm: 0.35, stinger: 8, brute: 46, flank: 21 };
+        this.baseChain = [0, 2, 5, 4, 1, 7];
+
+        this.player = {
+            chain: [...this.baseChain],
+            centroidX: 0,
+            centroidY: 0,
+            heading: -Math.PI * 0.5,
+            health: 100,
+            maxHealth: 100,
+            shield: 0,
+            shieldTimer: 0,
+            mass: 1,
+            energy: 0,
+            guard: 0,
+            overload: 0,
+            echo: 0,
+            tempoBoost: 0,
+            agitation: 0,
+            stability: 0.35,
+            turnAssist: 0,
+            dead: false,
+            deathTimer: 0,
+            pulseCursor: 0,
+            pulseTimer: 0.12,
+            pulsePath: { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false },
+            reconnect: {
+                active: false,
+                draft: [...this.baseChain],
+                hoverIndex: -1
+            }
+        };
+
+        this.intent = {
+            moveX: 0,
+            moveY: 0,
+            moveLength: 0,
+            aimX: 0,
+            aimY: -1,
+            aimLength: 1,
+            flowX: 0,
+            flowY: -1
+        };
+
+        this.cameraRig = {
+            x: 0,
+            y: 0,
+            zoom: 0.92,
+            targetZoom: 0.92,
+            viewportWidth: this.scale.width,
+            viewportHeight: this.scale.height
+        };
+
+        this.poolNodes = NODE_LIBRARY.map((node, index) => ({ ...node, index }));
+        this.activeNodes = [];
+        this.links = [];
+        this.rebuildFormation(true);
+    }
+
+    rebuildFormation(forceReset = false) {
+        const count = this.player.chain.length;
+        const existingNodes = forceReset ? new Map() : new Map(this.activeNodes.map((node) => [node.index, node]));
+        const previousTail = this.activeNodes.length > 0 ? this.activeNodes[this.activeNodes.length - 1] : null;
+        this.player.mass = getChainMass(count);
+        const span = getChainSpan(count);
+        const centerX = this.player.centroidX;
+        const centerY = this.player.centroidY;
+        const heading = this.player.heading;
+
+        this.activeNodes = this.player.chain.map((poolIndex, order) => {
+            const base = this.poolNodes[poolIndex];
+            const t = count === 1 ? 0.5 : order / (count - 1);
+            const localX = lerp(-span * 0.58, span * 0.58, t);
+            const localY = Math.sin(lerp(-1.15, 1.15, t)) * (70 + count * 10);
+            const rotated = rotateLocal(localX, localY, heading);
+            const existing = existingNodes.get(poolIndex);
+            const seed = previousTail
+                ? {
+                    x: previousTail.x + Math.cos(heading + (order % 2 === 0 ? -0.9 : 0.9)) * 96,
+                    y: previousTail.y + Math.sin(heading + (order % 2 === 0 ? -0.9 : 0.9)) * 96
+                }
+                : { x: centerX + rotated.x, y: centerY + rotated.y };
+            return {
+                ...(existing || {}),
+                ...base,
+                order,
+                mass: base.role === 'shell' ? 1.35 : base.role === 'blade' ? 1.15 : 1,
+                x: existing ? existing.x : seed.x,
+                y: existing ? existing.y : seed.y,
+                vx: existing ? existing.vx : 0,
+                vy: existing ? existing.vy : 0,
+                fx: 0,
+                fy: 0,
+                anchorX: existing ? existing.anchorX : seed.x,
+                anchorY: existing ? existing.anchorY : seed.y,
+                anchored: existing ? existing.anchored : order % 2 === 0,
+                stanceTimer: existing ? existing.stanceTimer : 0.25 + order * 0.03,
+                anchorStrength: existing ? existing.anchorStrength : 220,
+                pulseGlow: existing ? existing.pulseGlow : 0,
+                tension: existing ? existing.tension : 0,
+                displayX: existing ? existing.displayX : seed.x,
+                displayY: existing ? existing.displayY : seed.y,
+                displayAnchorX: existing ? existing.displayAnchorX : seed.x,
+                displayAnchorY: existing ? existing.displayAnchorY : seed.y,
+                attackTimer: existing ? existing.attackTimer : 0,
+                attackDirX: existing ? existing.attackDirX : 0,
+                attackDirY: existing ? existing.attackDirY : -1,
+                attackDamage: existing ? existing.attackDamage : 0
+            };
+        });
+
+        this.links = [];
+        for (let i = 1; i < this.activeNodes.length; i += 1) {
+            const previous = this.activeNodes[i - 1];
+            const current = this.activeNodes[i];
+            const samePolarity = previous.polarity === current.polarity;
+            this.links.push({
+                a: i - 1,
+                b: i,
+                rest: (samePolarity ? 102 : 116) + Math.min(count, 18) * 7,
+                stiffness: samePolarity ? 0.95 : 0.78,
+                damping: samePolarity ? 0.22 : 0.14,
+                samePolarity
+            });
+        }
+
+        this.computeCentroid();
+    }
+
+    update(_, deltaMs) {
+        const frameDt = Math.min(deltaMs, 33) / 1000;
+
+        if (this.player.dead) {
+            this.player.deathTimer -= frameDt;
+            if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.reconnect) || this.player.deathTimer <= 0) {
+                this.resetSimulation();
+                return;
+            }
+        }
+
+        if (!this.player.dead && !this.player.reconnect.active && Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
+            this.addDebugNode();
+        }
+        if (!this.player.dead && !this.player.reconnect.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+            this.resetSimulation();
+            return;
+        }
+
+        this.handleModeInputs();
+        this.readIntent();
+
+        const simDt = frameDt * this.timeScaleFactor;
+        this.worldTime += simDt;
+
+        if (!this.player.dead) {
+            this.updatePulse(simDt);
+            this.updateFormation(simDt);
+            this.updatePlayerState(simDt);
+            this.updateEchoes(simDt);
+            this.updateProjectiles(simDt);
+            this.updateSpawns(simDt);
+            this.updateEnemies(simDt);
+            this.resolveEnemyNodeCollisions();
+            this.updateEffects(simDt);
+        } else {
+            this.updateEffects(frameDt);
+        }
+
+        this.updateCamera(frameDt);
+        this.updateDisplay(frameDt);
+        this.render();
+    }
+
+    worldToScreen(x, y) {
+        return {
+            x: (x - this.cameraRig.x) * this.cameraRig.zoom + this.cameraRig.viewportWidth * 0.5,
+            y: (y - this.cameraRig.y) * this.cameraRig.zoom + this.cameraRig.viewportHeight * 0.5
+        };
+    }
+
+    screenToWorld(x, y) {
+        return {
+            x: (x - this.cameraRig.viewportWidth * 0.5) / this.cameraRig.zoom + this.cameraRig.x,
+            y: (y - this.cameraRig.viewportHeight * 0.5) / this.cameraRig.zoom + this.cameraRig.y
+        };
+    }
+
+    readIntent() {
+        const moveX = (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
+        const moveY = (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0);
+        const move = normalize(moveX, moveY);
+
+        const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
+        const aim = normalize(worldPointer.x - this.player.centroidX, worldPointer.y - this.player.centroidY, Math.cos(this.player.heading), Math.sin(this.player.heading));
+        const moveWeight = this.keys.shift.isDown ? 0.32 : 0.58;
+        const aimWeight = 1 - moveWeight;
+        const flow = normalize(move.x * moveWeight + aim.x * aimWeight, move.y * moveWeight + aim.y * aimWeight, aim.x, aim.y);
+
+        this.intent.moveX = move.x;
+        this.intent.moveY = move.y;
+        this.intent.moveLength = move.length;
+        this.intent.aimX = aim.x;
+        this.intent.aimY = aim.y;
+        this.intent.aimLength = aim.length;
+        this.intent.flowX = flow.x;
+        this.intent.flowY = flow.y;
+    }
+
+    handleModeInputs() {
+        if (!this.player.reconnect.active && Phaser.Input.Keyboard.JustDown(this.keys.reconnect) && !this.player.dead) {
+            this.player.reconnect.active = true;
+            this.player.reconnect.draft = [...this.player.chain];
+        }
+
+        if (!this.player.reconnect.active) {
+            this.timeScaleFactor = 1;
+            return;
+        }
+
+        this.timeScaleFactor = 0.18;
+        this.player.reconnect.hoverIndex = this.findReconnectNodeAt(this.input.activePointer.x, this.input.activePointer.y);
+
+        if (Phaser.Input.Keyboard.JustDown(this.keys.cancel)) {
+            this.player.reconnect.active = false;
+            this.player.reconnect.draft = [...this.player.chain];
+        }
+
+        if (Phaser.Input.Keyboard.JustDown(this.keys.clear)) {
+            this.player.reconnect.draft = [];
+        }
+
+        if (Phaser.Input.Keyboard.JustDown(this.keys.confirm)) {
+            if (this.player.reconnect.draft.length >= 3) {
+                this.player.chain = [...this.player.reconnect.draft];
+                this.player.reconnect.active = false;
+                this.player.energy = 0;
+                this.player.guard = 0;
+                this.player.overload = 0;
+                this.player.echo = 0;
+                this.player.tempoBoost = 0;
+                this.player.stability = 0.35;
+                this.player.turnAssist = 0;
+                this.player.pulseCursor = 0;
+                this.player.pulseTimer = 0.12;
+                this.player.pulsePath = { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
+                this.rebuildFormation();
+            }
+        }
+    }
+
+    handlePointerDown(pointer) {
+        if (this.player.dead) {
+            this.resetSimulation();
+            return;
+        }
+        if (!this.player.reconnect.active) {
+            return;
+        }
+        if (pointer.rightButtonDown()) {
+            this.player.reconnect.draft.pop();
+            return;
+        }
+        const nodeIndex = this.findReconnectNodeAt(pointer.x, pointer.y);
+        if (nodeIndex < 0) {
+            return;
+        }
+        if (this.player.reconnect.draft.includes(nodeIndex) || this.player.reconnect.draft.length >= 96) {
+            return;
+        }
+        this.player.reconnect.draft.push(nodeIndex);
+    }
+
+    addDebugNode() {
+        if (this.poolNodes.length >= 96) {
+            return;
+        }
+
+        const template = Phaser.Utils.Array.GetRandom(NODE_LIBRARY);
+        const index = this.poolNodes.length;
+        this.poolNodes.push({
+            ...template,
+            index,
+            id: `${template.id}-${index}`
+        });
+
+        this.player.chain.push(index);
+        this.player.reconnect.draft = [...this.player.chain];
+        this.player.energy = 0;
+        this.player.guard = 0;
+        this.player.overload = 0;
+        this.player.echo = 0;
+        this.rebuildFormation();
+    }
+
+    computeCentroid() {
+        if (this.activeNodes.length === 0) {
+            return;
+        }
+
+        let sumX = 0;
+        let sumY = 0;
+        this.activeNodes.forEach((node) => {
+            sumX += node.x;
+            sumY += node.y;
+        });
+
+        this.player.centroidX = sumX / this.activeNodes.length;
+        this.player.centroidY = sumY / this.activeNodes.length;
+    }
+
+    getFormationSpan() {
+        let maxDistance = 0;
+        this.activeNodes.forEach((node) => {
+            const dx = node.x - this.player.centroidX;
+            const dy = node.y - this.player.centroidY;
+            maxDistance = Math.max(maxDistance, Math.hypot(dx, dy));
+        });
+        return maxDistance;
+    }
+
+    updateCamera(frameDt) {
+        const span = this.getFormationSpan() + 180;
+        const widthFit = this.cameraRig.viewportWidth / (span * 2.2);
+        const heightFit = this.cameraRig.viewportHeight / (span * 1.85);
+        this.cameraRig.targetZoom = clamp(Math.min(widthFit, heightFit), 0.36, 1.08);
+        this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, 3.2, frameDt);
+        this.cameraRig.x = damp(this.cameraRig.x, this.player.centroidX, 3.4, frameDt);
+        this.cameraRig.y = damp(this.cameraRig.y, this.player.centroidY, 3.4, frameDt);
+    }
+
+    updateDisplay(frameDt) {
+        this.activeNodes.forEach((node) => {
+            node.displayX = damp(node.displayX, node.x, 18, frameDt);
+            node.displayY = damp(node.displayY, node.y, 18, frameDt);
+            node.displayAnchorX = damp(node.displayAnchorX, node.anchorX, 18, frameDt);
+            node.displayAnchorY = damp(node.displayAnchorY, node.anchorY, 18, frameDt);
+            node.pulseGlow = Math.max(0, node.pulseGlow - frameDt * 3.2);
+            node.attackTimer = Math.max(0, node.attackTimer - frameDt);
+        });
+    }
+
+    updatePulse(simDt) {
+        this.player.pulseTimer -= simDt;
+        this.player.pulsePath.timer -= simDt;
+
+        while (this.player.pulseTimer <= 0) {
+            const chainIndex = this.player.pulseCursor;
+            const current = this.activeNodes[chainIndex];
+            const edge = this.getEdgeModifier(chainIndex);
+            this.triggerNode(current, edge);
+
+            const loopReset = chainIndex === this.activeNodes.length - 1;
+            const nextIndex = loopReset ? 0 : chainIndex + 1;
+            const nextNode = this.activeNodes[nextIndex];
+            const duration = this.getPulseInterval(current, nextNode, loopReset);
+
+            this.player.pulseCursor = nextIndex;
+            this.player.pulseTimer += duration;
+            this.player.pulsePath = {
+                from: chainIndex,
+                to: nextIndex,
+                timer: duration,
+                duration,
+                loopReset
+            };
+        }
+    }
+
+    getEdgeModifier(chainIndex) {
+        if (chainIndex <= 0) {
+            return { kind: 'restart', reach: 1, stance: 1, stability: 1 };
+        }
+
+        const previous = this.activeNodes[chainIndex - 1];
+        const current = this.activeNodes[chainIndex];
+        if (previous.polarity === current.polarity) {
+            return { kind: 'steady', reach: 0.94, stance: 1.16, stability: 1.18 };
+        }
+        return { kind: 'inverse', reach: 1.18, stance: 0.84, stability: 0.82 };
+    }
+
+    getPulseInterval(current, next, loopReset) {
+        let interval = loopReset ? 0.36 : 0.22;
+        let factor = 1;
+        if (!loopReset && current.polarity !== next.polarity) {
+            factor *= 0.94;
+        }
+        if (this.keys.shift.isDown) {
+            factor *= 0.92;
+        }
+        factor *= lerp(1, 0.86, clamp(this.player.tempoBoost, 0, 1));
+        return interval * Math.max(0.74, factor);
+    }
+
+    computeNominalOffset(order) {
+        const count = this.activeNodes.length;
+        const t = count === 1 ? 0.5 : order / (count - 1);
+        const span = getChainSpan(count);
+        return {
+            x: lerp(-span * 0.58, span * 0.58, t),
+            y: Math.sin(lerp(-1.15, 1.15, t)) * (70 + count * 10)
+        };
+    }
+
+    plantNode(node, profile) {
+        const flow = normalize(this.intent.flowX, this.intent.flowY, Math.cos(this.player.heading), Math.sin(this.player.heading));
+        const aim = normalize(this.intent.aimX, this.intent.aimY, flow.x, flow.y);
+        const lead = normalize(flow.x * (profile.flowBias ?? 0.55) + aim.x * (profile.aimBias ?? 0.45), flow.y * (profile.flowBias ?? 0.55) + aim.y * (profile.aimBias ?? 0.45), aim.x, aim.y);
+        const right = { x: -lead.y, y: lead.x };
+        const orderBias = this.activeNodes.length === 1 ? 0 : (node.order / (this.activeNodes.length - 1)) * 2 - 1;
+        const sideSign = Math.abs(orderBias) < 0.18 ? (node.order % 2 === 0 ? -1 : 1) : Math.sign(orderBias);
+        const forwardReach = (profile.forwardBase + this.getFormationSpan() * 0.16) * profile.reachScale;
+        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(orderBias)));
+        node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
+        node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
+        node.anchorStrength = profile.strength;
+        node.stanceTimer = profile.stance;
+        node.anchored = true;
+        node.pulseGlow = 1;
+    }
+
+    triggerNode(node, edge) {
+        if (edge.kind === 'inverse') {
+            this.player.agitation = clamp(this.player.agitation + 0.22, 0, 2);
+        } else if (edge.kind === 'steady') {
+            this.player.stability = Math.min(1.3, this.player.stability + 0.12);
+        }
+
+        switch (node.role) {
+            case 'source':
+                this.player.energy = Math.min(3, this.player.energy + 1);
+                this.player.stability = Math.min(1.2, this.player.stability + 0.08);
+                this.plantNode(node, { forwardBase: 78, sideBase: 88, stance: 0.36 * edge.stance, strength: 260 * edge.stability, reachScale: edge.reach });
+                break;
+            case 'compressor':
+                this.player.energy = Math.min(3, this.player.energy + 1);
+                this.player.overload = Math.min(3, this.player.overload + 1);
+                this.player.tempoBoost = clamp(this.player.tempoBoost + 0.5, 0, 1);
+                this.player.agitation = clamp(this.player.agitation + 0.2, 0, 2);
+                this.plantNode(node, { forwardBase: 92, sideBase: 62, stance: 0.28 * edge.stance, strength: 320, reachScale: edge.reach * 1.06 });
+                break;
+            case 'shell':
+                this.player.guard = Math.min(2, this.player.guard + 1);
+                this.player.stability = Math.min(1.4, this.player.stability + 0.18);
+                this.player.turnAssist = Math.max(this.player.turnAssist, 0.18);
+                this.plantNode(node, { forwardBase: 52, sideBase: 146, stance: 0.5 * edge.stance, strength: 420 * edge.stability, reachScale: edge.reach * 0.94, flowBias: 0.68, aimBias: 0.32 });
+                break;
+            case 'prism':
+                this.player.echo = 1;
+                this.player.turnAssist = Math.min(1.2, this.player.turnAssist + 0.45);
+                this.plantNode(node, { forwardBase: 86, sideBase: 134, stance: 0.4 * edge.stance, strength: 360, reachScale: edge.reach, flowBias: 0.3, aimBias: 0.7 });
+                break;
+            case 'dart':
+                this.fireVolley(node, edge);
+                break;
+            case 'blade':
+                this.performSlash(node, edge);
+                break;
+            default:
+                break;
+        }
+    }
+
+    updateFormation(simDt) {
+        const forward = vectorFromAngle(this.player.heading);
+        const drift = normalize(this.intent.flowX, this.intent.flowY, forward.x, forward.y);
+
+        this.computeCentroid();
+
+        this.activeNodes.forEach((node) => {
+            node.fx = 0;
+            node.fy = 0;
+            if (node.anchored) {
+                node.stanceTimer -= simDt;
+                if (node.stanceTimer <= 0) {
+                    node.anchored = false;
+                    node.anchorStrength = 0;
+                }
+            }
+        });
+
+        this.activeNodes.forEach((node) => {
+            const nominal = this.computeNominalOffset(node.order);
+            const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
+            const targetX = this.player.centroidX + rotated.x;
+            const targetY = this.player.centroidY + rotated.y;
+            const toNominalX = targetX - node.x;
+            const toNominalY = targetY - node.y;
+            const formationPull = node.anchored ? 32 : 76 + this.player.stability * 22;
+            node.fx += toNominalX * formationPull;
+            node.fy += toNominalY * formationPull;
+
+            const drive = node.role === 'blade' || node.role === 'dart' ? 54 : node.role === 'shell' ? 18 : 28;
+            if (!node.anchored) {
+                node.fx += drift.x * drive;
+                node.fy += drift.y * drive;
+            }
+
+            if (node.role === 'source' || node.role === 'compressor') {
+                const pullToCoreX = this.player.centroidX - node.x;
+                const pullToCoreY = this.player.centroidY - node.y;
+                node.fx += pullToCoreX * 24;
+                node.fy += pullToCoreY * 24;
+            }
+
+            if (node.anchored) {
+                node.fx += (node.anchorX - node.x) * node.anchorStrength;
+                node.fy += (node.anchorY - node.y) * node.anchorStrength;
+            }
+        });
+
+        this.links.forEach((link) => {
+            const first = this.activeNodes[link.a];
+            const second = this.activeNodes[link.b];
+            const dx = second.x - first.x;
+            const dy = second.y - first.y;
+            const distance = Math.hypot(dx, dy) || 0.0001;
+            const dirX = dx / distance;
+            const dirY = dy / distance;
+            const stretch = distance - link.rest;
+            const relVel = (second.vx - first.vx) * dirX + (second.vy - first.vy) * dirY;
+            const force = stretch * (260 * link.stiffness) + relVel * (42 * link.damping);
+            first.fx += dirX * force;
+            first.fy += dirY * force;
+            second.fx -= dirX * force;
+            second.fy -= dirY * force;
+            link.tension = Math.abs(stretch) / link.rest;
+            first.tension = Math.max(first.tension * 0.82, link.tension);
+            second.tension = Math.max(second.tension * 0.82, link.tension);
+        });
+
+        const repulsionWindow = this.activeNodes.length > 24 ? 6 : this.activeNodes.length;
+        for (let i = 0; i < this.activeNodes.length; i += 1) {
+            const maxJ = Math.min(this.activeNodes.length, i + repulsionWindow + 1);
+            for (let j = i + 1; j < maxJ; j += 1) {
+                const first = this.activeNodes[i];
+                const second = this.activeNodes[j];
+                const dx = second.x - first.x;
+                const dy = second.y - first.y;
+                const distance = Math.hypot(dx, dy) || 0.0001;
+                const minDistance = 74;
+                if (distance >= minDistance) {
+                    continue;
+                }
+                const push = (minDistance - distance) * 16;
+                const dirX = dx / distance;
+                const dirY = dy / distance;
+                first.fx -= dirX * push;
+                first.fy -= dirY * push;
+                second.fx += dirX * push;
+                second.fy += dirY * push;
+            }
+        }
+
+        this.activeNodes.forEach((node) => {
+            const drag = node.anchored ? 7.8 : 5.6 + this.player.stability * 1.1;
+            node.vx = (node.vx + (node.fx / node.mass) * simDt) * Math.exp(-drag * simDt);
+            node.vy = (node.vy + (node.fy / node.mass) * simDt) * Math.exp(-drag * simDt);
+            node.x += node.vx * simDt;
+            node.y += node.vy * simDt;
+            node.tension *= 0.85;
+        });
+
+        for (let iteration = 0; iteration < 3; iteration += 1) {
+            this.links.forEach((link) => {
+                const first = this.activeNodes[link.a];
+                const second = this.activeNodes[link.b];
+                const dx = second.x - first.x;
+                const dy = second.y - first.y;
+                const distance = Math.hypot(dx, dy) || 0.0001;
+                const difference = (distance - link.rest) / distance;
+                const adjust = difference * 0.18 * link.stiffness;
+                first.x += dx * adjust;
+                first.y += dy * adjust;
+                second.x -= dx * adjust;
+                second.y -= dy * adjust;
+            });
+        }
+
+        this.computeCentroid();
+    }
+
+    updatePlayerState(simDt) {
+        const desiredHeading = Math.atan2(this.intent.flowY, this.intent.flowX);
+        const turnRate = 3.1 + this.player.turnAssist * 2.1;
+        this.player.heading = Phaser.Math.Angle.RotateTo(this.player.heading, desiredHeading, turnRate * simDt);
+        this.player.shieldTimer = Math.max(0, this.player.shieldTimer - simDt);
+        this.player.tempoBoost = Math.max(0, this.player.tempoBoost - simDt * 1.5);
+        this.player.agitation = Math.max(0, this.player.agitation - simDt * 0.9);
+        this.player.turnAssist = Math.max(0, this.player.turnAssist - simDt * 1.8);
+        this.player.stability = Math.max(0.3, this.player.stability - simDt * 0.4);
+        if (this.player.shieldTimer <= 0) {
+            this.player.shield = 0;
+        }
+    }
+
+    addShield(amount) {
+        this.player.shield = Math.min(16, this.player.shield + amount);
+        this.player.shieldTimer = 1.2;
+    }
+
+    fireVolley(node, edge) {
+        const target = this.pickRangedTarget(node.x, node.y, this.intent.aimX, this.intent.aimY);
+        const fireDir = target ? normalize(target.x - node.x, target.y - node.y, this.intent.aimX, this.intent.aimY) : normalize(this.intent.aimX, this.intent.aimY, Math.cos(this.player.heading), Math.sin(this.player.heading));
+        const effectiveEnergy = Math.max(1, this.player.energy);
+        const projectileCount = effectiveEnergy === 3 ? 3 : effectiveEnergy;
+        const spread = projectileCount === 1 ? [0] : projectileCount === 2 ? [-0.09, 0.09] : [-0.18, 0, 0.18];
+        const damage = 9 + effectiveEnergy * 4 + this.player.overload * 2;
+        const baseAngle = Math.atan2(fireDir.y, fireDir.x);
+
+        this.plantNode(node, { forwardBase: 148, sideBase: 54, stance: 0.42 * edge.stance, strength: 330 * edge.stability, reachScale: edge.reach, flowBias: 0.32, aimBias: 0.68 });
+
+        spread.forEach((offset) => {
+            const angle = baseAngle + offset;
+            this.projectiles.push({
+                x: node.x + Math.cos(angle) * 24,
+                y: node.y + Math.sin(angle) * 24,
+                vx: Math.cos(angle) * (440 + effectiveEnergy * 70),
+                vy: Math.sin(angle) * (440 + effectiveEnergy * 70),
+                dirX: Math.cos(angle),
+                dirY: Math.sin(angle),
+                damage,
+                pierce: this.player.overload > 0 ? 1 : 0,
+                life: 1.15,
+                radius: 7,
+                color: node.color,
+                alpha: 0.9
+            });
+        });
+
+        if (this.player.guard > 0) {
+            this.addShield(this.player.guard * 8);
+        }
+        if (this.player.echo > 0) {
+            this.echoQueue.push({ type: 'volley', timer: 0.14, x: node.x, y: node.y, angle: baseAngle, count: projectileCount, damage: damage * 0.6 });
+        }
+
+        node.attackTimer = 0.16;
+        node.attackDirX = fireDir.x;
+        node.attackDirY = fireDir.y;
+        node.attackDamage = damage * 0.35;
+        this.createRing(node.x, node.y, 34, COLORS.pulse, 0.18, 2);
+        this.clearExecutionState();
+    }
+
+    performSlash(node, edge) {
+        const strikeDir = normalize(this.intent.flowX * 0.58 + this.intent.aimX * 0.42, this.intent.flowY * 0.58 + this.intent.aimY * 0.42, Math.cos(this.player.heading), Math.sin(this.player.heading));
+        const effectiveEnergy = Math.max(1, this.player.energy);
+        const damage = (13 + effectiveEnergy * 6 + this.player.overload * 4) * edge.reach;
+
+        this.plantNode(node, { forwardBase: 184, sideBase: 26, stance: 0.34 * edge.stance, strength: 460, reachScale: edge.reach * 1.08, flowBias: 0.62, aimBias: 0.38 });
+        this.slashCone(node.x, node.y, strikeDir.x, strikeDir.y, 150 + effectiveEnergy * 24, 0.84, damage, 260, 0);
+
+        if (this.player.echo > 0) {
+            this.echoQueue.push({ type: 'slash', timer: 0.11, x: node.x, y: node.y, dirX: strikeDir.x, dirY: strikeDir.y, range: 120 + effectiveEnergy * 18, damage: damage * 0.6 });
+        }
+        if (this.player.overload > 0) {
+            this.echoQueue.push({ type: 'burst', timer: 0.14, x: node.anchorX, y: node.anchorY, range: 120 + effectiveEnergy * 18, damage: 10 + effectiveEnergy * 4 + this.player.overload * 4 });
+        }
+        if (this.player.guard > 0) {
+            this.addShield(this.player.guard * 4);
+        }
+
+        node.attackTimer = 0.24;
+        node.attackDirX = strikeDir.x;
+        node.attackDirY = strikeDir.y;
+        node.attackDamage = damage * 0.5;
+        this.createRing(node.anchorX, node.anchorY, 42, COLORS.inverse, 0.22, 3);
+        this.clearExecutionState();
+    }
+
+    clearExecutionState() {
+        this.player.energy = 0;
+        this.player.guard = 0;
+        this.player.overload = 0;
+        this.player.echo = 0;
+    }
+
+    updateEchoes(simDt) {
+        for (let i = this.echoQueue.length - 1; i >= 0; i -= 1) {
+            const echo = this.echoQueue[i];
+            echo.timer -= simDt;
+            if (echo.timer > 0) {
+                continue;
+            }
+
+            if (echo.type === 'volley') {
+                const spread = echo.count === 1 ? [0] : echo.count === 2 ? [-0.09, 0.09] : [-0.18, 0, 0.18];
+                spread.forEach((offset) => {
+                    const angle = echo.angle + offset;
+                    this.projectiles.push({
+                        x: echo.x,
+                        y: echo.y,
+                        vx: Math.cos(angle) * 380,
+                        vy: Math.sin(angle) * 380,
+                        dirX: Math.cos(angle),
+                        dirY: Math.sin(angle),
+                        damage: echo.damage,
+                        pierce: 0,
+                        life: 0.9,
+                        radius: 6,
+                        color: COLORS.pulse,
+                        alpha: 0.65
+                    });
+                });
+                this.createRing(echo.x, echo.y, 26, COLORS.pulse, 0.14, 2);
+            } else if (echo.type === 'slash') {
+                this.slashCone(echo.x, echo.y, echo.dirX, echo.dirY, echo.range, 0.92, echo.damage, 180, 0);
+                this.createRing(echo.x, echo.y, 34, COLORS.pulse, 0.16, 2);
+            } else if (echo.type === 'burst') {
+                this.emitBurst(echo.x, echo.y, echo.range, echo.damage, COLORS.inverse);
+            }
+
+            this.echoQueue.splice(i, 1);
+        }
+    }
+
+    updateProjectiles(simDt) {
+        for (let i = this.projectiles.length - 1; i >= 0; i -= 1) {
+            const projectile = this.projectiles[i];
+            projectile.life -= simDt;
+            projectile.x += projectile.vx * simDt;
+            projectile.y += projectile.vy * simDt;
+
+            if (projectile.life <= 0) {
+                this.projectiles.splice(i, 1);
+                continue;
+            }
+
+            for (let j = this.enemies.length - 1; j >= 0; j -= 1) {
+                const enemy = this.enemies[j];
+                const dx = enemy.x - projectile.x;
+                const dy = enemy.y - projectile.y;
+                const combined = enemy.radius + projectile.radius;
+                if (dx * dx + dy * dy > combined * combined) {
+                    continue;
+                }
+
+                this.damageEnemy(enemy, projectile.damage, 180, projectile.dirX, projectile.dirY, projectile.color);
+                projectile.pierce -= 1;
+                if (projectile.pierce < 0) {
+                    this.projectiles.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    pickRangedTarget(originX, originY, dirX, dirY) {
+        return this.pickDirectionalEnemy(originX, originY, dirX, dirY, 0.6, 520, 10) || this.pickNearestEnemy(originX, originY);
+    }
+
+    pickDirectionalEnemy(originX, originY, dirX, dirY, halfAngle, range, clusterWeight) {
+        const aim = normalize(dirX, dirY);
+        if (aim.length <= 0) {
+            return null;
+        }
+
+        const cosThreshold = Math.cos(halfAngle);
+        let best = null;
+        let bestScore = -Infinity;
+
+        this.enemies.forEach((enemy) => {
+            const dx = enemy.x - originX;
+            const dy = enemy.y - originY;
+            const distance = Math.hypot(dx, dy);
+            if (distance > range) {
+                return;
+            }
+
+            const direction = normalize(dx, dy);
+            const alignment = direction.x * aim.x + direction.y * aim.y;
+            if (alignment < cosThreshold) {
+                return;
+            }
+
+            let neighbors = 0;
+            this.enemies.forEach((other) => {
+                if (other === enemy) {
+                    return;
+                }
+                const odx = other.x - enemy.x;
+                const ody = other.y - enemy.y;
+                if (odx * odx + ody * ody < 110 * 110) {
+                    neighbors += 1;
+                }
+            });
+
+            const score = alignment * 120 - distance + neighbors * clusterWeight;
+            if (score > bestScore) {
+                best = enemy;
+                bestScore = score;
+            }
+        });
+
+        return best;
+    }
+
+    pickNearestEnemy(originX, originY) {
+        let best = null;
+        let bestDistance = Infinity;
+
+        this.enemies.forEach((enemy) => {
+            const dx = enemy.x - originX;
+            const dy = enemy.y - originY;
+            const distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                best = enemy;
+                bestDistance = distance;
+            }
+        });
+
+        return best;
+    }
+
+    slashCone(x, y, dirX, dirY, range, halfAngle, damage, knockback, cooldown) {
+        const cosThreshold = Math.cos(halfAngle);
+
+        this.enemies.forEach((enemy) => {
+            if (cooldown > 0 && enemy.slashCooldown > 0) {
+                return;
+            }
+            const dx = enemy.x - x;
+            const dy = enemy.y - y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > range + enemy.radius) {
+                return;
+            }
+            const direction = normalize(dx, dy);
+            if (direction.x * dirX + direction.y * dirY < cosThreshold) {
+                return;
+            }
+            const falloff = 1 - clamp(distance / (range + enemy.radius), 0, 1) * 0.28;
+            this.damageEnemy(enemy, damage * falloff, knockback, dirX, dirY, COLORS.inverse);
+            enemy.slashCooldown = cooldown;
+        });
+    }
+
+    emitBurst(x, y, radius, damage, color) {
+        this.createRing(x, y, radius, color, 0.24, 3);
+        this.enemies.forEach((enemy) => {
+            const dx = enemy.x - x;
+            const dy = enemy.y - y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > radius + enemy.radius) {
+                return;
+            }
+            const direction = normalize(dx, dy, 1, 0);
+            const falloff = 1 - clamp(distance / (radius + enemy.radius), 0, 1) * 0.45;
+            this.damageEnemy(enemy, damage * falloff, 220, direction.x, direction.y, color);
+        });
+    }
+
+    updateSpawns(simDt) {
+        if (this.enemies.length > 90) {
+            return;
+        }
+
+        const time = this.worldTime;
+        this.spawnTimers.swarm -= simDt;
+        this.spawnTimers.stinger -= simDt;
+        this.spawnTimers.brute -= simDt;
+        this.spawnTimers.flank -= simDt;
+
+        if (time < 20) {
+            if (this.spawnTimers.swarm <= 0) {
+                this.spawnEnemyGroup('swarm', Phaser.Math.Between(1, 2));
+                this.spawnTimers.swarm = Math.max(0.8, 1.14 - time * 0.012);
+            }
+            return;
+        }
+
+        if (time < 45) {
+            if (this.spawnTimers.swarm <= 0) {
+                this.spawnEnemyGroup('swarm', Phaser.Math.Between(2, 3));
+                this.spawnTimers.swarm = 0.78;
+            }
+            if (this.spawnTimers.stinger <= 0) {
+                this.spawnEnemyGroup('stinger', 1);
+                this.spawnTimers.stinger = 5.1;
+            }
+            return;
+        }
+
+        if (this.spawnTimers.swarm <= 0) {
+            this.spawnEnemyGroup('swarm', Phaser.Math.Between(2, 4));
+            this.spawnTimers.swarm = Math.max(0.48, 0.72 - (time - 45) * 0.002);
+        }
+        if (this.spawnTimers.stinger <= 0) {
+            this.spawnEnemyGroup('stinger', Phaser.Math.Between(1, 2));
+            this.spawnTimers.stinger = 4.2;
+        }
+        if (this.spawnTimers.brute <= 0) {
+            this.spawnEnemyGroup('brute', 1);
+            this.spawnTimers.brute = 12;
+        }
+        if (this.spawnTimers.flank <= 0) {
+            this.spawnFlankWave();
+            this.spawnTimers.flank = 20;
+        }
+    }
+
+    spawnEnemyGroup(type, count) {
+        for (let i = 0; i < count; i += 1) {
+            this.enemies.push(this.createEnemy(type));
+        }
+    }
+
+    spawnFlankWave() {
+        const yOffset = Phaser.Math.Between(-220, 220);
+        this.enemies.push(this.createEnemy('stinger', 'left', this.player.centroidY + yOffset));
+        this.enemies.push(this.createEnemy('stinger', 'right', this.player.centroidY - yOffset));
+    }
+
+    createEnemy(type, forcedSide = null, forcedAxis = null) {
+        const definition = ENEMY_DEFS[type];
+        const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
+        const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
+        const margin = 220;
+        const side = forcedSide || Phaser.Utils.Array.GetRandom(['left', 'right', 'top', 'bottom']);
+        let x = 0;
+        let y = 0;
+
+        if (side === 'left') {
+            x = this.player.centroidX - worldHalfWidth - margin;
+            y = forcedAxis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
+        } else if (side === 'right') {
+            x = this.player.centroidX + worldHalfWidth + margin;
+            y = forcedAxis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
+        } else if (side === 'top') {
+            x = Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
+            y = this.player.centroidY - worldHalfHeight - margin;
+        } else {
+            x = Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
+            y = this.player.centroidY + worldHalfHeight + margin;
+        }
+
+        return {
+            type,
+            shape: definition.shape,
+            color: definition.color,
+            x,
+            y,
+            vx: 0,
+            vy: 0,
+            radius: definition.radius,
+            maxHealth: definition.maxHealth,
+            health: definition.maxHealth,
+            speed: definition.speed,
+            accel: definition.accel,
+            mass: definition.mass,
+            touchDamage: definition.touchDamage,
+            push: definition.push,
+            hitFlash: 0,
+            attackCooldown: Phaser.Math.FloatBetween(0.08, 0.3),
+            slashCooldown: 0,
+            state: 'approach',
+            stateTimer: 0,
+            seed: Math.random() * 10
+        };
+    }
+
+    updateEnemies(simDt) {
+        for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
+            const enemy = this.enemies[i];
+            const targetNode = this.pickNearestNode(enemy.x, enemy.y);
+            const chaseX = targetNode ? targetNode.x : this.player.centroidX;
+            const chaseY = targetNode ? targetNode.y : this.player.centroidY;
+            const toTarget = normalize(chaseX - enemy.x, chaseY - enemy.y, 1, 0);
+
+            enemy.hitFlash = Math.max(0, enemy.hitFlash - simDt * 4.2);
+            enemy.attackCooldown = Math.max(0, enemy.attackCooldown - simDt);
+            enemy.slashCooldown = Math.max(0, enemy.slashCooldown - simDt);
+
+            if (enemy.type === 'swarm') {
+                const orbit = Math.sin(this.worldTime * 2.1 + enemy.seed) * 0.38;
+                const steer = normalize(toTarget.x - toTarget.y * orbit, toTarget.y + toTarget.x * orbit, toTarget.x, toTarget.y);
+                enemy.vx += steer.x * enemy.accel * simDt;
+                enemy.vy += steer.y * enemy.accel * simDt;
+            } else if (enemy.type === 'stinger') {
+                this.updateStinger(enemy, toTarget, chaseX, chaseY, simDt);
+            } else {
+                enemy.vx += toTarget.x * enemy.accel * simDt;
+                enemy.vy += toTarget.y * enemy.accel * simDt;
+            }
+
+            const speed = Math.hypot(enemy.vx, enemy.vy);
+            if (speed > enemy.speed) {
+                const scale = enemy.speed / speed;
+                enemy.vx *= scale;
+                enemy.vy *= scale;
+            }
+
+            enemy.vx *= Math.exp(-(enemy.type === 'brute' ? 0.4 : 1.1) * simDt);
+            enemy.vy *= Math.exp(-(enemy.type === 'brute' ? 0.4 : 1.1) * simDt);
+            enemy.x += enemy.vx * simDt;
+            enemy.y += enemy.vy * simDt;
+        }
+    }
+
+    updateStinger(enemy, toTarget, targetX, targetY, simDt) {
+        const distance = Math.hypot(targetX - enemy.x, targetY - enemy.y);
+
+        if (enemy.state === 'approach') {
+            const orbit = Math.sin(this.worldTime * 3 + enemy.seed) * 0.6;
+            const steer = normalize(toTarget.x - toTarget.y * orbit, toTarget.y + toTarget.x * orbit, toTarget.x, toTarget.y);
+            enemy.vx += steer.x * enemy.accel * simDt;
+            enemy.vy += steer.y * enemy.accel * simDt;
+            if (distance < 170) {
+                enemy.state = 'windup';
+                enemy.stateTimer = 0.32;
+            }
+            return;
+        }
+
+        if (enemy.state === 'windup') {
+            enemy.stateTimer -= simDt;
+            enemy.vx *= Math.exp(-6 * simDt);
+            enemy.vy *= Math.exp(-6 * simDt);
+            if (enemy.stateTimer <= 0) {
+                const lead = normalize(targetX - enemy.x, targetY - enemy.y, toTarget.x, toTarget.y);
+                enemy.vx = lead.x * 300;
+                enemy.vy = lead.y * 300;
+                enemy.state = 'dash';
+                enemy.stateTimer = 0.22;
+            }
+            return;
+        }
+
+        if (enemy.state === 'dash') {
+            enemy.stateTimer -= simDt;
+            if (enemy.stateTimer <= 0) {
+                enemy.state = 'recover';
+                enemy.stateTimer = 0.48;
+            }
+            return;
+        }
+
+        enemy.stateTimer -= simDt;
+        enemy.vx *= Math.exp(-4 * simDt);
+        enemy.vy *= Math.exp(-4 * simDt);
+        if (enemy.stateTimer <= 0) {
+            enemy.state = 'approach';
+        }
+    }
+
+    pickNearestNode(x, y) {
+        let best = null;
+        let bestDistance = Infinity;
+        this.activeNodes.forEach((node) => {
+            const dx = node.x - x;
+            const dy = node.y - y;
+            const distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                best = node;
+                bestDistance = distance;
+            }
+        });
+        return best;
+    }
+
+    resolveEnemyNodeCollisions() {
+        this.enemies.forEach((enemy) => {
+            const focus = this.pickNearestNode(enemy.x, enemy.y);
+            if (!focus) {
+                return;
+            }
+
+            const candidates = [focus];
+            if (focus.order > 0) {
+                candidates.push(this.activeNodes[focus.order - 1]);
+            }
+            if (focus.order < this.activeNodes.length - 1) {
+                candidates.push(this.activeNodes[focus.order + 1]);
+            }
+
+            candidates.forEach((node) => {
+                const dx = enemy.x - node.x;
+                const dy = enemy.y - node.y;
+                const distance = Math.hypot(dx, dy) || 0.0001;
+                const overlap = enemy.radius + 22 - distance;
+                if (overlap <= 0) {
+                    return;
+                }
+
+                const nx = dx / distance;
+                const ny = dy / distance;
+                enemy.x += nx * overlap * 0.72;
+                enemy.y += ny * overlap * 0.72;
+                node.x -= nx * overlap * 0.22;
+                node.y -= ny * overlap * 0.22;
+
+                if (node.attackTimer > 0) {
+                    this.damageEnemy(enemy, node.attackDamage, 170, node.attackDirX || nx, node.attackDirY || ny, node.color);
+                }
+                if (enemy.attackCooldown <= 0) {
+                    this.damagePlayer(enemy.touchDamage, nx, ny, enemy.push, node);
+                    enemy.attackCooldown = enemy.type === 'brute' ? 0.92 : 0.56;
+                }
+            });
+        });
+    }
+
+    damagePlayer(amount, dirX, dirY, push, node) {
+        if (this.player.dead) {
+            return;
+        }
+
+        let remaining = amount;
+        if (this.player.shield > 0) {
+            const absorbed = Math.min(this.player.shield, remaining);
+            this.player.shield -= absorbed;
+            remaining -= absorbed;
+            this.createRing(node.x, node.y, 28, COLORS.shield, 0.14, 2);
+            if (remaining <= 0) {
+                return;
+            }
+        }
+
+        this.player.health -= remaining;
+        node.vx -= dirX * push * 0.22;
+        node.vy -= dirY * push * 0.22;
+        this.createRing(node.x, node.y, 34, COLORS.health, 0.2, 3);
+
+        if (this.player.health <= 0) {
+            this.player.dead = true;
+            this.player.deathTimer = 2;
+            this.createRing(this.player.centroidX, this.player.centroidY, 110, COLORS.health, 0.32, 4);
+        }
+    }
+
+    damageEnemy(enemy, amount, knockback, dirX, dirY, color) {
+        enemy.health -= amount;
+        enemy.hitFlash = 1;
+        enemy.vx += dirX * knockback / enemy.mass;
+        enemy.vy += dirY * knockback / enemy.mass;
+        this.createRing(enemy.x, enemy.y, enemy.radius + 8, color, 0.12, 2);
+
+        if (enemy.health > 0) {
+            return;
+        }
+
+        const index = this.enemies.indexOf(enemy);
+        if (index >= 0) {
+            this.enemies.splice(index, 1);
+        }
+        this.createRing(enemy.x, enemy.y, enemy.radius + 20, color, 0.24, 3);
+    }
+
+    createRing(x, y, radius, color, life, thickness) {
+        this.effects.push({ type: 'ring', x, y, radius, color, life, total: life, thickness });
+    }
+
+    updateEffects(simDt) {
+        for (let i = this.effects.length - 1; i >= 0; i -= 1) {
+            this.effects[i].life -= simDt;
+            if (this.effects[i].life <= 0) {
+                this.effects.splice(i, 1);
+            }
+        }
+    }
+
+    render() {
+        const g = this.graphics;
+        g.clear();
+        this.drawWorld(g);
+        this.drawEffects(g);
+        this.drawEnemies(g);
+        this.drawProjectiles(g);
+        this.drawFormation(g);
+        this.drawHud(g);
+        if (this.player.reconnect.active) {
+            this.drawReconnectOverlay(g);
+        }
+    }
+
+    drawWorld(g) {
+        const width = this.cameraRig.viewportWidth;
+        const height = this.cameraRig.viewportHeight;
+        g.fillStyle(COLORS.arena, 0.96);
+        g.fillRect(0, 0, width, height);
+
+        const worldLeft = this.cameraRig.x - width * 0.5 / this.cameraRig.zoom;
+        const worldRight = this.cameraRig.x + width * 0.5 / this.cameraRig.zoom;
+        const worldTop = this.cameraRig.y - height * 0.5 / this.cameraRig.zoom;
+        const worldBottom = this.cameraRig.y + height * 0.5 / this.cameraRig.zoom;
+        const gridSize = 120;
+        const startX = Math.floor(worldLeft / gridSize) * gridSize;
+        const startY = Math.floor(worldTop / gridSize) * gridSize;
+
+        g.lineStyle(1, COLORS.grid, 0.48);
+        for (let x = startX; x <= worldRight; x += gridSize) {
+            const screen = this.worldToScreen(x, 0);
+            g.lineBetween(screen.x, 0, screen.x, height);
+        }
+        for (let y = startY; y <= worldBottom; y += gridSize) {
+            const screen = this.worldToScreen(0, y);
+            g.lineBetween(0, screen.y, width, screen.y);
+        }
+    }
+
+    drawEffects(g) {
+        this.effects.forEach((effect) => {
+            const position = this.worldToScreen(effect.x, effect.y);
+            const alpha = clamp(effect.life / effect.total, 0, 1);
+            g.lineStyle(effect.thickness, effect.color, alpha * 0.9);
+            g.strokeCircle(position.x, position.y, effect.radius * this.cameraRig.zoom + (1 - alpha) * 18);
+        });
+    }
+
+    drawEnemies(g) {
+        this.enemies.forEach((enemy) => {
+            const position = this.worldToScreen(enemy.x, enemy.y);
+            const size = clamp(enemy.radius * this.cameraRig.zoom * 2, 12, 42);
+            const color = enemy.hitFlash > 0 ? COLORS.pulse : enemy.color;
+            drawShape(g, enemy.shape, position.x, position.y, size, color, 0.94, Math.atan2(enemy.vy, enemy.vx));
+        });
+    }
+
+    drawProjectiles(g) {
+        this.projectiles.forEach((projectile) => {
+            const position = this.worldToScreen(projectile.x, projectile.y);
+            g.lineStyle(2, projectile.color, projectile.alpha * 0.55);
+            g.lineBetween(
+                position.x - projectile.dirX * 12 * this.cameraRig.zoom,
+                position.y - projectile.dirY * 12 * this.cameraRig.zoom,
+                position.x + projectile.dirX * 12 * this.cameraRig.zoom,
+                position.y + projectile.dirY * 12 * this.cameraRig.zoom
+            );
+            g.fillStyle(projectile.color, projectile.alpha);
+            g.fillCircle(position.x, position.y, clamp(projectile.radius * this.cameraRig.zoom, 3, 7));
+        });
+    }
+
+    drawFormation(g) {
+        this.links.forEach((link) => {
+            const first = this.activeNodes[link.a];
+            const second = this.activeNodes[link.b];
+            const from = this.worldToScreen(first.displayX, first.displayY);
+            const to = this.worldToScreen(second.displayX, second.displayY);
+            const width = clamp((2 + link.tension * 12) * this.cameraRig.zoom, 2, 8);
+            const color = link.samePolarity ? COLORS.link : COLORS.pulse;
+            g.lineStyle(width, color, link.samePolarity ? 0.52 : 0.76);
+            g.lineBetween(from.x, from.y, to.x, to.y);
+        });
+
+        const path = this.player.pulsePath;
+        const fromNode = this.activeNodes[path.from];
+        const toNode = this.activeNodes[path.to];
+        if (fromNode && toNode) {
+            const progress = path.loopReset ? 1 : clamp(1 - path.timer / path.duration, 0, 1);
+            const pulseWorldX = path.loopReset ? fromNode.displayX : lerp(fromNode.displayX, toNode.displayX, progress);
+            const pulseWorldY = path.loopReset ? fromNode.displayY : lerp(fromNode.displayY, toNode.displayY, progress);
+            const pulse = this.worldToScreen(pulseWorldX, pulseWorldY);
+            g.fillStyle(COLORS.pulse, 0.92);
+            g.fillCircle(pulse.x, pulse.y, clamp(8 * this.cameraRig.zoom, 4, 8));
+        }
+
+        this.activeNodes.forEach((node) => {
+            const nodePos = this.worldToScreen(node.displayX, node.displayY);
+            const anchorPos = this.worldToScreen(node.displayAnchorX, node.displayAnchorY);
+            if (node.anchored) {
+                g.lineStyle(clamp(2.6 * this.cameraRig.zoom, 1, 3), COLORS.pulse, 0.45);
+                g.lineBetween(nodePos.x, nodePos.y, anchorPos.x, anchorPos.y);
+                g.lineStyle(clamp(2.2 * this.cameraRig.zoom, 1, 3), node.color, 0.55);
+                g.strokeCircle(anchorPos.x, anchorPos.y, clamp(14 * this.cameraRig.zoom, 5, 14));
+            }
+
+            const glowRadius = clamp((18 + node.pulseGlow * 10) * this.cameraRig.zoom, 10, 28);
+            if (node.pulseGlow > 0) {
+                g.lineStyle(3, COLORS.pulse, node.pulseGlow * 0.9);
+                g.strokeCircle(nodePos.x, nodePos.y, glowRadius);
+            }
+
+            const size = clamp(30 * this.cameraRig.zoom, 14, 28);
+            drawShape(g, node.shape, nodePos.x, nodePos.y, size, node.color, 0.96, Math.atan2(node.vy, node.vx));
+        });
+    }
+
+    drawHud(g) {
+        const left = 22;
+        const top = 22;
+        const healthWidth = 180;
+        const healthRatio = clamp(this.player.health / this.player.maxHealth, 0, 1);
+        const shieldRatio = clamp(this.player.shield / 16, 0, 1);
+
+        g.fillStyle(COLORS.shadow, 0.3);
+        g.fillRect(left, top, healthWidth, 16);
+        g.fillStyle(COLORS.health, 0.9);
+        g.fillRect(left, top, healthWidth * healthRatio, 16);
+        g.fillStyle(COLORS.shield, 0.85);
+        g.fillRect(left, top + 20, healthWidth * shieldRatio, 8);
+
+        const pressure = clamp(this.worldTime / 120, 0, 1);
+        g.fillStyle(COLORS.shadow, 0.28);
+        g.fillRect(left, top + 40, healthWidth, 6);
+        g.fillStyle(COLORS.inverse, 0.78);
+        g.fillRect(left, top + 40, healthWidth * pressure, 6);
+    }
+
+    getReconnectLayout() {
+        const radius = Math.max(150, this.poolNodes.length * 16);
+        const positions = [];
+        for (let i = 0; i < this.poolNodes.length; i += 1) {
+            const angle = -Math.PI * 0.5 + (Math.PI * 2 * i) / this.poolNodes.length;
+            positions.push({
+                index: i,
+                x: this.cameraRig.viewportWidth * 0.5 + Math.cos(angle) * radius,
+                y: this.cameraRig.viewportHeight * 0.5 + Math.sin(angle) * radius
+            });
+        }
+        return positions;
+    }
+
+    findReconnectNodeAt(x, y) {
+        const positions = this.getReconnectLayout();
+        for (let i = 0; i < positions.length; i += 1) {
+            const entry = positions[i];
+            const dx = entry.x - x;
+            const dy = entry.y - y;
+            if (dx * dx + dy * dy <= 22 * 22) {
+                return entry.index;
+            }
+        }
+        return -1;
+    }
+
+    drawReconnectOverlay(g) {
+        const positions = this.getReconnectLayout();
+        const positionByIndex = new Map(positions.map((entry) => [entry.index, entry]));
+        g.fillStyle(COLORS.shadow, 0.58);
+        g.fillRect(0, 0, this.cameraRig.viewportWidth, this.cameraRig.viewportHeight);
+        g.lineStyle(3, COLORS.pulse, 0.3);
+        g.strokeCircle(this.cameraRig.viewportWidth * 0.5, this.cameraRig.viewportHeight * 0.5, Math.max(170, this.poolNodes.length * 16 + 20));
+
+        for (let i = 1; i < this.player.reconnect.draft.length; i += 1) {
+            const previous = positionByIndex.get(this.player.reconnect.draft[i - 1]);
+            const current = positionByIndex.get(this.player.reconnect.draft[i]);
+            g.lineStyle(5, COLORS.pulse, 0.72);
+            g.lineBetween(previous.x, previous.y, current.x, current.y);
+        }
+
+        positions.forEach((entry) => {
+            const node = this.poolNodes[entry.index];
+            const selectedOrder = this.player.reconnect.draft.indexOf(entry.index);
+            const isHover = this.player.reconnect.hoverIndex === entry.index;
+            const size = selectedOrder >= 0 ? 30 : 24;
+
+            if (selectedOrder >= 0 || isHover) {
+                g.lineStyle(3, selectedOrder >= 0 ? COLORS.pulse : COLORS.base, 0.9);
+                g.strokeCircle(entry.x, entry.y, size * 0.62);
+            }
+
+            drawShape(g, node.shape, entry.x, entry.y, size, node.color, 0.96, this.player.heading);
+
+            if (selectedOrder >= 0) {
+                for (let i = 0; i <= selectedOrder; i += 1) {
+                    g.fillStyle(COLORS.pulse, 0.95);
+                    g.fillCircle(entry.x - 8 + i * 4, entry.y + 18, 2);
+                }
+            }
+        });
+    }
 }
+
+const config = {
+    type: Phaser.AUTO,
+    backgroundColor: '#071017',
+    scale: {
+        mode: Phaser.Scale.RESIZE,
+        width: window.innerWidth,
+        height: window.innerHeight
+    },
+    scene: [CoreDemoScene]
+};
+
+new Phaser.Game(config);
