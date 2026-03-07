@@ -172,6 +172,7 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     resetSimulation() {
+        this.paused = false;
         this.timeScaleFactor = 1;
         this.worldTime = 0;
         this.effects = [];
@@ -254,12 +255,15 @@ class CoreDemoScene extends Phaser.Scene {
         if (order <= 0) {
             return { x: 0, y: 0 };
         }
-
-        const radius = PARTIAL_MESH_RULES.slotSpacing * Math.sqrt(order) * 0.94;
+        const T = window.TUNING || {};
+        const spacing = T.slotSpacing ?? PARTIAL_MESH_RULES.slotSpacing;
+        const yComp = T.slotYCompression ?? 0.84;
+        const rScale = T.slotRadiusScale ?? 0.94;
+        const radius = spacing * Math.sqrt(order) * rScale;
         const angle = order * GOLDEN_ANGLE;
         return {
             x: Math.cos(angle) * radius,
-            y: Math.sin(angle) * radius * 0.84
+            y: Math.sin(angle) * radius * yComp
         };
     }
 
@@ -756,13 +760,14 @@ class CoreDemoScene extends Phaser.Scene {
             const rotated = rotateLocal(slot.x, slot.y, heading);
             const existing = existingNodes.get(poolIndex);
             const seed = { x: centerX + rotated.x, y: centerY + rotated.y };
+            const TM = window.TUNING || {};
             return {
                 ...(existing || {}),
                 ...base,
                 order,
                 localX: slot.x,
                 localY: slot.y,
-                mass: base.role === 'shell' ? 1.35 : base.role === 'blade' ? 1.15 : 1,
+                mass: base.role === 'shell' ? (TM.massShell ?? 1.35) : base.role === 'blade' ? (TM.massBlade ?? 1.15) : (TM.massDefault ?? 1),
                 x: existing ? existing.x : seed.x,
                 y: existing ? existing.y : seed.y,
                 vx: existing ? existing.vx : 0,
@@ -803,9 +808,16 @@ class CoreDemoScene extends Phaser.Scene {
             const slotA = slots[edge.a];
             const slotB = slots[edge.b];
             const distance = Math.hypot(slotA.x - slotB.x, slotA.y - slotB.y);
-            const softness = edge.kind === 'support' ? 0.88 : 1;
-            const stiffness = edge.kind === 'support' ? 0.78 : 0.98;
-            const damping = edge.kind === 'support' ? 0.18 : 0.24;
+            const T = window.TUNING || {};
+            const softness = edge.kind === 'support' ? (T.supportSoftness ?? 0.88) : 1;
+            const stiffness = edge.kind === 'support' ? (T.supportStiffness ?? 0.78) : (T.spineStiffness ?? 0.98);
+            const edgeDamping = edge.kind === 'support' ? (T.supportDamping ?? 0.18) : (T.spineDamping ?? 0.24);
+            const invStiffMul = T.inversePolarityStiffnessMul ?? 0.88;
+            const invDampMul = T.inversePolarityDampingMul ?? 0.86;
+            const sameRestMul = T.samePolarityRestMul ?? 1.02;
+            const invRestMul = T.inversePolarityRestMul ?? 1.08;
+            const restMin = T.linkRestMin ?? 84;
+            const restMax = T.linkRestMax ?? 206;
             this.links.push({
                 a,
                 b,
@@ -813,9 +825,9 @@ class CoreDemoScene extends Phaser.Scene {
                 key: makeEdgeKey(edge.a, edge.b),
                 topologyA: edge.a,
                 topologyB: edge.b,
-                rest: clamp(distance * (samePolarity ? 1.02 : 1.08), 84, 206),
-                stiffness: samePolarity ? stiffness : stiffness * softness,
-                damping: samePolarity ? damping : damping * 0.86,
+                rest: clamp(distance * (samePolarity ? sameRestMul : invRestMul), restMin, restMax),
+                stiffness: samePolarity ? stiffness : stiffness * softness * invStiffMul,
+                damping: samePolarity ? edgeDamping : edgeDamping * invDampMul,
                 samePolarity
             });
             degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
@@ -838,6 +850,22 @@ class CoreDemoScene extends Phaser.Scene {
                 this.resetSimulation();
                 return;
             }
+        }
+
+        // Handle ESC (cancel) key
+        if (Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
+            if (this.player.edit.active) {
+                this.exitEditMode();
+            } else {
+                this.paused = !this.paused;
+            }
+        }
+
+        if (this.paused) {
+            this.updateCamera(frameDt);
+            this.updateDisplay(frameDt);
+            this.render();
+            return;
         }
 
         if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
@@ -895,7 +923,8 @@ class CoreDemoScene extends Phaser.Scene {
 
         const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
         const aim = normalize(worldPointer.x - this.player.centroidX, worldPointer.y - this.player.centroidY, Math.cos(this.player.heading), Math.sin(this.player.heading));
-        const moveWeight = this.keys.shift.isDown ? 0.32 : 0.58;
+        const T = window.TUNING || {};
+        const moveWeight = this.keys.shift.isDown ? (T.shiftMoveWeight ?? 0.32) : (T.normalMoveWeight ?? 0.58);
         const aimWeight = 1 - moveWeight;
         const flow = normalize(move.x * moveWeight + aim.x * aimWeight, move.y * moveWeight + aim.y * aimWeight, aim.x, aim.y);
 
@@ -917,10 +946,6 @@ class CoreDemoScene extends Phaser.Scene {
 
         this.timeScaleFactor = this.player.edit.deleteNode >= 0 ? 0.05 : 0.08;
         this.refreshEditHover();
-
-        if (Phaser.Input.Keyboard.JustDown(this.keys.cancel)) {
-            this.exitEditMode();
-        }
     }
 
     handlePointerDown(pointer) {
@@ -1168,30 +1193,36 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     updateCamera(frameDt) {
-        const span = this.getFormationSpan() + 180;
+        const T = window.TUNING || {};
+        const span = this.getFormationSpan() + (T.cameraSpanPadding ?? 180);
         const widthFit = this.cameraRig.viewportWidth / (span * 2.2);
         const heightFit = this.cameraRig.viewportHeight / (span * 1.85);
-        let targetZ = clamp(Math.min(widthFit, heightFit), 0.36, 1.08);
+        let targetZ = clamp(Math.min(widthFit, heightFit), T.cameraMinZoom ?? 0.36, T.cameraMaxZoom ?? 1.08);
         targetZ *= lerp(1, 1.12, this.player.edit.ambience || 0);
         targetZ *= (this.cameraZoomScale || 1);
         this.cameraRig.targetZoom = targetZ;
-        this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, 3.2, frameDt);
-        this.cameraRig.x = damp(this.cameraRig.x, this.player.centroidX, 3.4, frameDt);
-        this.cameraRig.y = damp(this.cameraRig.y, this.player.centroidY, 3.4, frameDt);
+        this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, T.cameraZoomDamp ?? 3.2, frameDt);
+        this.cameraRig.x = damp(this.cameraRig.x, this.player.centroidX, T.cameraPosDamp ?? 3.4, frameDt);
+        this.cameraRig.y = damp(this.cameraRig.y, this.player.centroidY, T.cameraPosDamp ?? 3.4, frameDt);
     }
 
     updateDisplay(frameDt) {
+        const T = window.TUNING || {};
+        const dd = T.displayDamping ?? 18;
+        const pgd = T.pulseGlowDecay ?? 3.2;
         this.activeNodes.forEach((node) => {
-            node.displayX = damp(node.displayX, node.x, 18, frameDt);
-            node.displayY = damp(node.displayY, node.y, 18, frameDt);
-            node.displayAnchorX = damp(node.displayAnchorX, node.anchorX, 18, frameDt);
-            node.displayAnchorY = damp(node.displayAnchorY, node.anchorY, 18, frameDt);
-            node.pulseGlow = Math.max(0, node.pulseGlow - frameDt * 3.2);
+            node.displayX = damp(node.displayX, node.x, dd, frameDt);
+            node.displayY = damp(node.displayY, node.y, dd, frameDt);
+            node.displayAnchorX = damp(node.displayAnchorX, node.anchorX, dd, frameDt);
+            node.displayAnchorY = damp(node.displayAnchorY, node.anchorY, dd, frameDt);
+            node.pulseGlow = Math.max(0, node.pulseGlow - frameDt * pgd);
             node.attackTimer = Math.max(0, node.attackTimer - frameDt);
         });
     }
 
     updatePulse(simDt) {
+        const T = window.TUNING || {};
+        if (!(T.enablePulse ?? true)) return;
         this.player.pulseTimer -= simDt;
         this.player.pulsePath.timer -= simDt;
 
@@ -1258,7 +1289,9 @@ class CoreDemoScene extends Phaser.Scene {
         const right = { x: -lead.y, y: lead.x };
         const lateralBias = clamp((node.localY || 0) / Math.max(PARTIAL_MESH_RULES.slotSpacing, this.player.topologyRadius || PARTIAL_MESH_RULES.slotSpacing), -1, 1);
         const sideSign = Math.abs(lateralBias) < 0.18 ? (node.order % 2 === 0 ? -1 : 1) : Math.sign(lateralBias);
-        const forwardReach = (profile.forwardBase + this.getFormationSpan() * 0.16) * profile.reachScale;
+        const T = window.TUNING || {};
+        const spanFactor = T.formationSpanFactor ?? 0.16;
+        const forwardReach = (profile.forwardBase + this.getFormationSpan() * spanFactor) * profile.reachScale;
         const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias)));
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
@@ -1275,29 +1308,30 @@ class CoreDemoScene extends Phaser.Scene {
             this.player.stability = Math.min(1.3, this.player.stability + 0.12);
         }
 
+        const T = window.TUNING || {};
         switch (node.role) {
             case 'source':
                 this.player.energy = Math.min(3, this.player.energy + 1);
                 this.player.stability = Math.min(1.2, this.player.stability + 0.08);
-                this.plantNode(node, { forwardBase: 78, sideBase: 88, stance: 0.36 * edge.stance, strength: 260 * edge.stability, reachScale: edge.reach });
+                this.plantNode(node, { forwardBase: T.plantSourceForward ?? 78, sideBase: T.plantSourceSide ?? 88, stance: (T.plantSourceStance ?? 0.36) * edge.stance, strength: (T.plantSourceStrength ?? 260) * edge.stability, reachScale: edge.reach });
                 break;
             case 'compressor':
                 this.player.energy = Math.min(3, this.player.energy + 1);
                 this.player.overload = Math.min(3, this.player.overload + 1);
                 this.player.tempoBoost = clamp(this.player.tempoBoost + 0.5, 0, 1);
                 this.player.agitation = clamp(this.player.agitation + 0.2, 0, 2);
-                this.plantNode(node, { forwardBase: 92, sideBase: 62, stance: 0.28 * edge.stance, strength: 320, reachScale: edge.reach * 1.06 });
+                this.plantNode(node, { forwardBase: T.plantCompressorForward ?? 92, sideBase: T.plantCompressorSide ?? 62, stance: (T.plantCompressorStance ?? 0.28) * edge.stance, strength: T.plantCompressorStrength ?? 320, reachScale: edge.reach * 1.06 });
                 break;
             case 'shell':
                 this.player.guard = Math.min(2, this.player.guard + 1);
                 this.player.stability = Math.min(1.4, this.player.stability + 0.18);
                 this.player.turnAssist = Math.max(this.player.turnAssist, 0.18);
-                this.plantNode(node, { forwardBase: 52, sideBase: 146, stance: 0.5 * edge.stance, strength: 420 * edge.stability, reachScale: edge.reach * 0.94, flowBias: 0.68, aimBias: 0.32 });
+                this.plantNode(node, { forwardBase: T.plantShellForward ?? 52, sideBase: T.plantShellSide ?? 146, stance: (T.plantShellStance ?? 0.5) * edge.stance, strength: (T.plantShellStrength ?? 420) * edge.stability, reachScale: edge.reach * 0.94, flowBias: T.plantShellFlowBias ?? 0.68, aimBias: T.plantShellAimBias ?? 0.32 });
                 break;
             case 'prism':
                 this.player.echo = 1;
                 this.player.turnAssist = Math.min(1.2, this.player.turnAssist + 0.45);
-                this.plantNode(node, { forwardBase: 86, sideBase: 134, stance: 0.4 * edge.stance, strength: 360, reachScale: edge.reach, flowBias: 0.3, aimBias: 0.7 });
+                this.plantNode(node, { forwardBase: T.plantPrismForward ?? 86, sideBase: T.plantPrismSide ?? 134, stance: (T.plantPrismStance ?? 0.4) * edge.stance, strength: T.plantPrismStrength ?? 360, reachScale: edge.reach, flowBias: T.plantPrismFlowBias ?? 0.3, aimBias: T.plantPrismAimBias ?? 0.7 });
                 break;
             case 'dart':
                 this.fireVolley(node, edge);
@@ -1311,6 +1345,7 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     updateFormation(simDt) {
+        const T = window.TUNING || {};
         const forward = vectorFromAngle(this.player.heading);
         const drift = normalize(this.intent.flowX, this.intent.flowY, forward.x, forward.y);
         const draggedTarget = this.player.edit.active && this.player.edit.dragNode >= 0
@@ -1344,30 +1379,43 @@ class CoreDemoScene extends Phaser.Scene {
         });
 
         this.activeNodes.forEach((node) => {
-            const nominal = this.computeNominalOffset(node);
-            const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
-            const targetX = this.player.centroidX + rotated.x;
-            const targetY = this.player.centroidY + rotated.y;
-            const toNominalX = targetX - node.x;
-            const toNominalY = targetY - node.y;
-            const formationPull = node.anchored ? 32 : 76 + this.player.stability * 22;
-            node.fx += toNominalX * formationPull;
-            node.fy += toNominalY * formationPull;
+            // ── 编队拉力 ──
+            if (T.enableFormationPull ?? true) {
+                const nominal = this.computeNominalOffset(node);
+                const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
+                const targetX = this.player.centroidX + rotated.x;
+                const targetY = this.player.centroidY + rotated.y;
+                const toNominalX = targetX - node.x;
+                const toNominalY = targetY - node.y;
+                const formationPull = node.anchored
+                    ? (T.formationPullAnchored ?? 32)
+                    : (T.formationPullFreeBase ?? 76) + this.player.stability * (T.formationPullStabilityBonus ?? 22);
+                node.fx += toNominalX * formationPull;
+                node.fy += toNominalY * formationPull;
+            }
 
-            const drive = node.role === 'blade' || node.role === 'dart' ? 54 : node.role === 'shell' ? 18 : 28;
-            if (!node.anchored) {
+            // ── 漂移力 ──
+            if ((T.enableDrift ?? true) && !node.anchored) {
+                const drive = node.role === 'blade' || node.role === 'dart'
+                    ? (T.driftAttack ?? 54)
+                    : node.role === 'shell'
+                        ? (T.driftShell ?? 18)
+                        : (T.driftDefault ?? 28);
                 node.fx += drift.x * drive;
                 node.fy += drift.y * drive;
             }
 
-            if (node.role === 'source' || node.role === 'compressor') {
+            // ── 核心收束力 ──
+            if ((T.enableCorePull ?? true) && (node.role === 'source' || node.role === 'compressor')) {
                 const pullToCoreX = this.player.centroidX - node.x;
                 const pullToCoreY = this.player.centroidY - node.y;
-                node.fx += pullToCoreX * 24;
-                node.fy += pullToCoreY * 24;
+                const coreStr = T.corePullStrength ?? 24;
+                node.fx += pullToCoreX * coreStr;
+                node.fy += pullToCoreY * coreStr;
             }
 
-            if (node.anchored) {
+            // ── 锚定力 ──
+            if ((T.enableAnchor ?? true) && node.anchored) {
                 node.fx += (node.anchorX - node.x) * node.anchorStrength;
                 node.fy += (node.anchorY - node.y) * node.anchorStrength;
             }
@@ -1378,70 +1426,92 @@ class CoreDemoScene extends Phaser.Scene {
             }
         });
 
-        this.links.forEach((link) => {
-            const first = this.activeNodes[link.a];
-            const second = this.activeNodes[link.b];
-            const dx = second.x - first.x;
-            const dy = second.y - first.y;
-            const distance = Math.hypot(dx, dy) || 0.0001;
-            const dirX = dx / distance;
-            const dirY = dy / distance;
-            const stretch = distance - link.rest;
-            const relVel = (second.vx - first.vx) * dirX + (second.vy - first.vy) * dirY;
-            const force = stretch * (260 * link.stiffness) + relVel * (42 * link.damping);
-            first.fx += dirX * force;
-            first.fy += dirY * force;
-            second.fx -= dirX * force;
-            second.fy -= dirY * force;
-            link.tension = Math.abs(stretch) / link.rest;
-            first.tension = Math.max(first.tension * 0.82, link.tension);
-            second.tension = Math.max(second.tension * 0.82, link.tension);
-        });
-
-        for (let i = 0; i < this.activeNodes.length; i += 1) {
-            for (let j = i + 1; j < this.activeNodes.length; j += 1) {
-                const first = this.activeNodes[i];
-                const second = this.activeNodes[j];
-                const dx = second.x - first.x;
-                const dy = second.y - first.y;
-                const distance = Math.hypot(dx, dy) || 0.0001;
-                const minDistance = 72 + Math.min(18, (first.degree || 0) + (second.degree || 0)) * 1.6;
-                if (distance >= minDistance) {
-                    continue;
-                }
-                const push = (minDistance - distance) * 16;
-                const dirX = dx / distance;
-                const dirY = dy / distance;
-                first.fx -= dirX * push;
-                first.fy -= dirY * push;
-                second.fx += dirX * push;
-                second.fy += dirY * push;
-            }
-        }
-
-        this.activeNodes.forEach((node) => {
-            const drag = node.anchored ? 7.8 : 5.6 + this.player.stability * 1.1;
-            node.vx = (node.vx + (node.fx / node.mass) * simDt) * Math.exp(-drag * simDt);
-            node.vy = (node.vy + (node.fy / node.mass) * simDt) * Math.exp(-drag * simDt);
-            node.x += node.vx * simDt;
-            node.y += node.vy * simDt;
-            node.tension *= 0.85;
-        });
-
-        for (let iteration = 0; iteration < 3; iteration += 1) {
+        // ── 弹簧力 ──
+        if (T.enableSpring ?? true) {
+            const sK = T.springK ?? 260;
+            const sD = T.springDamping ?? 42;
             this.links.forEach((link) => {
                 const first = this.activeNodes[link.a];
                 const second = this.activeNodes[link.b];
                 const dx = second.x - first.x;
                 const dy = second.y - first.y;
                 const distance = Math.hypot(dx, dy) || 0.0001;
-                const difference = (distance - link.rest) / distance;
-                const adjust = difference * 0.18 * link.stiffness;
-                first.x += dx * adjust;
-                first.y += dy * adjust;
-                second.x -= dx * adjust;
-                second.y -= dy * adjust;
+                const dirX = dx / distance;
+                const dirY = dy / distance;
+                const stretch = distance - link.rest;
+                const relVel = (second.vx - first.vx) * dirX + (second.vy - first.vy) * dirY;
+                const force = stretch * (sK * link.stiffness) + relVel * (sD * link.damping);
+                first.fx += dirX * force;
+                first.fy += dirY * force;
+                second.fx -= dirX * force;
+                second.fy -= dirY * force;
+                link.tension = Math.abs(stretch) / link.rest;
+                first.tension = Math.max(first.tension * 0.82, link.tension);
+                second.tension = Math.max(second.tension * 0.82, link.tension);
             });
+        }
+
+        // ── 排斥力 ──
+        if (T.enableRepulsion ?? true) {
+            const repMinDist = T.repulsionMinDist ?? 72;
+            const repDegMax = T.repulsionDegreeMax ?? 18;
+            const repDegScale = T.repulsionDegreeScale ?? 1.6;
+            const repK = T.repulsionStiffness ?? 16;
+            for (let i = 0; i < this.activeNodes.length; i += 1) {
+                for (let j = i + 1; j < this.activeNodes.length; j += 1) {
+                    const first = this.activeNodes[i];
+                    const second = this.activeNodes[j];
+                    const dx = second.x - first.x;
+                    const dy = second.y - first.y;
+                    const distance = Math.hypot(dx, dy) || 0.0001;
+                    const minDistance = repMinDist + Math.min(repDegMax, (first.degree || 0) + (second.degree || 0)) * repDegScale;
+                    if (distance >= minDistance) {
+                        continue;
+                    }
+                    const push = (minDistance - distance) * repK;
+                    const dirX = dx / distance;
+                    const dirY = dy / distance;
+                    first.fx -= dirX * push;
+                    first.fy -= dirY * push;
+                    second.fx += dirX * push;
+                    second.fy += dirY * push;
+                }
+            }
+        }
+
+        // ── 速度积分 + 阻力 ──
+        const dragAnch = T.dragAnchored ?? 7.8;
+        const dragFBase = T.dragFreeBase ?? 5.6;
+        const dragStabB = T.dragStabilityBonus ?? 1.1;
+        const tDecay = T.tensionDecay ?? 0.85;
+        this.activeNodes.forEach((node) => {
+            const drag = node.anchored ? dragAnch : dragFBase + this.player.stability * dragStabB;
+            node.vx = (node.vx + (node.fx / node.mass) * simDt) * Math.exp(-drag * simDt);
+            node.vy = (node.vy + (node.fy / node.mass) * simDt) * Math.exp(-drag * simDt);
+            node.x += node.vx * simDt;
+            node.y += node.vy * simDt;
+            node.tension *= tDecay;
+        });
+
+        // ── PBD 位置校正 ──
+        if (T.enablePBD ?? true) {
+            const pbdIter = T.pbdIterations ?? 3;
+            const pbdRate = T.pbdCorrectionRate ?? 0.18;
+            for (let iteration = 0; iteration < pbdIter; iteration += 1) {
+                this.links.forEach((link) => {
+                    const first = this.activeNodes[link.a];
+                    const second = this.activeNodes[link.b];
+                    const dx = second.x - first.x;
+                    const dy = second.y - first.y;
+                    const distance = Math.hypot(dx, dy) || 0.0001;
+                    const difference = (distance - link.rest) / distance;
+                    const adjust = difference * pbdRate * link.stiffness;
+                    first.x += dx * adjust;
+                    first.y += dy * adjust;
+                    second.x -= dx * adjust;
+                    second.y -= dy * adjust;
+                });
+            }
         }
 
         if (draggedTarget) {
@@ -1458,14 +1528,15 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     updatePlayerState(simDt) {
+        const T = window.TUNING || {};
         const desiredHeading = Math.atan2(this.intent.flowY, this.intent.flowX);
-        const turnRate = 3.1 + this.player.turnAssist * 2.1;
+        const turnRate = (T.baseTurnRate ?? 3.1) + this.player.turnAssist * (T.turnAssistBonus ?? 2.1);
         this.player.heading = Phaser.Math.Angle.RotateTo(this.player.heading, desiredHeading, turnRate * simDt);
         this.player.shieldTimer = Math.max(0, this.player.shieldTimer - simDt);
-        this.player.tempoBoost = Math.max(0, this.player.tempoBoost - simDt * 1.5);
-        this.player.agitation = Math.max(0, this.player.agitation - simDt * 0.9);
-        this.player.turnAssist = Math.max(0, this.player.turnAssist - simDt * 1.8);
-        this.player.stability = Math.max(0.3, this.player.stability - simDt * 0.4);
+        this.player.tempoBoost = Math.max(0, this.player.tempoBoost - simDt * (T.tempoBoostDecay ?? 1.5));
+        this.player.agitation = Math.max(0, this.player.agitation - simDt * (T.agitationDecay ?? 0.9));
+        this.player.turnAssist = Math.max(0, this.player.turnAssist - simDt * (T.turnAssistDecay ?? 1.8));
+        this.player.stability = Math.max(T.stabilityMin ?? 0.3, this.player.stability - simDt * (T.stabilityDecay ?? 0.4));
         if (this.player.shieldTimer <= 0) {
             this.player.shield = 0;
         }
@@ -1485,7 +1556,7 @@ class CoreDemoScene extends Phaser.Scene {
         const damage = 9 + effectiveEnergy * 4 + this.player.overload * 2;
         const baseAngle = Math.atan2(fireDir.y, fireDir.x);
 
-        this.plantNode(node, { forwardBase: 148, sideBase: 54, stance: 0.42 * edge.stance, strength: 330 * edge.stability, reachScale: edge.reach, flowBias: 0.32, aimBias: 0.68 });
+        { const T = window.TUNING || {}; this.plantNode(node, { forwardBase: T.plantDartForward ?? 148, sideBase: T.plantDartSide ?? 54, stance: (T.plantDartStance ?? 0.42) * edge.stance, strength: (T.plantDartStrength ?? 330) * edge.stability, reachScale: edge.reach, flowBias: T.plantDartFlowBias ?? 0.32, aimBias: T.plantDartAimBias ?? 0.68 }); }
 
         spread.forEach((offset) => {
             const angle = baseAngle + offset;
@@ -1525,7 +1596,7 @@ class CoreDemoScene extends Phaser.Scene {
         const effectiveEnergy = Math.max(1, this.player.energy);
         const damage = (13 + effectiveEnergy * 6 + this.player.overload * 4) * edge.reach;
 
-        this.plantNode(node, { forwardBase: 184, sideBase: 26, stance: 0.34 * edge.stance, strength: 460, reachScale: edge.reach * 1.08, flowBias: 0.62, aimBias: 0.38 });
+        { const T = window.TUNING || {}; this.plantNode(node, { forwardBase: T.plantBladeForward ?? 184, sideBase: T.plantBladeSide ?? 26, stance: (T.plantBladeStance ?? 0.34) * edge.stance, strength: T.plantBladeStrength ?? 460, reachScale: edge.reach * 1.08, flowBias: T.plantBladeFlowBias ?? 0.62, aimBias: T.plantBladeAimBias ?? 0.38 }); }
         this.slashCone(node.x, node.y, strikeDir.x, strikeDir.y, 150 + effectiveEnergy * 24, 0.84, damage, 260, 0);
 
         if (this.player.echo > 0) {
@@ -2192,6 +2263,16 @@ class CoreDemoScene extends Phaser.Scene {
         g.fillRect(left, top + 40, healthWidth, 6);
         g.fillStyle(COLORS.inverse, 0.78);
         g.fillRect(left, top + 40, healthWidth * pressure, 6);
+
+        if (this.paused) {
+            const cx = this.scale.width * 0.5;
+            const cy = this.scale.height * 0.5;
+            g.fillStyle(0x000000, 0.4);
+            g.fillRect(0, 0, this.scale.width, this.scale.height);
+            g.fillStyle(COLORS.pulse, 0.9);
+            g.fillRect(cx - 20, cy - 30, 12, 60);
+            g.fillRect(cx + 8, cy - 30, 12, 60);
+        }
     }
 
     drawEditOverlay(g) {
