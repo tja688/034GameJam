@@ -16,6 +16,13 @@ const COLORS = {
 
 const MASS_BY_COUNT = { 3: 1.0, 4: 1.18, 5: 1.42, 6: 1.72 };
 const CHAIN_SPAN_BY_COUNT = { 3: 150, 4: 200, 5: 250, 6: 310 };
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const PARTIAL_MESH_RULES = {
+    slotSpacing: 102,
+    supportRadius: 208,
+    maxDegree: 4,
+    forwardStep: 72
+};
 const NODE_LIBRARY = [
     { id: 'source', shape: 'circle', polarity: 'base', role: 'source', color: COLORS.base },
     { id: 'compressor', shape: 'circle', polarity: 'inverse', role: 'compressor', color: COLORS.inverse },
@@ -61,6 +68,14 @@ function rotateLocal(x, y, angle) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
+function makeEdgeKey(a, b) {
+    return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function angleDistance(a, b) {
+    return Math.abs(Phaser.Math.Angle.Wrap(a - b));
 }
 
 function polygonPoints(x, y, radius, sides, rotation) {
@@ -195,38 +210,310 @@ class CoreDemoScene extends Phaser.Scene {
         };
 
         this.poolNodes = NODE_LIBRARY.map((node, index) => ({ ...node, index }));
+        this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
         this.links = [];
         this.rebuildFormation(true);
     }
 
+    getDefaultTopologySlot(order) {
+        if (order <= 0) {
+            return { x: 0, y: 0 };
+        }
+
+        const radius = PARTIAL_MESH_RULES.slotSpacing * Math.sqrt(order) * 0.94;
+        const angle = order * GOLDEN_ANGLE;
+        return {
+            x: Math.cos(angle) * radius,
+            y: Math.sin(angle) * radius * 0.84
+        };
+    }
+
+    buildPartialMeshEdges(chain, slots) {
+        const entries = chain.map((index) => {
+            const slot = slots[index];
+            return { index, x: slot.x, y: slot.y };
+        });
+        const degreeByIndex = new Map(chain.map((index) => [index, 0]));
+        const edgeKeys = new Set();
+        const edges = [];
+        const addEdge = (a, b, kind) => {
+            if (a === b) {
+                return false;
+            }
+
+            const key = makeEdgeKey(a, b);
+            if (edgeKeys.has(key)) {
+                return false;
+            }
+
+            if ((degreeByIndex.get(a) || 0) >= PARTIAL_MESH_RULES.maxDegree || (degreeByIndex.get(b) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+                return false;
+            }
+
+            edgeKeys.add(key);
+            degreeByIndex.set(a, (degreeByIndex.get(a) || 0) + 1);
+            degreeByIndex.set(b, (degreeByIndex.get(b) || 0) + 1);
+            edges.push({ a, b, kind });
+            return true;
+        };
+
+        for (let i = 1; i < entries.length; i += 1) {
+            const current = entries[i];
+            let best = entries[i - 1];
+            let bestScore = Infinity;
+
+            for (let j = 0; j < i; j += 1) {
+                const candidate = entries[j];
+                const distance = Math.hypot(current.x - candidate.x, current.y - candidate.y);
+                const forwardBias = Math.abs(current.x - candidate.x) * 0.18;
+                const score = distance + forwardBias;
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = candidate;
+                }
+            }
+
+            addEdge(current.index, best.index, 'spine');
+        }
+
+        const supportRadius = PARTIAL_MESH_RULES.supportRadius + Math.min(chain.length, 24) * 2.5;
+        entries.forEach((entry) => {
+            if ((degreeByIndex.get(entry.index) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+                return;
+            }
+
+            const linkedAngles = [];
+            edges.forEach((edge) => {
+                if (edge.a === entry.index || edge.b === entry.index) {
+                    const otherIndex = edge.a === entry.index ? edge.b : edge.a;
+                    const other = slots[otherIndex];
+                    linkedAngles.push(Math.atan2(other.y - entry.y, other.x - entry.x));
+                }
+            });
+
+            const candidates = entries
+                .filter((other) => other.index !== entry.index)
+                .map((other) => {
+                    const dx = other.x - entry.x;
+                    const dy = other.y - entry.y;
+                    return {
+                        other,
+                        distance: Math.hypot(dx, dy),
+                        angle: Math.atan2(dy, dx)
+                    };
+                })
+                .sort((a, b) => a.distance - b.distance);
+
+            for (let i = 0; i < candidates.length; i += 1) {
+                const candidate = candidates[i];
+                if (candidate.distance > supportRadius) {
+                    break;
+                }
+                if ((degreeByIndex.get(entry.index) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+                    break;
+                }
+                if ((degreeByIndex.get(candidate.other.index) || 0) >= PARTIAL_MESH_RULES.maxDegree) {
+                    continue;
+                }
+                if (linkedAngles.some((existingAngle) => angleDistance(existingAngle, candidate.angle) < 0.42)) {
+                    continue;
+                }
+                if (addEdge(entry.index, candidate.other.index, 'support')) {
+                    linkedAngles.push(candidate.angle);
+                }
+            }
+        });
+
+        return edges;
+    }
+
+    rebuildTopologyFromCurrentChain(preserveExistingSlots = false) {
+        const chain = [...this.player.chain];
+        const previousSlots = preserveExistingSlots ? (this.player.topology?.slots || {}) : {};
+        const slots = {};
+
+        chain.forEach((poolIndex, order) => {
+            if (Object.prototype.hasOwnProperty.call(previousSlots, poolIndex)) {
+                slots[poolIndex] = { ...previousSlots[poolIndex] };
+                return;
+            }
+            slots[poolIndex] = this.getDefaultTopologySlot(order);
+        });
+
+        return {
+            slots,
+            edges: this.buildPartialMeshEdges(chain, slots)
+        };
+    }
+
+    getExpansionDirection() {
+        const pointerWorld = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
+        const desiredWorld = normalize(
+            pointerWorld.x - this.player.centroidX,
+            pointerWorld.y - this.player.centroidY,
+            Math.cos(this.player.heading),
+            Math.sin(this.player.heading)
+        );
+        const desiredLocalRaw = rotateLocal(desiredWorld.x, desiredWorld.y, -this.player.heading);
+        const desiredLocal = normalize(desiredLocalRaw.x, desiredLocalRaw.y, 1, 0);
+        return { world: desiredWorld, local: desiredLocal };
+    }
+
+    getActiveTopologyEntries() {
+        const slots = this.player.topology?.slots || {};
+        const degreeByIndex = new Map(this.player.chain.map((index) => [index, 0]));
+
+        (this.player.topology?.edges || []).forEach((edge) => {
+            if (!degreeByIndex.has(edge.a) || !degreeByIndex.has(edge.b)) {
+                return;
+            }
+            degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
+            degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
+        });
+
+        return this.player.chain.map((index, order) => {
+            const slot = slots[index] || this.getDefaultTopologySlot(order);
+            return {
+                index,
+                order,
+                x: slot.x,
+                y: slot.y,
+                degree: degreeByIndex.get(index) || 0
+            };
+        });
+    }
+
+    pickExpansionAnchor(entries, desiredLocal) {
+        let best = entries[0];
+        let bestScore = -Infinity;
+
+        entries.forEach((entry) => {
+            const radial = normalize(entry.x, entry.y, desiredLocal.x, desiredLocal.y);
+            const projection = entry.x * desiredLocal.x + entry.y * desiredLocal.y;
+            const directional = radial.x * desiredLocal.x + radial.y * desiredLocal.y;
+            const openness = 1 - clamp((entry.degree - 1) / PARTIAL_MESH_RULES.maxDegree, 0, 1);
+            const score = projection + directional * 54 + radial.length * 0.18 + openness * 46;
+            if (score > bestScore) {
+                bestScore = score;
+                best = entry;
+            }
+        });
+
+        return best;
+    }
+
+    relaxExpansionSlot(candidate, entries, desiredLocal) {
+        const slot = { ...candidate };
+        const minSpacing = PARTIAL_MESH_RULES.slotSpacing;
+        let maxProjection = 0;
+
+        entries.forEach((entry) => {
+            maxProjection = Math.max(maxProjection, entry.x * desiredLocal.x + entry.y * desiredLocal.y);
+        });
+
+        for (let iteration = 0; iteration < 5; iteration += 1) {
+            entries.forEach((entry) => {
+                const dx = slot.x - entry.x;
+                const dy = slot.y - entry.y;
+                const distance = Math.hypot(dx, dy) || 0.0001;
+                const overlap = minSpacing - distance;
+                if (overlap <= 0) {
+                    return;
+                }
+
+                slot.x += (dx / distance) * overlap * 0.58;
+                slot.y += (dy / distance) * overlap * 0.58;
+            });
+
+            const projection = slot.x * desiredLocal.x + slot.y * desiredLocal.y;
+            const targetProjection = maxProjection + PARTIAL_MESH_RULES.forwardStep;
+            if (projection < targetProjection) {
+                const delta = targetProjection - projection;
+                slot.x += desiredLocal.x * delta * 0.32;
+                slot.y += desiredLocal.y * delta * 0.32;
+            }
+        }
+
+        return slot;
+    }
+
+    findBestPulseInsertionIndex(slot, anchorIndex) {
+        let bestIndex = this.player.chain.length;
+        let bestScore = Infinity;
+
+        for (let insertIndex = 0; insertIndex <= this.player.chain.length; insertIndex += 1) {
+            const previousIndex = insertIndex > 0 ? this.player.chain[insertIndex - 1] : null;
+            const nextIndex = insertIndex < this.player.chain.length ? this.player.chain[insertIndex] : null;
+            let score = 0;
+
+            if (previousIndex !== null) {
+                const previousSlot = this.player.topology.slots[previousIndex];
+                score += Math.hypot(slot.x - previousSlot.x, slot.y - previousSlot.y);
+                if (previousIndex === anchorIndex) {
+                    score -= 38;
+                }
+            } else {
+                score += 66;
+            }
+
+            if (nextIndex !== null) {
+                const nextSlot = this.player.topology.slots[nextIndex];
+                score += Math.hypot(slot.x - nextSlot.x, slot.y - nextSlot.y);
+                if (nextIndex === anchorIndex) {
+                    score -= 38;
+                }
+            } else {
+                score += 42;
+            }
+
+            if (previousIndex !== null && nextIndex !== null) {
+                const previousSlot = this.player.topology.slots[previousIndex];
+                const nextSlot = this.player.topology.slots[nextIndex];
+                score -= Math.hypot(previousSlot.x - nextSlot.x, previousSlot.y - nextSlot.y) * 0.22;
+            }
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestIndex = insertIndex;
+            }
+        }
+
+        return bestIndex;
+    }
+
     rebuildFormation(forceReset = false) {
         const count = this.player.chain.length;
+        if (!this.player.topology || this.player.chain.some((poolIndex) => !Object.prototype.hasOwnProperty.call(this.player.topology.slots || {}, poolIndex))) {
+            this.player.topology = this.rebuildTopologyFromCurrentChain(true);
+        }
+
         const existingNodes = forceReset ? new Map() : new Map(this.activeNodes.map((node) => [node.index, node]));
-        const previousTail = this.activeNodes.length > 0 ? this.activeNodes[this.activeNodes.length - 1] : null;
         this.player.mass = getChainMass(count);
-        const span = getChainSpan(count);
         const centerX = this.player.centroidX;
         const centerY = this.player.centroidY;
         const heading = this.player.heading;
+        const slots = this.player.topology.slots;
+        let topologyRadius = 0;
+
+        this.player.chain.forEach((poolIndex) => {
+            const slot = slots[poolIndex];
+            topologyRadius = Math.max(topologyRadius, Math.hypot(slot.x, slot.y));
+        });
+        this.player.topologyRadius = Math.max(PARTIAL_MESH_RULES.slotSpacing, topologyRadius);
 
         this.activeNodes = this.player.chain.map((poolIndex, order) => {
             const base = this.poolNodes[poolIndex];
-            const t = count === 1 ? 0.5 : order / (count - 1);
-            const localX = lerp(-span * 0.58, span * 0.58, t);
-            const localY = Math.sin(lerp(-1.15, 1.15, t)) * (70 + count * 10);
-            const rotated = rotateLocal(localX, localY, heading);
+            const slot = slots[poolIndex] || this.getDefaultTopologySlot(order);
+            const rotated = rotateLocal(slot.x, slot.y, heading);
             const existing = existingNodes.get(poolIndex);
-            const seed = previousTail
-                ? {
-                    x: previousTail.x + Math.cos(heading + (order % 2 === 0 ? -0.9 : 0.9)) * 96,
-                    y: previousTail.y + Math.sin(heading + (order % 2 === 0 ? -0.9 : 0.9)) * 96
-                }
-                : { x: centerX + rotated.x, y: centerY + rotated.y };
+            const seed = { x: centerX + rotated.x, y: centerY + rotated.y };
             return {
                 ...(existing || {}),
                 ...base,
                 order,
+                localX: slot.x,
+                localY: slot.y,
                 mass: base.role === 'shell' ? 1.35 : base.role === 'blade' ? 1.15 : 1,
                 x: existing ? existing.x : seed.x,
                 y: existing ? existing.y : seed.y,
@@ -252,20 +539,41 @@ class CoreDemoScene extends Phaser.Scene {
             };
         });
 
+        const activeOrderByIndex = new Map(this.activeNodes.map((node) => [node.index, node.order]));
+        const degreeByIndex = new Map(this.player.chain.map((poolIndex) => [poolIndex, 0]));
         this.links = [];
-        for (let i = 1; i < this.activeNodes.length; i += 1) {
-            const previous = this.activeNodes[i - 1];
-            const current = this.activeNodes[i];
-            const samePolarity = previous.polarity === current.polarity;
+        this.player.topology.edges.forEach((edge) => {
+            const a = activeOrderByIndex.get(edge.a);
+            const b = activeOrderByIndex.get(edge.b);
+            if (a === undefined || b === undefined) {
+                return;
+            }
+
+            const first = this.activeNodes[a];
+            const second = this.activeNodes[b];
+            const samePolarity = first.polarity === second.polarity;
+            const slotA = slots[edge.a];
+            const slotB = slots[edge.b];
+            const distance = Math.hypot(slotA.x - slotB.x, slotA.y - slotB.y);
+            const softness = edge.kind === 'support' ? 0.88 : 1;
+            const stiffness = edge.kind === 'support' ? 0.78 : 0.98;
+            const damping = edge.kind === 'support' ? 0.18 : 0.24;
             this.links.push({
-                a: i - 1,
-                b: i,
-                rest: (samePolarity ? 102 : 116) + Math.min(count, 18) * 7,
-                stiffness: samePolarity ? 0.95 : 0.78,
-                damping: samePolarity ? 0.22 : 0.14,
+                a,
+                b,
+                kind: edge.kind,
+                rest: clamp(distance * (samePolarity ? 1.02 : 1.08), 84, 206),
+                stiffness: samePolarity ? stiffness : stiffness * softness,
+                damping: samePolarity ? damping : damping * 0.86,
                 samePolarity
             });
-        }
+            degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
+            degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
+        });
+
+        this.activeNodes.forEach((node) => {
+            node.degree = degreeByIndex.get(node.index) || 0;
+        });
 
         this.computeCentroid();
     }
@@ -376,6 +684,7 @@ class CoreDemoScene extends Phaser.Scene {
             if (this.player.reconnect.draft.length >= 3) {
                 this.player.chain = [...this.player.reconnect.draft];
                 this.player.reconnect.active = false;
+                this.player.topology = this.rebuildTopologyFromCurrentChain(true);
                 this.player.energy = 0;
                 this.player.guard = 0;
                 this.player.overload = 0;
@@ -418,6 +727,9 @@ class CoreDemoScene extends Phaser.Scene {
             return;
         }
 
+        const expansion = this.getExpansionDirection();
+        const entries = this.getActiveTopologyEntries();
+        const anchor = this.pickExpansionAnchor(entries, expansion.local);
         const template = Phaser.Utils.Array.GetRandom(NODE_LIBRARY);
         const index = this.poolNodes.length;
         this.poolNodes.push({
@@ -426,12 +738,46 @@ class CoreDemoScene extends Phaser.Scene {
             id: `${template.id}-${index}`
         });
 
-        this.player.chain.push(index);
+        const anchorDrift = normalize(anchor.x, anchor.y, expansion.local.x, expansion.local.y);
+        const lead = normalize(
+            expansion.local.x * 0.76 + anchorDrift.x * 0.24,
+            expansion.local.y * 0.76 + anchorDrift.y * 0.24,
+            expansion.local.x,
+            expansion.local.y
+        );
+        const side = { x: -lead.y, y: lead.x };
+        const sideSign = Math.abs(expansion.local.y) < 0.16 ? (index % 2 === 0 ? 1 : -1) : Math.sign(expansion.local.y);
+        const seedSlot = {
+            x: anchor.x + lead.x * (PARTIAL_MESH_RULES.slotSpacing + 12),
+            y: anchor.y + lead.y * (PARTIAL_MESH_RULES.slotSpacing + 12)
+        };
+        const candidateSlot = {
+            x: seedSlot.x + side.x * sideSign * 18,
+            y: seedSlot.y + side.y * sideSign * 18
+        };
+        const slot = this.relaxExpansionSlot(candidateSlot, entries, expansion.local);
+        const insertIndex = this.findBestPulseInsertionIndex(slot, anchor.index);
+
+        this.player.chain.splice(insertIndex, 0, index);
+        this.player.topology = {
+            slots: {
+                ...(this.player.topology?.slots || {}),
+                [index]: slot
+            },
+            edges: []
+        };
+        this.player.topology = this.rebuildTopologyFromCurrentChain(true);
         this.player.reconnect.draft = [...this.player.chain];
         this.player.energy = 0;
         this.player.guard = 0;
         this.player.overload = 0;
         this.player.echo = 0;
+        this.player.tempoBoost = 0;
+        this.player.stability = 0.35;
+        this.player.turnAssist = 0;
+        this.player.pulseCursor = 0;
+        this.player.pulseTimer = 0.12;
+        this.player.pulsePath = { from: 0, to: 0, timer: 0.12, duration: 0.12, loopReset: false };
         this.rebuildFormation();
     }
 
@@ -535,13 +881,10 @@ class CoreDemoScene extends Phaser.Scene {
         return interval * Math.max(0.74, factor);
     }
 
-    computeNominalOffset(order) {
-        const count = this.activeNodes.length;
-        const t = count === 1 ? 0.5 : order / (count - 1);
-        const span = getChainSpan(count);
+    computeNominalOffset(node) {
         return {
-            x: lerp(-span * 0.58, span * 0.58, t),
-            y: Math.sin(lerp(-1.15, 1.15, t)) * (70 + count * 10)
+            x: node.localX || 0,
+            y: node.localY || 0
         };
     }
 
@@ -550,10 +893,10 @@ class CoreDemoScene extends Phaser.Scene {
         const aim = normalize(this.intent.aimX, this.intent.aimY, flow.x, flow.y);
         const lead = normalize(flow.x * (profile.flowBias ?? 0.55) + aim.x * (profile.aimBias ?? 0.45), flow.y * (profile.flowBias ?? 0.55) + aim.y * (profile.aimBias ?? 0.45), aim.x, aim.y);
         const right = { x: -lead.y, y: lead.x };
-        const orderBias = this.activeNodes.length === 1 ? 0 : (node.order / (this.activeNodes.length - 1)) * 2 - 1;
-        const sideSign = Math.abs(orderBias) < 0.18 ? (node.order % 2 === 0 ? -1 : 1) : Math.sign(orderBias);
+        const lateralBias = clamp((node.localY || 0) / Math.max(PARTIAL_MESH_RULES.slotSpacing, this.player.topologyRadius || PARTIAL_MESH_RULES.slotSpacing), -1, 1);
+        const sideSign = Math.abs(lateralBias) < 0.18 ? (node.order % 2 === 0 ? -1 : 1) : Math.sign(lateralBias);
         const forwardReach = (profile.forwardBase + this.getFormationSpan() * 0.16) * profile.reachScale;
-        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(orderBias)));
+        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias)));
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
         node.anchorStrength = profile.strength;
@@ -623,7 +966,7 @@ class CoreDemoScene extends Phaser.Scene {
         });
 
         this.activeNodes.forEach((node) => {
-            const nominal = this.computeNominalOffset(node.order);
+            const nominal = this.computeNominalOffset(node);
             const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
             const targetX = this.player.centroidX + rotated.x;
             const targetY = this.player.centroidY + rotated.y;
@@ -672,16 +1015,14 @@ class CoreDemoScene extends Phaser.Scene {
             second.tension = Math.max(second.tension * 0.82, link.tension);
         });
 
-        const repulsionWindow = this.activeNodes.length > 24 ? 6 : this.activeNodes.length;
         for (let i = 0; i < this.activeNodes.length; i += 1) {
-            const maxJ = Math.min(this.activeNodes.length, i + repulsionWindow + 1);
-            for (let j = i + 1; j < maxJ; j += 1) {
+            for (let j = i + 1; j < this.activeNodes.length; j += 1) {
                 const first = this.activeNodes[i];
                 const second = this.activeNodes[j];
                 const dx = second.x - first.x;
                 const dy = second.y - first.y;
                 const distance = Math.hypot(dx, dy) || 0.0001;
-                const minDistance = 74;
+                const minDistance = 72 + Math.min(18, (first.degree || 0) + (second.degree || 0)) * 1.6;
                 if (distance >= minDistance) {
                     continue;
                 }
@@ -1202,19 +1543,35 @@ class CoreDemoScene extends Phaser.Scene {
         return best;
     }
 
-    resolveEnemyNodeCollisions() {
-        this.enemies.forEach((enemy) => {
-            const focus = this.pickNearestNode(enemy.x, enemy.y);
-            if (!focus) {
+    pickNearbyNodes(x, y, limit = 4, radius = 128) {
+        const radiusSq = radius * radius;
+        const candidates = [];
+
+        this.activeNodes.forEach((node) => {
+            const dx = node.x - x;
+            const dy = node.y - y;
+            const distanceSq = dx * dx + dy * dy;
+            if (distanceSq > radiusSq) {
                 return;
             }
+            candidates.push({ node, distanceSq });
+        });
 
-            const candidates = [focus];
-            if (focus.order > 0) {
-                candidates.push(this.activeNodes[focus.order - 1]);
+        candidates.sort((a, b) => a.distanceSq - b.distanceSq);
+        return candidates.slice(0, limit).map((entry) => entry.node);
+    }
+
+    resolveEnemyNodeCollisions() {
+        this.enemies.forEach((enemy) => {
+            const candidates = this.pickNearbyNodes(enemy.x, enemy.y, 4, enemy.radius + 104);
+            if (candidates.length === 0) {
+                const focus = this.pickNearestNode(enemy.x, enemy.y);
+                if (focus) {
+                    candidates.push(focus);
+                }
             }
-            if (focus.order < this.activeNodes.length - 1) {
-                candidates.push(this.activeNodes[focus.order + 1]);
+            if (candidates.length === 0) {
+                return;
             }
 
             candidates.forEach((node) => {
@@ -1381,9 +1738,12 @@ class CoreDemoScene extends Phaser.Scene {
             const second = this.activeNodes[link.b];
             const from = this.worldToScreen(first.displayX, first.displayY);
             const to = this.worldToScreen(second.displayX, second.displayY);
-            const width = clamp((2 + link.tension * 12) * this.cameraRig.zoom, 2, 8);
+            const width = clamp(((link.kind === 'support' ? 1.4 : 2.1) + link.tension * (link.kind === 'support' ? 8 : 12)) * this.cameraRig.zoom, 1, 8);
             const color = link.samePolarity ? COLORS.link : COLORS.pulse;
-            g.lineStyle(width, color, link.samePolarity ? 0.52 : 0.76);
+            const alpha = link.samePolarity
+                ? (link.kind === 'support' ? 0.3 : 0.52)
+                : (link.kind === 'support' ? 0.54 : 0.76);
+            g.lineStyle(width, color, alpha);
             g.lineBetween(from.x, from.y, to.x, to.y);
         });
 
