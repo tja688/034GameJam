@@ -1186,6 +1186,40 @@ class CoreDemoScene extends Phaser.Scene {
         return edges;
     }
 
+    buildSeedPolarityEdges(chain) {
+        const baseNodes = [];
+        const inverseNodes = [];
+
+        chain.forEach((index) => {
+            const node = this.poolNodes[index];
+            if (!node) {
+                return;
+            }
+            if (node.polarity === 'inverse') {
+                inverseNodes.push(index);
+            } else {
+                baseNodes.push(index);
+            }
+        });
+
+        const edges = [];
+        for (let i = 0; i < inverseNodes.length; i += 1) {
+            for (let j = i + 1; j < inverseNodes.length; j += 1) {
+                edges.push(this.createTopologyEdgeDescriptor(inverseNodes[i], inverseNodes[j], 'spine'));
+                edges.push(this.createTopologyEdgeDescriptor(inverseNodes[i], inverseNodes[j], 'support'));
+            }
+        }
+
+        if (inverseNodes.length > 0) {
+            baseNodes.forEach((baseIndex, order) => {
+                const targetInverse = inverseNodes[order % inverseNodes.length];
+                edges.push(this.createTopologyEdgeDescriptor(baseIndex, targetInverse, 'support'));
+            });
+        }
+
+        return edges;
+    }
+
     rebuildTopologyFromCurrentChain(preserveExistingSlots = false) {
         const chain = [...this.player.chain];
         const previousSlots = preserveExistingSlots ? (this.player.topology?.slots || {}) : {};
@@ -1201,7 +1235,7 @@ class CoreDemoScene extends Phaser.Scene {
 
         return {
             slots,
-            edges: this.normalizeTopologyEdges(this.buildPartialMeshEdges(chain, slots))
+            edges: this.normalizeTopologyEdges(this.buildSeedPolarityEdges(chain))
         };
     }
 
@@ -1220,14 +1254,14 @@ class CoreDemoScene extends Phaser.Scene {
 
     getActiveTopologyEntries() {
         const slots = this.player.topology?.slots || {};
-        const degreeByIndex = new Map(this.player.chain.map((index) => [index, 0]));
+        const neighborSetByIndex = new Map(this.player.chain.map((index) => [index, new Set()]));
 
         (this.player.topology?.edges || []).forEach((edge) => {
-            if (!degreeByIndex.has(edge.a) || !degreeByIndex.has(edge.b)) {
+            if (!neighborSetByIndex.has(edge.a) || !neighborSetByIndex.has(edge.b)) {
                 return;
             }
-            degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
-            degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
+            neighborSetByIndex.get(edge.a)?.add(edge.b);
+            neighborSetByIndex.get(edge.b)?.add(edge.a);
         });
 
         return this.player.chain.map((index, order) => {
@@ -1237,7 +1271,7 @@ class CoreDemoScene extends Phaser.Scene {
                 order,
                 x: slot.x,
                 y: slot.y,
-                degree: degreeByIndex.get(index) || 0
+                degree: neighborSetByIndex.get(index)?.size || 0
             };
         });
     }
@@ -1396,13 +1430,13 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     getTopologyDegree(index) {
-        let degree = 0;
+        const neighbors = new Set();
         this.player.topology.edges.forEach((edge) => {
             if (edge.a === index || edge.b === index) {
-                degree += 1;
+                neighbors.add(edge.a === index ? edge.b : edge.a);
             }
         });
-        return degree;
+        return neighbors.size;
     }
 
     getTopologyEdgeCount(a, b) {
@@ -1412,9 +1446,6 @@ class CoreDemoScene extends Phaser.Scene {
 
     addTopologyEdge(a, b, kind = 'support') {
         if (a === b) {
-            return false;
-        }
-        if (this.getTopologyDegree(a) >= PARTIAL_MESH_RULES.manualMaxDegree || this.getTopologyDegree(b) >= PARTIAL_MESH_RULES.manualMaxDegree) {
             return false;
         }
         this.player.topology.edges.push(this.createTopologyEdgeDescriptor(a, b, kind));
@@ -1499,7 +1530,7 @@ class CoreDemoScene extends Phaser.Scene {
             stiffnessBase = T.rigidStiffness ?? 2.6;
             dampingBase = T.rigidDamping ?? 1.45;
             stretchSlack = T.rigidStretchSlack ?? 2;
-            pbdWeight = T.rigidPbdWeight ?? 2.1;
+            pbdWeight = (T.rigidPbdWeight ?? 2.1) + Math.max(0, parallelCount - 3) * 0.6;
         }
 
         return {
@@ -1560,7 +1591,7 @@ class CoreDemoScene extends Phaser.Scene {
         const distance = Math.hypot(dx, dy) || 1;
         const normalX = -dy / distance;
         const normalY = dx / distance;
-        const spread = link.parallelCount > 1 ? 8 : 0;
+        const spread = link.parallelCount > 1 ? 12 : 0;
         const laneOffset = (link.parallelIndex - (link.parallelCount - 1) * 0.5) * spread;
         return {
             fromX: fromX + normalX * laneOffset,
@@ -1713,15 +1744,15 @@ class CoreDemoScene extends Phaser.Scene {
         });
 
         const activeOrderByIndex = new Map(this.activeNodes.map((node) => [node.index, node.order]));
-        const degreeByIndex = new Map(this.player.chain.map((poolIndex) => [poolIndex, 0]));
+        const neighborSetByIndex = new Map(this.player.chain.map((poolIndex) => [poolIndex, new Set()]));
         const pairCountByKey = new Map();
         const pairSeenByKey = new Map();
         this.player.topology.edges.forEach((edge) => {
-            if (!degreeByIndex.has(edge.a) || !degreeByIndex.has(edge.b)) {
+            if (!neighborSetByIndex.has(edge.a) || !neighborSetByIndex.has(edge.b)) {
                 return;
             }
-            degreeByIndex.set(edge.a, (degreeByIndex.get(edge.a) || 0) + 1);
-            degreeByIndex.set(edge.b, (degreeByIndex.get(edge.b) || 0) + 1);
+            neighborSetByIndex.get(edge.a)?.add(edge.b);
+            neighborSetByIndex.get(edge.b)?.add(edge.a);
             const pairKey = makeEdgeKey(edge.a, edge.b);
             pairCountByKey.set(pairKey, (pairCountByKey.get(pairKey) || 0) + 1);
         });
@@ -1775,7 +1806,7 @@ class CoreDemoScene extends Phaser.Scene {
         });
 
         this.activeNodes.forEach((node) => {
-            node.degree = degreeByIndex.get(node.index) || 0;
+            node.degree = neighborSetByIndex.get(node.index)?.size || 0;
         });
 
         this.computeCentroid();
@@ -1988,7 +2019,6 @@ class CoreDemoScene extends Phaser.Scene {
 
         const edit = this.player.edit;
         const pointerWorld = this.screenToWorld(pointer.x, pointer.y);
-        const releasedNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
         const pointerNode = edit.pointerNode;
         const draggedNode = edit.dragNode;
 
@@ -1999,17 +2029,17 @@ class CoreDemoScene extends Phaser.Scene {
             return;
         }
 
-        if (pointerNode >= 0 && releasedNode && releasedNode.index === pointerNode) {
-            if (edit.selectedNode >= 0 && edit.selectedNode !== releasedNode.index) {
+        if (pointerNode >= 0) {
+            if (edit.selectedNode >= 0 && edit.selectedNode !== pointerNode) {
                 const sourceNode = edit.selectedNode;
-                if (this.addTopologyEdge(sourceNode, releasedNode.index, 'support')) {
+                if (this.addTopologyEdge(sourceNode, pointerNode, 'support')) {
                     this.rebuildFormation();
                 }
                 edit.selectedNode = sourceNode;
                 return;
             }
 
-            edit.selectedNode = edit.selectedNode === releasedNode.index ? -1 : releasedNode.index;
+            edit.selectedNode = edit.selectedNode === pointerNode ? -1 : pointerNode;
             return;
         }
 
