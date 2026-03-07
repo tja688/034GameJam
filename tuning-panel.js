@@ -1,9 +1,12 @@
 /* ═══════════════════════════════════════════════════════════════
- *  运动学调参面板  —  Kinematics Tuning Panel
- *  在游戏画面上叠加一个可折叠的侧栏，暴露所有运动学相关参数
+ *  玩家能力调试面板  —  Player Ability Debug Panel
+ *  在游戏画面上叠加一个可折叠的侧栏，暴露玩家能力与结构驱动参数
  * ═══════════════════════════════════════════════════════════════ */
 
 window.TUNING = {
+    // ─── 移动能力对比 ─────────────────────────────
+    legacyAllNodesMove: true,
+
     // ─── 力开关 ───────────────────────────────────
     enableFormationPull: true,
     enableDrift: true,
@@ -182,12 +185,16 @@ function savePersistedTuning() {
 // ═══════════════════════════════════════════════════════════════
 
 const TUNING_DEFS = [
+    // ── 移动能力对比 ──
+    { section: '🧪 移动能力对比', sectionDesc: '当前默认开启“所有节点都主动移动”；关闭后可对比只有方形节点(shell/prism)主动移动的新方案' },
+    { key: 'legacyAllNodesMove', label: '所有节点都主动移动', desc: '默认开启，保持当前版本：任何节点都能吃到脉冲牵引和漂移推进；关闭后切到只有方形保留移动能力的实验方案', type: 'toggle' },
+
     // ── 力开关 ──
     { section: '⚡ 力场开关', sectionDesc: '关掉某个力可以观察剩余力的独立效果' },
     { key: 'enableFormationPull', label: '编队拉力', desc: '将每个节点拉回其在拓扑中应处的编队目标位置；关掉后节点会散开', type: 'toggle' },
-    { key: 'enableDrift', label: '漂移推进力', desc: 'WASD 驱动的实际移动推力，关掉后组织体无法移动', type: 'toggle' },
+    { key: 'enableDrift', label: '漂移推进力', desc: 'WASD 驱动的实际移动推力；当前默认由所有节点施加，关闭“所有节点都主动移动”后仅有移动能力的方形节点会施加', type: 'toggle' },
     { key: 'enableCorePull', label: '核心收束力', desc: '仅对圆形节点(source/compressor)施加的向质心拉力；关掉后核心会被甩到外围', type: 'toggle' },
-    { key: 'enableAnchor', label: '脉冲锚定力', desc: '脉冲触发时节点被"钉"到锚点的力；关掉后节点不再有探出/收回动作', type: 'toggle' },
+    { key: 'enableAnchor', label: '脉冲牵引力', desc: '脉冲触发时，将节点拉向目标点；当前默认所有节点都会被驱动，关闭“所有节点都主动移动”后仅方形会被真正驱动', type: 'toggle' },
     { key: 'enableSpring', label: '弹簧连线力', desc: '连线的弹簧-阻尼约束力；关掉后节点间没有弹性联系', type: 'toggle' },
     { key: 'enableRepulsion', label: '节点排斥力', desc: '防止节点互相重叠的短程排斥力；关掉后节点可能堆在一起', type: 'toggle' },
     { key: 'enablePBD', label: 'PBD 位置校正', desc: '力学积分后的约束求解迭代；关掉后弹簧更容易过度拉伸', type: 'toggle' },
@@ -200,10 +207,10 @@ const TUNING_DEFS = [
     { key: 'formationPullStabilityBonus', label: '稳定性加成', desc: '每单位 stability 额外增加的编队拉力（source/shell 积累 stability）', min: 0, max: 100, step: 1 },
 
     // ── 漂移力 ──
-    { section: '💨 漂移推进力', sectionDesc: '不同角色在 WASD 方向上的推进力大小差异' },
-    { key: 'driftAttack', label: '攻击节点漂移力', desc: 'dart(远程)/blade(近战) 的漂移推力——攻击节点更爱向前冲', min: 0, max: 200, step: 1 },
-    { key: 'driftShell', label: '护盾节点漂移力', desc: 'shell(护盾) 的漂移推力——护盾节点更沉稳，不急着移动', min: 0, max: 200, step: 1 },
-    { key: 'driftDefault', label: '标准节点漂移力', desc: 'source/compressor/prism 的漂移推力', min: 0, max: 200, step: 1 },
+    { section: '💨 漂移推进力', sectionDesc: '不同角色在 WASD 方向上的推进力大小差异；当前默认所有角色都会真正把推力施加到结构上' },
+    { key: 'driftAttack', label: '攻击节点漂移力', desc: 'dart(远程)/blade(近战) 的推进力；当前默认生效，关闭“所有节点都主动移动”后这项只保留作实验对比', min: 0, max: 200, step: 1 },
+    { key: 'driftShell', label: '护盾节点漂移力', desc: 'shell(方形/本色) 的推进力；无论哪种模式它都是主要移动来源之一', min: 0, max: 200, step: 1 },
+    { key: 'driftDefault', label: '标准移动节点漂移力', desc: '当前用于 source/compressor/prism 等默认移动节点；关闭“所有节点都主动移动”后主要只剩 prism 使用', min: 0, max: 200, step: 1 },
 
     // ── 核心收束 ──
     { section: '🎯 核心收束力', sectionDesc: '仅对圆形节点(source/compressor)的额外向心力' },
@@ -726,7 +733,7 @@ function buildTuningPanel() {
     // ─── 切换按钮 ──────────────────────────────────
     const toggle = document.createElement('button');
     toggle.id = 'tuning-toggle';
-    toggle.textContent = '⚙ 调参面板';
+    toggle.textContent = '⚙ 能力调试';
     toggle.addEventListener('click', () => {
         panel.classList.toggle('collapsed');
     });
@@ -735,7 +742,7 @@ function buildTuningPanel() {
     const header = document.createElement('div');
     header.id = 'tuning-header';
     header.innerHTML = `
-        <h2>运动学调参面板</h2>
+        <h2>玩家能力调试面板</h2>
         <div class="header-btns">
             <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
             <button class="export-btn" id="tuning-export">📋 导出</button>

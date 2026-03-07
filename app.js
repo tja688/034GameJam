@@ -1907,6 +1907,11 @@ class CoreDemoScene extends Phaser.Scene {
         };
     }
 
+    nodeHasMoveAbility(node) {
+        const T = window.TUNING || {};
+        return !!(T.legacyAllNodesMove ?? false) || node.shape === 'square';
+    }
+
     plantNode(node, profile) {
         const flow = normalize(this.intent.flowX, this.intent.flowY, Math.cos(this.player.heading), Math.sin(this.player.heading));
         const aim = normalize(this.intent.aimX, this.intent.aimY, flow.x, flow.y);
@@ -1920,10 +1925,17 @@ class CoreDemoScene extends Phaser.Scene {
         const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias)));
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
-        node.anchorStrength = profile.strength;
-        node.stanceTimer = profile.stance;
-        node.anchored = true;
         node.pulseGlow = 1;
+        if (this.nodeHasMoveAbility(node)) {
+            node.anchorStrength = profile.strength;
+            node.stanceTimer = profile.stance;
+            node.anchored = true;
+            return;
+        }
+
+        node.anchorStrength = 0;
+        node.stanceTimer = 0;
+        node.anchored = false;
     }
 
     triggerNode(node, edge) {
@@ -1994,6 +2006,11 @@ class CoreDemoScene extends Phaser.Scene {
                 node.anchored = false;
                 node.anchorStrength = 0;
             }
+            if (!this.nodeHasMoveAbility(node) && node.anchored) {
+                node.anchored = false;
+                node.anchorStrength = 0;
+                node.stanceTimer = 0;
+            }
             if (node.anchored) {
                 node.stanceTimer -= simDt;
                 if (node.stanceTimer <= 0) {
@@ -2020,7 +2037,7 @@ class CoreDemoScene extends Phaser.Scene {
             }
 
             // ── 漂移力 ──
-            if ((T.enableDrift ?? true) && !node.anchored) {
+            if ((T.enableDrift ?? true) && !node.anchored && this.nodeHasMoveAbility(node)) {
                 const drive = node.role === 'blade' || node.role === 'dart'
                     ? (T.driftAttack ?? 54)
                     : node.role === 'shell'
