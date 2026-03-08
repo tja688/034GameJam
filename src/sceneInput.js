@@ -1,30 +1,263 @@
 
-
 const SceneInputMixin = {
     getPointerWorld() {
         return this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
     },
     enterEditMode() {
         const edit = this.player.edit;
-        edit.active = true;
-        edit.hoverNode = -1;
-        edit.hoverLink = '';
-        edit.selectedNode = -1;
-        edit.pointerNode = -1;
-        edit.dragNode = -1;
-        edit.deleteNode = -1;
-        edit.deleteProgress = 0;
+        const ambience = edit.ambience;
+        const history = Array.isArray(edit.history) ? edit.history : [];
+        Object.assign(edit, this.createDefaultEditState(), { active: true, ambience, history });
     },
     exitEditMode() {
         const edit = this.player.edit;
-        edit.active = false;
-        edit.hoverNode = -1;
-        edit.hoverLink = '';
-        edit.selectedNode = -1;
-        edit.pointerNode = -1;
-        edit.dragNode = -1;
+        const ambience = edit.ambience;
+        const history = Array.isArray(edit.history) ? edit.history : [];
+        Object.assign(edit, this.createDefaultEditState(), { active: false, ambience, history });
+    },
+    captureEditSnapshot() {
+        return {
+            chain: [...this.player.chain],
+            topology: {
+                slots: cloneData(this.player.topology?.slots || {}),
+                edges: cloneData(this.player.topology?.edges || [])
+            }
+        };
+    },
+    getEditSnapshotSignature(snapshot) {
+        return JSON.stringify(snapshot || null);
+    },
+    pushEditHistorySnapshot(snapshot) {
+        if (!snapshot) {
+            return;
+        }
+
+        const edit = this.player.edit;
+        const history = Array.isArray(edit.history) ? edit.history : [];
+        const signature = this.getEditSnapshotSignature(snapshot);
+        const lastSignature = history.length > 0 ? this.getEditSnapshotSignature(history[history.length - 1]) : '';
+        if (signature === lastSignature) {
+            edit.history = history;
+            return;
+        }
+
+        history.push(snapshot);
+        if (history.length > 50) {
+            history.splice(0, history.length - 50);
+        }
+        edit.history = history;
+    },
+    beginPendingEditSnapshot() {
+        const edit = this.player.edit;
+        if (!edit.pendingSnapshot) {
+            edit.pendingSnapshot = this.captureEditSnapshot();
+        }
+    },
+    commitPendingEditSnapshot() {
+        const edit = this.player.edit;
+        if (!edit.pendingSnapshot) {
+            return false;
+        }
+
+        const beforeSignature = this.getEditSnapshotSignature(edit.pendingSnapshot);
+        const afterSignature = this.getEditSnapshotSignature(this.captureEditSnapshot());
+        edit.pendingSnapshot = null;
+        if (beforeSignature === afterSignature) {
+            return false;
+        }
+
+        this.pushEditHistorySnapshot(JSON.parse(beforeSignature));
+        return true;
+    },
+    discardPendingEditSnapshot() {
+        this.player.edit.pendingSnapshot = null;
+    },
+    applyEditSnapshot(snapshot) {
+        if (!snapshot || !Array.isArray(snapshot.chain) || !snapshot.topology) {
+            return false;
+        }
+
+        this.player.chain = [...snapshot.chain];
+        this.player.topology = {
+            slots: cloneData(snapshot.topology.slots || {}),
+            edges: this.normalizeTopologyEdges(cloneData(snapshot.topology.edges || []))
+        };
+        this.clearEditDeleteState();
+        this.clearEditSelection();
+        this.resetBoxSelectionState();
+        this.player.edit.pointerNode = -1;
+        this.player.edit.pointerLink = '';
+        this.player.edit.dragNode = -1;
+        this.player.edit.hoverNode = -1;
+        this.player.edit.hoverLink = '';
+        this.rebuildFormation(true);
+        this.resetPulseFlow();
+        return true;
+    },
+    undoLastEditAction() {
+        const edit = this.player.edit;
+        const history = Array.isArray(edit.history) ? edit.history : [];
+        if (history.length === 0) {
+            return false;
+        }
+
+        this.discardPendingEditSnapshot();
+        const snapshot = history.pop();
+        edit.history = history;
+        return this.applyEditSnapshot(snapshot);
+    },
+    getUniqueNodeSelection(indices) {
+        return [...new Set((Array.isArray(indices) ? indices : []).filter((index) => Number.isInteger(index)))];
+    },
+    getUniqueLinkSelection(linkIds) {
+        return [...new Set((Array.isArray(linkIds) ? linkIds : []).filter((linkId) => typeof linkId === 'string' && linkId.length > 0))];
+    },
+    clearEditDeleteState() {
+        const edit = this.player.edit;
+        edit.deleteType = '';
         edit.deleteNode = -1;
+        edit.deleteNodes = [];
+        edit.deleteLinks = [];
         edit.deleteProgress = 0;
+    },
+    clearEditSelection() {
+        const edit = this.player.edit;
+        edit.selectedNode = -1;
+        edit.selectedNodes = [];
+        edit.selectedLinks = [];
+    },
+    syncEditSelectionState() {
+        const edit = this.player.edit;
+        const chainSet = new Set(this.player.chain);
+        const edgeIdSet = new Set((this.player.topology?.edges || []).map((edge) => edge.id));
+
+        edit.selectedNodes = this.getUniqueNodeSelection(edit.selectedNodes).filter((index) => chainSet.has(index));
+        edit.selectedLinks = this.getUniqueLinkSelection(edit.selectedLinks).filter((edgeId) => edgeIdSet.has(edgeId));
+        edit.selectedNode = edit.selectedNodes.length === 1 ? edit.selectedNodes[0] : -1;
+
+        if (edit.hoverNode >= 0 && !chainSet.has(edit.hoverNode)) {
+            edit.hoverNode = -1;
+        }
+        if (edit.hoverLink && !edgeIdSet.has(edit.hoverLink)) {
+            edit.hoverLink = '';
+        }
+        if (edit.pointerNode >= 0 && !chainSet.has(edit.pointerNode)) {
+            edit.pointerNode = -1;
+        }
+        if (edit.pointerLink && !edgeIdSet.has(edit.pointerLink)) {
+            edit.pointerLink = '';
+        }
+        if (edit.dragNode >= 0 && !chainSet.has(edit.dragNode)) {
+            edit.dragNode = -1;
+        }
+
+        edit.deleteNodes = this.getUniqueNodeSelection(edit.deleteNodes).filter((index) => chainSet.has(index));
+        edit.deleteLinks = this.getUniqueLinkSelection(edit.deleteLinks).filter((edgeId) => edgeIdSet.has(edgeId));
+        if (edit.deleteNode >= 0 && !chainSet.has(edit.deleteNode)) {
+            edit.deleteNode = -1;
+        }
+        if ((edit.deleteType === 'nodes' && edit.deleteNodes.length === 0) || (edit.deleteType === 'links' && edit.deleteLinks.length === 0)) {
+            this.clearEditDeleteState();
+        }
+    },
+    setEditSelection(nodeIds = [], linkIds = []) {
+        const edit = this.player.edit;
+        edit.selectedNodes = this.getUniqueNodeSelection(nodeIds);
+        edit.selectedLinks = this.getUniqueLinkSelection(linkIds);
+        this.syncEditSelectionState();
+    },
+    isEditNodeSelected(index) {
+        return this.player.edit.selectedNodes.includes(index);
+    },
+    isEditLinkSelected(linkId) {
+        return this.player.edit.selectedLinks.includes(linkId);
+    },
+    resetBoxSelectionState() {
+        const edit = this.player.edit;
+        edit.boxSelectPending = false;
+        edit.boxSelecting = false;
+        edit.boxStartX = 0;
+        edit.boxStartY = 0;
+        edit.boxEndX = 0;
+        edit.boxEndY = 0;
+    },
+    getBoxSelectionBounds() {
+        const edit = this.player.edit;
+        return {
+            minX: Math.min(edit.boxStartX, edit.boxEndX),
+            maxX: Math.max(edit.boxStartX, edit.boxEndX),
+            minY: Math.min(edit.boxStartY, edit.boxEndY),
+            maxY: Math.max(edit.boxStartY, edit.boxEndY)
+        };
+    },
+    updateBoxSelection(worldX, worldY) {
+        const edit = this.player.edit;
+        edit.boxEndX = worldX;
+        edit.boxEndY = worldY;
+        if (!edit.boxSelecting) {
+            return;
+        }
+
+        const bounds = this.getBoxSelectionBounds();
+        const selectedNodes = this.activeNodes
+            .filter((node) => node.displayX >= bounds.minX && node.displayX <= bounds.maxX && node.displayY >= bounds.minY && node.displayY <= bounds.maxY)
+            .map((node) => node.index);
+        const selectedNodeSet = new Set(selectedNodes);
+        const selectedLinks = (this.player.topology?.edges || [])
+            .filter((edge) => selectedNodeSet.has(edge.a) || selectedNodeSet.has(edge.b))
+            .map((edge) => edge.id);
+
+        this.setEditSelection(selectedNodes, selectedLinks);
+    },
+    startNodeDelete(index) {
+        const edit = this.player.edit;
+        edit.deleteType = 'nodes';
+        edit.deleteNode = index;
+        edit.deleteNodes = this.isEditNodeSelected(index) && edit.selectedNodes.length > 0
+            ? [...edit.selectedNodes]
+            : [index];
+        edit.deleteLinks = [];
+        edit.deleteProgress = 0;
+        edit.pointerNode = -1;
+        edit.pointerLink = '';
+        edit.dragNode = -1;
+    },
+    deleteSelectedLinksOrTarget(linkId) {
+        const targetIds = this.isEditLinkSelected(linkId) && this.player.edit.selectedLinks.length > 0
+            ? [...this.player.edit.selectedLinks]
+            : [linkId];
+        const snapshot = this.captureEditSnapshot();
+        const removed = this.removeTopologyEdges(targetIds);
+        this.clearEditDeleteState();
+        if (removed) {
+            this.pushEditHistorySnapshot(snapshot);
+            this.clearEditSelection();
+        }
+        return removed;
+    },
+    deleteCurrentEditSelection() {
+        const edit = this.player.edit;
+        const nodeIds = [...edit.selectedNodes];
+        const linkIds = [...edit.selectedLinks];
+        let changed = false;
+        const snapshot = this.captureEditSnapshot();
+
+        if (nodeIds.length > 0) {
+            changed = this.removeNodesFromTopology(nodeIds) || changed;
+        }
+
+        const remainingEdgeIds = new Set((this.player.topology?.edges || []).map((edge) => edge.id));
+        const survivingLinks = linkIds.filter((linkId) => remainingEdgeIds.has(linkId));
+        if (survivingLinks.length > 0) {
+            changed = this.removeTopologyEdges(survivingLinks) || changed;
+        }
+
+        this.clearEditDeleteState();
+        if (changed) {
+            this.pushEditHistorySnapshot(snapshot);
+            this.clearEditSelection();
+        }
+        return changed;
     },
     findActiveNodeAtWorld(x, y, extraRadius = 0) {
         const radius = 28 / this.cameraRig.zoom + extraRadius;
@@ -151,7 +384,14 @@ const SceneInputMixin = {
             return;
         }
 
-        this.timeScaleFactor = this.player.edit.deleteNode >= 0 ? 0.05 : 0.08;
+        if (this.keys.ctrl.isDown && Phaser.Input.Keyboard.JustDown(this.keys.undo)) {
+            this.undoLastEditAction();
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.keys.deleteAction)) {
+            this.deleteCurrentEditSelection();
+        }
+
+        this.timeScaleFactor = this.player.edit.deleteType === 'nodes' && this.player.edit.deleteNodes.length > 0 ? 0.05 : 0.08;
         this.refreshEditHover();
     },
     handlePointerDown(pointer) {
@@ -167,8 +407,9 @@ const SceneInputMixin = {
         const pointerWorld = this.screenToWorld(pointer.x, pointer.y);
         const hitNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
         const hitLink = hitNode ? null : this.findActiveLinkAtWorld(pointerWorld.x, pointerWorld.y);
+        const edit = this.player.edit;
 
-        if (!this.player.edit.active) {
+        if (!edit.active) {
             if (hitNode || hitLink) {
                 this.enterEditMode();
             }
@@ -177,17 +418,15 @@ const SceneInputMixin = {
 
         if (pointer.button === 2) {
             if (hitNode) {
-                this.player.edit.deleteNode = hitNode.index;
-                this.player.edit.deleteProgress = 0;
-                this.player.edit.selectedNode = -1;
-                this.player.edit.pointerNode = -1;
-                this.player.edit.dragNode = hitNode.index;
-                this.player.edit.dragWorldX = hitNode.x;
-                this.player.edit.dragWorldY = hitNode.y;
-            } else if (hitLink) {
-                if (this.removeTopologyEdge(hitLink.id)) {
-                    this.rebuildFormation();
-                }
+                this.startNodeDelete(hitNode.index);
+                return;
+            }
+            if (hitLink) {
+                this.deleteSelectedLinksOrTarget(hitLink.id);
+                return;
+            }
+            if (this.shouldExitEditMode(pointerWorld.x, pointerWorld.y)) {
+                this.exitEditMode();
             }
             return;
         }
@@ -196,23 +435,48 @@ const SceneInputMixin = {
             return;
         }
 
-        if (!hitNode) {
-            if (this.shouldExitEditMode(pointerWorld.x, pointerWorld.y)) {
-                this.exitEditMode();
-            } else {
-                this.player.edit.selectedNode = -1;
-            }
+        this.clearEditDeleteState();
+
+        if (hitNode) {
+            edit.pointerNode = hitNode.index;
+            edit.pointerLink = '';
+            edit.dragNode = -1;
+            edit.dragStartX = pointerWorld.x;
+            edit.dragStartY = pointerWorld.y;
+            edit.dragOffsetX = pointerWorld.x - hitNode.x;
+            edit.dragOffsetY = pointerWorld.y - hitNode.y;
+            edit.dragWorldX = hitNode.x;
+            edit.dragWorldY = hitNode.y;
+            this.resetBoxSelectionState();
             return;
         }
 
-        this.player.edit.pointerNode = hitNode.index;
-        this.player.edit.dragNode = -1;
-        this.player.edit.dragStartX = pointerWorld.x;
-        this.player.edit.dragStartY = pointerWorld.y;
-        this.player.edit.dragOffsetX = pointerWorld.x - hitNode.x;
-        this.player.edit.dragOffsetY = pointerWorld.y - hitNode.y;
-        this.player.edit.dragWorldX = hitNode.x;
-        this.player.edit.dragWorldY = hitNode.y;
+        if (hitLink) {
+            edit.pointerNode = -1;
+            edit.pointerLink = hitLink.id;
+            edit.dragNode = -1;
+            edit.dragStartX = pointerWorld.x;
+            edit.dragStartY = pointerWorld.y;
+            this.resetBoxSelectionState();
+            return;
+        }
+
+        if (this.shouldExitEditMode(pointerWorld.x, pointerWorld.y)) {
+            this.exitEditMode();
+            return;
+        }
+
+        edit.pointerNode = -1;
+        edit.pointerLink = '';
+        edit.dragNode = -1;
+        edit.dragStartX = pointerWorld.x;
+        edit.dragStartY = pointerWorld.y;
+        edit.boxSelectPending = true;
+        edit.boxSelecting = false;
+        edit.boxStartX = pointerWorld.x;
+        edit.boxStartY = pointerWorld.y;
+        edit.boxEndX = pointerWorld.x;
+        edit.boxEndY = pointerWorld.y;
     },
     handlePointerUp(pointer) {
         if (this.menuMode) {
@@ -224,10 +488,11 @@ const SceneInputMixin = {
         }
 
         if (pointer.button === 2) {
-            this.player.edit.deleteNode = -1;
-            this.player.edit.deleteProgress = 0;
+            this.discardPendingEditSnapshot();
+            this.clearEditDeleteState();
             this.player.edit.dragNode = -1;
             this.player.edit.pointerNode = -1;
+            this.player.edit.pointerLink = '';
             return;
         }
 
@@ -238,26 +503,60 @@ const SceneInputMixin = {
         const edit = this.player.edit;
         const pointerWorld = this.screenToWorld(pointer.x, pointer.y);
         const pointerNode = edit.pointerNode;
+        const pointerLink = edit.pointerLink;
         const draggedNode = edit.dragNode;
+        const wasBoxSelecting = edit.boxSelecting;
+        const boxPending = edit.boxSelectPending;
 
         edit.pointerNode = -1;
+        edit.pointerLink = '';
         edit.dragNode = -1;
+        this.resetBoxSelectionState();
 
         if (draggedNode >= 0) {
+            this.commitPendingEditSnapshot();
+            return;
+        }
+
+        if (wasBoxSelecting) {
             return;
         }
 
         if (pointerNode >= 0) {
-            if (edit.selectedNode >= 0 && edit.selectedNode !== pointerNode) {
+            if (edit.selectedNode >= 0 && edit.selectedNode !== pointerNode && edit.selectedNodes.length === 1 && edit.selectedLinks.length === 0) {
                 const sourceNode = edit.selectedNode;
+                const snapshot = this.captureEditSnapshot();
                 if (this.addTopologyEdge(sourceNode, pointerNode, 'support')) {
                     this.rebuildFormation();
+                    this.pushEditHistorySnapshot(snapshot);
                 }
-                edit.selectedNode = this.isCompoundTopologyEdgesEnabled() ? sourceNode : -1;
+                if (this.isCompoundTopologyEdgesEnabled()) {
+                    this.setEditSelection([sourceNode], []);
+                } else {
+                    this.clearEditSelection();
+                }
                 return;
             }
 
-            edit.selectedNode = edit.selectedNode === pointerNode ? -1 : pointerNode;
+            if (edit.selectedNodes.length === 1 && edit.selectedNodes[0] === pointerNode && edit.selectedLinks.length === 0) {
+                this.clearEditSelection();
+            } else {
+                this.setEditSelection([pointerNode], []);
+            }
+            return;
+        }
+
+        if (pointerLink) {
+            if (edit.selectedNodes.length === 0 && edit.selectedLinks.length === 1 && edit.selectedLinks[0] === pointerLink) {
+                this.clearEditSelection();
+            } else {
+                this.setEditSelection([], [pointerLink]);
+            }
+            return;
+        }
+
+        if (boxPending) {
+            this.clearEditSelection();
             return;
         }
 
@@ -277,12 +576,23 @@ const SceneInputMixin = {
         const pointer = this.input.activePointer;
         const pointerWorld = this.getPointerWorld();
 
+        if (pointer.leftButtonDown() && edit.boxSelectPending) {
+            const dragThreshold = 16 / this.cameraRig.zoom;
+            const dragDistance = Math.hypot(pointerWorld.x - edit.dragStartX, pointerWorld.y - edit.dragStartY);
+            if (!edit.boxSelecting && dragDistance >= dragThreshold) {
+                edit.boxSelecting = true;
+            }
+            this.updateBoxSelection(pointerWorld.x, pointerWorld.y);
+        }
+
         if (pointer.leftButtonDown() && edit.pointerNode >= 0) {
             const dragThreshold = 16 / this.cameraRig.zoom;
             const dragDistance = Math.hypot(pointerWorld.x - edit.dragStartX, pointerWorld.y - edit.dragStartY);
             if (edit.dragNode < 0 && dragDistance >= dragThreshold) {
+                this.beginPendingEditSnapshot();
                 edit.dragNode = edit.pointerNode;
-                edit.selectedNode = -1;
+                this.setEditSelection([edit.dragNode], []);
+                this.resetBoxSelectionState();
             }
         }
 
@@ -302,25 +612,27 @@ const SceneInputMixin = {
             }
         }
 
-        if (edit.deleteNode >= 0) {
-            const deleteTarget = this.activeNodes.find((node) => node.index === edit.deleteNode);
-            const stillHovering = deleteTarget
-                && this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y, 8)?.index === edit.deleteNode
-                && pointer.rightButtonDown();
+        if (edit.deleteType === 'nodes' && edit.deleteNodes.length > 0) {
+            const hoveredNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y, 8);
+            const deleteSet = new Set(edit.deleteNodes);
+            const stillHovering = hoveredNode && deleteSet.has(hoveredNode.index) && pointer.rightButtonDown();
 
             if (!stillHovering) {
-                edit.deleteNode = -1;
-                edit.deleteProgress = 0;
+                this.clearEditDeleteState();
                 edit.dragNode = -1;
                 return;
             }
 
             edit.deleteProgress = clamp(edit.deleteProgress + frameDt / PARTIAL_MESH_RULES.deleteHoldDuration, 0, 1);
             if (edit.deleteProgress >= 1) {
-                this.removeNodeFromTopology(edit.deleteNode);
-                edit.deleteNode = -1;
-                edit.deleteProgress = 0;
+                const snapshot = this.captureEditSnapshot();
+                const removed = this.removeNodesFromTopology(edit.deleteNodes);
+                this.clearEditDeleteState();
                 edit.dragNode = -1;
+                if (removed) {
+                    this.pushEditHistorySnapshot(snapshot);
+                    this.clearEditSelection();
+                }
             }
         }
     },

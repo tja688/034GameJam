@@ -17,7 +17,10 @@ class CoreDemoScene extends Phaser.Scene {
             right: Phaser.Input.Keyboard.KeyCodes.D,
             expand: Phaser.Input.Keyboard.KeyCodes.E,
             shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+            ctrl: Phaser.Input.Keyboard.KeyCodes.CTRL,
+            undo: Phaser.Input.Keyboard.KeyCodes.Z,
             cancel: Phaser.Input.Keyboard.KeyCodes.ESC,
+            deleteAction: Phaser.Input.Keyboard.KeyCodes.DELETE,
             restart: Phaser.Input.Keyboard.KeyCodes.R
         });
         this.input.on('pointerdown', this.handlePointerDown, this);

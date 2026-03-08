@@ -174,6 +174,18 @@ const SceneRenderMixin = {
         g.lineStyle(4, COLORS.base, 0.08 * ambience);
         g.strokeCircle(center.x, center.y, focusRadius + 16);
 
+        const selectedLinkIds = new Set(edit.selectedLinks || []);
+        this.links.forEach((link) => {
+            if (!selectedLinkIds.has(link.id)) {
+                return;
+            }
+            const render = this.getLinkRenderPoints(link);
+            const from = this.worldToScreen(render.fromX, render.fromY);
+            const to = this.worldToScreen(render.toX, render.toY);
+            g.lineStyle(clamp(6 * this.cameraRig.zoom, 2, 7), COLORS.base, 0.8);
+            g.lineBetween(from.x, from.y, to.x, to.y);
+        });
+
         const hoverLink = edit.hoverLink ? this.links.find((link) => link.key === edit.hoverLink) : null;
         if (hoverLink) {
             const render = this.getLinkRenderPoints(hoverLink);
@@ -183,14 +195,22 @@ const SceneRenderMixin = {
             g.lineBetween(from.x, from.y, to.x, to.y);
         }
 
-        if (edit.selectedNode >= 0) {
+        const selectedNodeIds = new Set(edit.selectedNodes || []);
+        this.activeNodes.forEach((node) => {
+            if (!selectedNodeIds.has(node.index)) {
+                return;
+            }
+            const selectedPos = this.worldToScreen(node.displayX, node.displayY);
+            const pulse = 20 + Math.sin(this.worldTime * 10) * 4;
+            g.lineStyle(3, COLORS.pulse, 0.9);
+            g.strokeCircle(selectedPos.x, selectedPos.y, clamp(pulse * this.cameraRig.zoom, 10, 26));
+        });
+
+        if (edit.selectedNode >= 0 && edit.selectedNodes.length === 1 && edit.selectedLinks.length === 0) {
             const selected = this.activeNodes.find((node) => node.index === edit.selectedNode);
             if (selected) {
                 const selectedPos = this.worldToScreen(selected.displayX, selected.displayY);
-                const pulse = 20 + Math.sin(this.worldTime * 10) * 4;
-                g.lineStyle(3, COLORS.pulse, 0.9);
-                g.strokeCircle(selectedPos.x, selectedPos.y, clamp(pulse * this.cameraRig.zoom, 10, 26));
-                if (edit.active && edit.dragNode < 0) {
+                if (edit.active && edit.dragNode < 0 && !edit.boxSelecting) {
                     const pointerWorld = this.getPointerWorld();
                     const pointerPos = this.worldToScreen(pointerWorld.x, pointerWorld.y);
                     g.lineStyle(2, COLORS.base, 0.55);
@@ -208,10 +228,26 @@ const SceneRenderMixin = {
             }
         }
 
-        if (edit.deleteNode >= 0) {
-            const target = this.activeNodes.find((node) => node.index === edit.deleteNode);
-            if (target) {
-                const targetPos = this.worldToScreen(target.displayX, target.displayY);
+        if (edit.boxSelecting) {
+            const from = this.worldToScreen(edit.boxStartX, edit.boxStartY);
+            const to = this.worldToScreen(edit.boxEndX, edit.boxEndY);
+            const left = Math.min(from.x, to.x);
+            const top = Math.min(from.y, to.y);
+            const widthRect = Math.abs(to.x - from.x);
+            const heightRect = Math.abs(to.y - from.y);
+            g.fillStyle(COLORS.base, 0.14);
+            g.fillRect(left, top, widthRect, heightRect);
+            g.lineStyle(2, COLORS.base, 0.72);
+            g.strokeRect(left, top, widthRect, heightRect);
+        }
+
+        if (edit.deleteType === 'nodes' && edit.deleteNodes.length > 0) {
+            const deleteNodeIds = new Set(edit.deleteNodes);
+            this.activeNodes.forEach((node) => {
+                if (!deleteNodeIds.has(node.index)) {
+                    return;
+                }
+                const targetPos = this.worldToScreen(node.displayX, node.displayY);
                 const radius = clamp(26 * this.cameraRig.zoom, 12, 28);
                 g.lineStyle(4, COLORS.shadow, 0.6);
                 g.strokeCircle(targetPos.x, targetPos.y, radius);
@@ -219,7 +255,7 @@ const SceneRenderMixin = {
                 g.beginPath();
                 g.arc(targetPos.x, targetPos.y, radius, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * edit.deleteProgress, false);
                 g.strokePath();
-            }
+            });
         }
     },
     drawIntentCenter(g) {

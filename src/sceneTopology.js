@@ -501,22 +501,41 @@ const SceneTopologyMixin = {
         this.player.topology.edges.push(this.createTopologyEdgeDescriptor(a, b, kind));
         return true;
     },
-    removeTopologyEdge(edgeId) {
-        const nextEdges = this.player.topology.edges.filter((edge) => edge.id !== edgeId);
-        if (nextEdges.length === this.player.topology.edges.length) {
-            return false;
-        }
-        this.player.topology.edges = nextEdges;
-        return true;
-    },
-    removeNodeFromTopology(index) {
-        if (this.player.chain.length <= 3) {
+    removeTopologyEdges(edgeIds) {
+        const edgeIdSet = new Set((Array.isArray(edgeIds) ? edgeIds : []).filter((edgeId) => typeof edgeId === 'string' && edgeId.length > 0));
+        if (edgeIdSet.size === 0) {
             return false;
         }
 
-        this.player.chain = this.player.chain.filter((entry) => entry !== index);
-        delete this.player.topology.slots[index];
-        this.player.topology.edges = this.player.topology.edges.filter((edge) => edge.a !== index && edge.b !== index);
+        const nextEdges = this.player.topology.edges.filter((edge) => !edgeIdSet.has(edge.id));
+        if (nextEdges.length === this.player.topology.edges.length) {
+            return false;
+        }
+
+        this.player.topology.edges = nextEdges;
+        if (typeof this.syncEditSelectionState === 'function') {
+            this.syncEditSelectionState();
+        }
+        this.rebuildFormation();
+        return true;
+    },
+    removeTopologyEdge(edgeId) {
+        return this.removeTopologyEdges([edgeId]);
+    },
+    removeNodesFromTopology(indices) {
+        const indexSet = new Set((Array.isArray(indices) ? indices : []).filter((index) => this.player.chain.includes(index)));
+        if (indexSet.size === 0) {
+            return false;
+        }
+        if (this.player.chain.length - indexSet.size < 3) {
+            return false;
+        }
+
+        this.player.chain = this.player.chain.filter((entry) => !indexSet.has(entry));
+        indexSet.forEach((index) => {
+            delete this.player.topology.slots[index];
+        });
+        this.player.topology.edges = this.player.topology.edges.filter((edge) => !indexSet.has(edge.a) && !indexSet.has(edge.b));
         this.player.energy = 0;
         this.player.guard = 0;
         this.player.overload = 0;
@@ -524,26 +543,15 @@ const SceneTopologyMixin = {
         this.player.tempoBoost = 0;
         this.player.stability = 0.35;
         this.player.turnAssist = 0;
-        if (this.player.edit.selectedNode === index) {
-            this.player.edit.selectedNode = -1;
-        }
-        if (this.player.edit.hoverNode === index) {
-            this.player.edit.hoverNode = -1;
-        }
-        this.player.edit.hoverLink = '';
-        if (this.player.edit.pointerNode === index) {
-            this.player.edit.pointerNode = -1;
-        }
-        if (this.player.edit.dragNode === index) {
-            this.player.edit.dragNode = -1;
-        }
-        if (this.player.edit.deleteNode === index) {
-            this.player.edit.deleteNode = -1;
-            this.player.edit.deleteProgress = 0;
+        if (typeof this.syncEditSelectionState === 'function') {
+            this.syncEditSelectionState();
         }
         this.rebuildFormation();
         this.resetPulseFlow();
         return true;
+    },
+    removeNodeFromTopology(index) {
+        return this.removeNodesFromTopology([index]);
     },
     getTopologyLinkRigidity(parallelCount) {
         if (parallelCount >= 3) {
