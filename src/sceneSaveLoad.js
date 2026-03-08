@@ -198,6 +198,7 @@ const SceneSaveLoadMixin = {
         this.computeCentroid();
         this.rebalancePulseRunners();
         this.updateDisplay(0);
+        this.lastCompoundTopologyEdgesEnabled = this.isCompoundTopologyEdgesEnabled();
         this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
         this.menuMode = null;
         this.refreshMenuState();

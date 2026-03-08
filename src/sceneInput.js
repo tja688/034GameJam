@@ -206,7 +206,7 @@ const SceneInputMixin = {
                 if (this.addTopologyEdge(sourceNode, pointerNode, 'support')) {
                     this.rebuildFormation();
                 }
-                edit.selectedNode = sourceNode;
+                edit.selectedNode = this.isCompoundTopologyEdgesEnabled() ? sourceNode : -1;
                 return;
             }
 

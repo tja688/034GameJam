@@ -12,10 +12,28 @@ const SceneTopologyMixin = {
     createTopologyEdgeDescriptor(a, b, kind = 'support', id = createTopologyEdgeId()) {
         return { id, a, b, kind };
     },
+    isCompoundTopologyEdgesEnabled() {
+        const T = window.TUNING || {};
+        return T.enableCompoundTopologyEdges ?? false;
+    },
+    collapseCompoundTopologyEdges(edges) {
+        const seenPairs = new Set();
+        return edges.filter((edge) => {
+            const pairKey = makeEdgeKey(edge.a, edge.b);
+            if (seenPairs.has(pairKey)) {
+                return false;
+            }
+            seenPairs.add(pairKey);
+            return true;
+        });
+    },
     normalizeTopologyEdges(edges) {
-        return (Array.isArray(edges) ? edges : [])
+        const normalized = (Array.isArray(edges) ? edges : [])
             .filter((edge) => Number.isInteger(edge?.a) && Number.isInteger(edge?.b) && edge.a !== edge.b)
             .map((edge) => this.createTopologyEdgeDescriptor(edge.a, edge.b, edge.kind || 'support', edge.id || createTopologyEdgeId()));
+        return this.isCompoundTopologyEdgesEnabled()
+            ? normalized
+            : this.collapseCompoundTopologyEdges(normalized);
     },
     isSunflowerTopologyEnabled() {
         const T = window.TUNING || {};
@@ -235,6 +253,11 @@ const SceneTopologyMixin = {
 
         return edges;
     },
+    buildDefaultTopologyEdges(chain, slots) {
+        return this.isCompoundTopologyEdgesEnabled()
+            ? this.buildSeedPolarityEdges(chain)
+            : this.buildPartialMeshEdges(chain, slots);
+    },
     rebuildTopologyFromCurrentChain(preserveExistingSlots = false) {
         const chain = [...this.player.chain];
         const previousSlots = preserveExistingSlots ? (this.player.topology?.slots || {}) : {};
@@ -250,8 +273,27 @@ const SceneTopologyMixin = {
 
         return {
             slots,
-            edges: this.normalizeTopologyEdges(this.buildSeedPolarityEdges(chain))
+            edges: this.normalizeTopologyEdges(this.buildDefaultTopologyEdges(chain, slots))
         };
+    },
+    syncCompoundTopologyEdgesMode() {
+        const enabled = this.isCompoundTopologyEdgesEnabled();
+        if (this.lastCompoundTopologyEdgesEnabled === enabled) {
+            return;
+        }
+
+        this.lastCompoundTopologyEdgesEnabled = enabled;
+        if (!this.player?.topology || enabled) {
+            return;
+        }
+
+        const collapsedEdges = this.normalizeTopologyEdges(this.player.topology.edges);
+        if (collapsedEdges.length === this.player.topology.edges.length) {
+            return;
+        }
+
+        this.player.topology.edges = collapsedEdges;
+        this.rebuildFormation();
     },
     getExpansionDirection() {
         const pointerWorld = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
@@ -451,6 +493,9 @@ const SceneTopologyMixin = {
     },
     addTopologyEdge(a, b, kind = 'support') {
         if (a === b) {
+            return false;
+        }
+        if (!this.isCompoundTopologyEdgesEnabled() && this.getTopologyEdgeCount(a, b) > 0) {
             return false;
         }
         this.player.topology.edges.push(this.createTopologyEdgeDescriptor(a, b, kind));

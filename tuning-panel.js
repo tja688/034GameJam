@@ -137,6 +137,7 @@ window.TUNING = {
     plantBladeAimBias: 0.38,
 
     // ─── 拓扑槽位 ────────────────────────────────
+    enableCompoundTopologyEdges: false,
     enableSunflowerTopologySlots: false,
     slotSpacing: 102,
     slotYCompression: 0.84,
@@ -358,6 +359,7 @@ const TUNING_DEFS = [
 
     // ── 拓扑 ──
     { section: '🌐 拓扑与槽位', sectionDesc: '控制结构生长时的空间基准；旧黄金角槽位已降级为实验开关' },
+    { key: 'enableCompoundTopologyEdges', label: '复合连线（关=强制单线）', desc: '默认关闭。开启后允许同一对节点保留多根连线，并对新生成结构启用复合连线种子；关闭后回到旧单线实现，已有复合连线会直接压成一根', type: 'toggle' },
     { key: 'enableSunflowerTopologySlots', label: '旧向日葵槽位', desc: '旧范式遗留开关：使用黄金角向日葵分布生成默认槽位。当前默认关闭，优先保留现有软体结构的局部轮廓', type: 'toggle' },
     { key: 'slotSpacing', label: '槽位间距', desc: '节点排布的基准间距 (px)——影响整体密度', min: 40, max: 250, step: 2 },
     { key: 'slotYCompression', label: 'Y 轴压缩', desc: '槽位在 Y 方向的压缩比 (0.84=稍扁)', min: 0.3, max: 1.5, step: 0.02 },
