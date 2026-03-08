@@ -57,7 +57,8 @@ const SceneTopologyMixin = {
     },
     getNodeEffectivePolarity(node) {
         if (this.isExperimentalRedTopologyEnabled()) {
-            return this.isExperimentalRedNode(node) ? 'red-structure' : 'base';
+            const basePolarity = node?.polarity || this.poolNodes?.[node?.index]?.polarity || 'base';
+            return this.isExperimentalRedNode(node) ? `red-${basePolarity}` : basePolarity;
         }
         return node?.polarity || 'base';
     },
@@ -635,6 +636,8 @@ const SceneTopologyMixin = {
                 y: lerp(slot.y, local.y, weight)
             };
         });
+        this.syncActiveNodeLocalFromSlots(groupNodes);
+        this.markRedClusterRestDirty(groupId);
         return true;
     },
     refreshExperimentalRedLinkRuntime(groupId = 0) {
@@ -1004,8 +1007,17 @@ const SceneTopologyMixin = {
         return error;
     },
     solveLinkConstraint(link, correctionRate, draggedIndex = -1) {
+        if (link?.clusterInternal) {
+            return;
+        }
         const first = this.activeNodes[link.a];
         const second = this.activeNodes[link.b];
+        if (!first || !second) {
+            return;
+        }
+        if (this.isNodeDrivenByRedCluster(first) || this.isNodeDrivenByRedCluster(second)) {
+            return;
+        }
         const dx = second.x - first.x;
         const dy = second.y - first.y;
         const distance = Math.hypot(dx, dy) || 0.0001;

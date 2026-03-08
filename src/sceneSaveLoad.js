@@ -213,6 +213,7 @@ const SceneSaveLoadMixin = {
             node.attackDamage = getFiniteNumber(savedNode.attackDamage, node.attackDamage);
         });
 
+        this.syncRedClusterState(true);
         this.computeCentroid();
         this.rebalancePulseRunners();
         this.updateDisplay(0);

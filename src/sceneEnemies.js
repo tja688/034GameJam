@@ -245,8 +245,10 @@ const SceneEnemiesMixin = {
                 const ny = dy / distance;
                 enemy.x += nx * overlap * 0.72;
                 enemy.y += ny * overlap * 0.72;
-                node.x -= nx * overlap * 0.22;
-                node.y -= ny * overlap * 0.22;
+                if (!this.applyRedClusterContactImpulse(node, nx, ny, overlap, 0.6)) {
+                    node.x -= nx * overlap * 0.22;
+                    node.y -= ny * overlap * 0.22;
+                }
 
                 if (node.attackTimer > 0) {
                     this.damageEnemy(enemy, node.attackDamage, 170, node.attackDirX || nx, node.attackDirY || ny, node.color);

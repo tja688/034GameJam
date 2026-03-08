@@ -1,4 +1,4 @@
-Object.assign(CoreDemoScene.prototype, SceneUiMixin, SceneInitMixin, SceneSaveLoadMixin, SceneTopologyMixin, SceneInputMixin, SceneMovementMixin, SceneCombatMixin, SceneEnemiesMixin, SceneRenderMixin);
+Object.assign(CoreDemoScene.prototype, SceneUiMixin, SceneInitMixin, SceneSaveLoadMixin, SceneTopologyMixin, SceneRedStructureMixin, SceneInputMixin, SceneMovementMixin, SceneCombatMixin, SceneEnemiesMixin, SceneRenderMixin);
 const config = {
     type: Phaser.AUTO,
     backgroundColor: '#071017',

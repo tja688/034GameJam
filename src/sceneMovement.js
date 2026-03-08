@@ -87,9 +87,7 @@ const SceneMovementMixin = {
 
             const first = this.activeNodes[a];
             const second = this.activeNodes[b];
-            const samePolarity = this.isExperimentalRedTopologyEnabled()
-                ? !edge.experimentalRed
-                : this.getNodeEffectivePolarity(first) === this.getNodeEffectivePolarity(second);
+            const samePolarity = this.getNodeEffectivePolarity(first) === this.getNodeEffectivePolarity(second);
             const slotA = slots[edge.a];
             const slotB = slots[edge.b];
             const distance = Math.hypot(slotA.x - slotB.x, slotA.y - slotB.y);
@@ -134,7 +132,8 @@ const SceneMovementMixin = {
                 parallelIndex,
                 samePolarity,
                 isExperimentalRed: !!edge.experimentalRed,
-                structureGroupId: Number(edge.structureGroupId) || 0
+                structureGroupId: Number(edge.structureGroupId) || 0,
+                clusterInternal: !!edge.experimentalRed && (Number(edge.structureGroupId) || 0) > 0
             });
         });
 
@@ -142,7 +141,7 @@ const SceneMovementMixin = {
             node.degree = neighborSetByIndex.get(node.index)?.size || 0;
         });
 
-        this.refreshExperimentalRedLinkRuntime();
+        this.syncRedClusterState(forceReset);
         this.computeCentroid();
     },
     computeCentroid() {
@@ -223,31 +222,31 @@ const SceneMovementMixin = {
     },
     getEdgeModifier(chainIndex) {
         const current = this.activeNodes[clamp(chainIndex, 0, Math.max(0, this.activeNodes.length - 1))];
+        const previous = chainIndex > 0 ? this.activeNodes[chainIndex - 1] : null;
+        const baseModifier = (() => {
+            if (chainIndex <= 0 || !previous || !current) {
+                return { kind: 'restart', reach: 1, stance: 1, stability: 1 };
+            }
+            if (previous.polarity === current.polarity) {
+                return { kind: 'steady', reach: 0.94, stance: 1.16, stability: 1.18 };
+            }
+            return { kind: 'inverse', reach: 1.18, stance: 0.84, stability: 0.82 };
+        })();
+
         if (this.isExperimentalRedTopologyEnabled()) {
             if (current && this.isExperimentalRedNode(current)) {
                 const T = window.TUNING || {};
                 return {
                     kind: 'red',
-                    reach: T.redPulseReachScale ?? 1,
-                    stance: T.redPulseStanceScale ?? 1,
-                    stability: T.redPulseStabilityScale ?? 1
+                    semanticKind: baseModifier.kind,
+                    reach: baseModifier.reach * (T.redPulseReachScale ?? 1),
+                    stance: baseModifier.stance * (T.redPulseStanceScale ?? 1),
+                    stability: baseModifier.stability * (T.redPulseStabilityScale ?? 1)
                 };
             }
-            if (chainIndex <= 0) {
-                return { kind: 'restart', reach: 1, stance: 1, stability: 1 };
-            }
-            return { kind: 'steady', reach: 1, stance: 1, stability: 1 };
+            return baseModifier;
         }
-
-        if (chainIndex <= 0) {
-            return { kind: 'restart', reach: 1, stance: 1, stability: 1 };
-        }
-
-        const previous = this.activeNodes[chainIndex - 1];
-        if (previous.polarity === current.polarity) {
-            return { kind: 'steady', reach: 0.94, stance: 1.16, stability: 1.18 };
-        }
-        return { kind: 'inverse', reach: 1.18, stance: 0.84, stability: 0.82 };
+        return baseModifier;
     },
     getPulseInterval(current, next, loopReset) {
         let interval = loopReset ? 0.36 : 0.22;
@@ -356,7 +355,7 @@ const SceneMovementMixin = {
             activity: hasMoveInput ? 1 : 0.4
         };
     },
-    plantNode(node, profile) {
+    buildPlantState(node, profile) {
         const driveIntent = this.resolveNodeDriveIntent(node);
         let leadX = driveIntent.flow.x * (profile.flowBias ?? 0.55) + driveIntent.focus.x * (profile.aimBias ?? 0.45);
         let leadY = driveIntent.flow.y * (profile.flowBias ?? 0.55) + driveIntent.focus.y * (profile.aimBias ?? 0.45);
@@ -386,100 +385,49 @@ const SceneMovementMixin = {
         const reachJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.8 : 1.0;
         const forwardReach = (profile.forwardBase + span * spanFactor + scaleBoost + frontBoost - rearDrag) * profile.reachScale * reachJitter;
         const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias))) * (1 + driveIntent.aggression * 0.1) * reachJitter;
-        
-        node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
-        node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
-        node.pulseGlow = 1;
-        if (this.nodeHasMoveAbility(node)) {
-            const stanceJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.5 : 1.0;
-            node.anchorStrength = profile.strength * (1 + driveIntent.aggression * 0.52) * driveIntent.activity;
-            node.stanceTimer = profile.stance * lerp(1, 0.84, driveIntent.aggression) * stanceJitter;
-            node.anchored = driveIntent.activity > 0.05;
-            if (!node.anchored) {
-                node.anchorStrength = 0;
-                node.stanceTimer = 0;
-            }
-            return;
-        }
 
-        node.anchorStrength = 0;
-        node.stanceTimer = 0;
-        node.anchored = false;
+        const stanceJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.5 : 1.0;
+        const activity = this.nodeHasMoveAbility(node) ? driveIntent.activity : 0;
+        const anchorStrength = activity > 0.05
+            ? profile.strength * (1 + driveIntent.aggression * 0.52) * activity
+            : 0;
+        const stance = activity > 0.05
+            ? profile.stance * lerp(1, 0.84, driveIntent.aggression) * stanceJitter
+            : 0;
+
+        return {
+            targetX: this.player.centroidX + lead.x * forwardReach + right.x * sideReach,
+            targetY: this.player.centroidY + lead.y * forwardReach + right.y * sideReach,
+            leadX: lead.x,
+            leadY: lead.y,
+            reachScale: profile.reachScale ?? 1,
+            anchorStrength,
+            stance,
+            activity
+        };
     },
-    applyExperimentalRedPulseDrive(node, edge) {
-        if (!this.isExperimentalRedTopologyEnabled() || !this.isExperimentalRedNode(node)) {
-            return false;
+    plantNode(node, profile) {
+        const plantState = this.buildPlantState(node, profile);
+        node.anchorX = plantState.targetX;
+        node.anchorY = plantState.targetY;
+        node.pulseGlow = 1;
+
+        if (this.isExperimentalRedTopologyEnabled() && this.isExperimentalRedNode(node)) {
+            if (this.applyExperimentalRedPulseDrive(node, null, plantState)) {
+                return;
+            }
         }
 
-        const groupId = this.getExperimentalRedGroupId(node);
-        const groupNodes = this.getExperimentalRedNodesByGroup(groupId, true);
-        if (groupId <= 0 || groupNodes.length === 0) {
-            return false;
+        node.anchorStrength = plantState.anchorStrength;
+        node.stanceTimer = plantState.stance;
+        node.anchored = plantState.activity > 0.05;
+        if (!node.anchored) {
+            node.anchorStrength = 0;
+            node.stanceTimer = 0;
         }
-
-        const T = window.TUNING || {};
-        const driveIntent = this.resolveNodeDriveIntent(node);
-        const drive = normalize(
-            driveIntent.flow.x * (T.redPulseFlowWeight ?? 1) + driveIntent.focus.x * (T.redPulseFocusWeight ?? 0.18),
-            driveIntent.flow.y * (T.redPulseFlowWeight ?? 1) + driveIntent.focus.y * (T.redPulseFocusWeight ?? 0.18),
-            driveIntent.flow.x,
-            driveIntent.flow.y
-        );
-        const impulse = (T.redPulseImpulse ?? 160) * (edge?.reach ?? 1);
-        const spread = Math.max(1, T.redPulseSpread ?? 180);
-        const leaderBoost = T.redPulseLeadBoost ?? 1.4;
-        const falloffSoftness = clamp(T.redPulseFalloffSoftness ?? 0.45, 0, 1);
-
-        // ── 能量预算：限制每帧注入到红结构的总脉冲量 ──
-        const maxImpulseBudget = T.redPulseMaxBudget ?? 600;
-        if (!this._redPulseFrameBudget) {
-            this._redPulseFrameBudget = {};
-        }
-        const usedBudget = this._redPulseFrameBudget[groupId] || 0;
-        const remainingBudget = Math.max(0, maxImpulseBudget - usedBudget);
-        if (remainingBudget <= 0) {
-            // 本帧该结构群的脉冲预算已耗尽
-            this.player.stability = Math.min(1.5, this.player.stability + (T.redPulseStabilityGain ?? 0.04));
-            this.createRing(node.x, node.y, T.redPulseRingRadius ?? 38, COLORS.inverse, 0.18, 2);
-            return true;
-        }
-
-        const centroid = groupNodes.reduce((acc, member) => {
-            acc.x += member.x;
-            acc.y += member.y;
-            return acc;
-        }, { x: 0, y: 0 });
-        centroid.x /= groupNodes.length;
-        centroid.y /= groupNodes.length;
-
-        // ── 检查当前红结构群速度，高速时衰减脉冲 ──
-        const maxGroupSpeed = T.redPulseSpeedCap ?? 500;
-        let groupMaxSpeed = 0;
-        groupNodes.forEach((member) => {
-            groupMaxSpeed = Math.max(groupMaxSpeed, Math.hypot(member.vx || 0, member.vy || 0));
-        });
-        const speedAttenuation = clamp(1 - (groupMaxSpeed / maxGroupSpeed), 0.05, 1);
-
-        let totalInjected = 0;
-        groupNodes.forEach((member) => {
-            const distance = Math.hypot(member.x - node.x, member.y - node.y);
-            const falloff = 1 - clamp(distance / spread, 0, 1) * falloffSoftness;
-            const memberBoost = member.index === node.index ? leaderBoost : 1;
-            const velocityDelta = impulse * falloff * memberBoost * speedAttenuation / Math.max(member.mass, 0.1);
-            const budgetLimited = Math.min(velocityDelta, Math.max(0, remainingBudget - totalInjected));
-            totalInjected += budgetLimited;
-            member.vx += drive.x * budgetLimited;
-            member.vy += drive.y * budgetLimited;
-            member.anchored = false;
-            member.anchorStrength = 0;
-            member.stanceTimer = 0;
-            member.pulseGlow = Math.max(member.pulseGlow || 0, member.index === node.index ? 1 : 0.6);
-        });
-        this._redPulseFrameBudget[groupId] = usedBudget + totalInjected;
-
-        this.player.stability = Math.min(1.5, this.player.stability + (T.redPulseStabilityGain ?? 0.04));
-        this.createRing(node.x, node.y, T.redPulseRingRadius ?? 38, COLORS.inverse, 0.18, 2);
-        return true;
+    },
+    applyExperimentalRedPulseDrive(node, edge, plantState = null) {
+        return SceneRedStructureMixin.applyExperimentalRedPulseDrive.call(this, node, edge, plantState);
     },
     triggerNode(node, edge) {
         if (this.nodeIsFunctionSuppressed(node)) {
@@ -489,13 +437,10 @@ const SceneMovementMixin = {
             return;
         }
 
-        if (this.applyExperimentalRedPulseDrive(node, edge)) {
-            return;
-        }
-
-        if (edge.kind === 'inverse') {
+        const semanticKind = edge.semanticKind || edge.kind;
+        if (semanticKind === 'inverse') {
             this.player.agitation = clamp(this.player.agitation + 0.22, 0, 2);
-        } else if (edge.kind === 'steady') {
+        } else if (semanticKind === 'steady') {
             this.player.stability = Math.min(1.3, this.player.stability + 0.12);
         }
 
@@ -536,9 +481,7 @@ const SceneMovementMixin = {
     },
     updateFormation(simDt) {
         const T = window.TUNING || {};
-        // 每帧重置红脉冲能量预算
         this._redPulseFrameBudget = {};
-
         const draggedTarget = this.player.edit.active && this.player.edit.dragNode >= 0
             ? {
                 index: this.player.edit.dragNode,
@@ -547,20 +490,30 @@ const SceneMovementMixin = {
             }
             : null;
 
+        if (this.redClustersRestDirty) {
+            this.syncRedClusterState(false);
+        }
+        const draggedCluster = draggedTarget ? this.getRedClusterForNode(draggedTarget.index) : null;
         this.computeCentroid();
-        this.refreshExperimentalRedLinkRuntime();
         const driveSpan = this.getIntentDriveSpan();
 
         this.activeNodes.forEach((node) => {
+            const cluster = this.getRedClusterForNode(node);
             node.fx = 0;
             node.fy = 0;
-            if (draggedTarget && node.index === draggedTarget.index) {
+            if (draggedTarget && node.index === draggedTarget.index && !cluster) {
                 node.x = draggedTarget.x;
                 node.y = draggedTarget.y;
                 node.vx = 0;
                 node.vy = 0;
                 node.anchored = false;
                 node.anchorStrength = 0;
+            }
+            if (cluster) {
+                node.anchored = false;
+                node.anchorStrength = 0;
+                node.stanceTimer = 0;
+                return;
             }
             if (!this.nodeHasMoveAbility(node) && node.anchored) {
                 node.anchored = false;
@@ -577,9 +530,9 @@ const SceneMovementMixin = {
         });
 
         this.activeNodes.forEach((node) => {
-            const canDrive = this.nodeHasMoveAbility(node);
+            const cluster = this.getRedClusterForNode(node);
+            const canDrive = !cluster && this.nodeHasMoveAbility(node);
             const driveIntent = this.resolveNodeDriveIntent(node);
-            // ── 编队拉力 ──
             if ((T.enableFormationPull ?? true) && canDrive) {
                 const nominal = this.computeNominalOffset(node);
                 const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
@@ -594,7 +547,6 @@ const SceneMovementMixin = {
                 node.fy += toNominalY * formationPull;
             }
 
-            // ── 漂移力 ──
             if ((T.enableDrift ?? true) && !node.anchored && canDrive) {
                 const drive = node.role === 'blade' || node.role === 'dart'
                     ? (T.driftAttack ?? 54)
@@ -609,7 +561,6 @@ const SceneMovementMixin = {
                 node.fy += driveIntent.flow.y * drive * driftScale;
             }
 
-            // ── 核心收束力 ──
             if ((T.enableCorePull ?? true) && canDrive && (node.role === 'source' || node.role === 'compressor')) {
                 const pullToCoreX = this.player.centroidX - node.x;
                 const pullToCoreY = this.player.centroidY - node.y;
@@ -618,28 +569,36 @@ const SceneMovementMixin = {
                 node.fy += pullToCoreY * coreStr;
             }
 
-            // ── 锚定力 ──
             if ((T.enableAnchor ?? true) && node.anchored && canDrive) {
                 node.fx += (node.anchorX - node.x) * node.anchorStrength;
                 node.fy += (node.anchorY - node.y) * node.anchorStrength;
             }
 
-            if (draggedTarget && node.index === draggedTarget.index) {
+            if (draggedTarget && node.index === draggedTarget.index && !cluster) {
                 node.fx = 0;
                 node.fy = 0;
             }
         });
 
-        // ── 弹簧力 ──
         if (T.enableSpring ?? true) {
             const sK = T.springK ?? 260;
             const sD = T.springDamping ?? 42;
             this.links.forEach((link) => {
                 const first = this.activeNodes[link.a];
                 const second = this.activeNodes[link.b];
+                if (!first || !second) {
+                    return;
+                }
                 const dx = second.x - first.x;
                 const dy = second.y - first.y;
                 const distance = Math.hypot(dx, dy) || 0.0001;
+                if (link.clusterInternal) {
+                    const stretch = this.getLinkConstraintError(distance, link);
+                    link.tension = Math.abs(stretch) / Math.max(link.rest, 0.0001);
+                    first.tension = Math.max(first.tension * 0.82, link.tension);
+                    second.tension = Math.max(second.tension * 0.82, link.tension);
+                    return;
+                }
                 const dirX = dx / distance;
                 const dirY = dy / distance;
                 const stretch = this.getLinkConstraintError(distance, link);
@@ -655,7 +614,6 @@ const SceneMovementMixin = {
             });
         }
 
-        // ── 排斥力 ──
         if (T.enableRepulsion ?? true) {
             const repMinDist = T.repulsionMinDist ?? 72;
             const repDegMax = T.repulsionDegreeMax ?? 18;
@@ -665,6 +623,11 @@ const SceneMovementMixin = {
                 for (let j = i + 1; j < this.activeNodes.length; j += 1) {
                     const first = this.activeNodes[i];
                     const second = this.activeNodes[j];
+                    const firstCluster = this.getRedClusterForNode(first);
+                    const secondCluster = this.getRedClusterForNode(second);
+                    if (firstCluster && firstCluster === secondCluster) {
+                        continue;
+                    }
                     const dx = second.x - first.x;
                     const dy = second.y - first.y;
                     const distance = Math.hypot(dx, dy) || 0.0001;
@@ -683,22 +646,21 @@ const SceneMovementMixin = {
             }
         }
 
-        // ── 速度积分 + 阻力 ──
+        this.collectRedClusterNodeForces();
+
         const dragAnch = T.dragAnchored ?? 7.8;
         const dragFBase = T.dragFreeBase ?? 5.6;
         const dragStabB = T.dragStabilityBonus ?? 1.1;
         const tDecay = T.tensionDecay ?? 0.85;
-        const redExtraDrag = T.redStructureExtraDrag ?? 2.0;
         const maxNodeSpeed = T.maxNodeSpeed ?? 800;
         this.activeNodes.forEach((node) => {
-            let drag = node.anchored ? dragAnch : dragFBase + this.player.stability * dragStabB;
-            // 红节点额外阻力，帮助结构收敛
-            if (this.isExperimentalRedTopologyEnabled() && this.isExperimentalRedNode(node)) {
-                drag += redExtraDrag;
+            if (this.getRedClusterForNode(node)) {
+                node.tension *= tDecay;
+                return;
             }
+            const drag = node.anchored ? dragAnch : dragFBase + this.player.stability * dragStabB;
             node.vx = (node.vx + (node.fx / node.mass) * simDt) * Math.exp(-drag * simDt);
             node.vy = (node.vy + (node.fy / node.mass) * simDt) * Math.exp(-drag * simDt);
-            // ── 速度限幅 ──
             const speed = Math.hypot(node.vx, node.vy);
             if (speed > maxNodeSpeed) {
                 const scale = maxNodeSpeed / speed;
@@ -710,15 +672,12 @@ const SceneMovementMixin = {
             node.tension *= tDecay;
         });
 
-        // ── PBD 位置校正（含速度校正） ──
         if (T.enablePBD ?? true) {
             const pbdIter = T.pbdIterations ?? 3;
             const pbdRate = T.pbdCorrectionRate ?? 0.18;
             const rigidPasses = T.pbdRigidPasses ?? 2;
-            const draggedIndex = draggedTarget ? draggedTarget.index : -1;
+            const draggedIndex = draggedCluster ? -1 : (draggedTarget ? draggedTarget.index : -1);
             const pbdVelCorrection = T.pbdVelocityCorrection ?? 0.6;
-
-            // 保存 PBD 前的位置，用于计算速度校正
             const prePbdPositions = this.activeNodes.map((node) => ({ x: node.x, y: node.y }));
 
             for (let iteration = 0; iteration < pbdIter; iteration += 1) {
@@ -735,19 +694,22 @@ const SceneMovementMixin = {
                 });
             }
 
-            // ── PBD 速度校正：让速度与位置校正保持一致 ──
             if (pbdVelCorrection > 0 && simDt > 0.0001) {
                 this.activeNodes.forEach((node, i) => {
+                    if (this.getRedClusterForNode(node)) {
+                        return;
+                    }
                     const pre = prePbdPositions[i];
                     const posDeltaX = node.x - pre.x;
                     const posDeltaY = node.y - pre.y;
-                    // 将位置校正量转换为速度校正
-                    node.vx += (posDeltaX / simDt) * pbdVelCorrection * simDt;
-                    node.vy += (posDeltaY / simDt) * pbdVelCorrection * simDt;
+                    node.vx += (posDeltaX / simDt) * pbdVelCorrection;
+                    node.vy += (posDeltaY / simDt) * pbdVelCorrection;
                 });
 
-                // PBD 后再次限幅
                 this.activeNodes.forEach((node) => {
+                    if (this.getRedClusterForNode(node)) {
+                        return;
+                    }
                     const speed = Math.hypot(node.vx, node.vy);
                     if (speed > maxNodeSpeed) {
                         const scale = maxNodeSpeed / speed;
@@ -758,23 +720,10 @@ const SceneMovementMixin = {
             }
         }
 
-        if (draggedTarget && this.isExperimentalRedTopologyEnabled() && (T.redDragShapeEnabled ?? true)) {
-            const groupId = this.getExperimentalRedGroupId(draggedTarget.index);
-            if (groupId > 0) {
-                const groupLinks = this.links.filter((link) => link.isExperimentalRed && link.structureGroupId === groupId);
-                const dragRate = T.redDragPbdRate ?? Math.max(T.pbdCorrectionRate ?? 0.18, 0.28);
-                const dragPasses = Math.max(0, Math.round(T.redDragPbdPasses ?? 4));
-                for (let pass = 0; pass < dragPasses; pass += 1) {
-                    groupLinks.forEach((link) => {
-                        this.solveLinkConstraint(link, dragRate, draggedTarget.index);
-                    });
-                }
-                this.bakeExperimentalGroupShape(groupId, draggedTarget.index, T.redDragShapeBlend ?? 0.34);
-                this.refreshExperimentalRedLinkRuntime(groupId);
-            }
-        }
+        this.integrateRedClusters(simDt, draggedCluster ? draggedTarget : null);
+        this.syncRedClusterNodesToTargets(simDt);
 
-        if (draggedTarget) {
+        if (draggedTarget && !draggedCluster) {
             const draggedNode = this.activeNodes.find((node) => node.index === draggedTarget.index);
             if (draggedNode) {
                 draggedNode.x = draggedTarget.x;

@@ -144,6 +144,7 @@ const SceneInputMixin = {
         this.player.edit.hoverLink = '';
         this.syncExperimentalRedTopology(false);
         this.rebuildFormation(false);
+        this.syncRedClusterState(true);
         if (typeof this.syncLegacyPulseState === 'function') {
             this.syncLegacyPulseState();
         }
@@ -400,8 +401,16 @@ const SceneInputMixin = {
         edit.hoverLink = hoverLink ? hoverLink.key : '';
     },
     setNodeSlotFromWorld(index, worldX, worldY) {
+        const groupId = this.getExperimentalRedGroupId(index);
+        if (groupId > 0 && this.isExperimentalRedTopologyEnabled() && !(window.TUNING.redDragShapeEnabled ?? true)) {
+            return;
+        }
         const local = rotateLocal(worldX - this.player.centroidX, worldY - this.player.centroidY, -this.player.heading);
         this.player.topology.slots[index] = { x: local.x, y: local.y };
+        this.syncActiveNodeLocalFromSlots([index]);
+        if (groupId > 0) {
+            this.markRedClusterRestDirty(groupId);
+        }
     },
     readIntent() {
         const moveX = this.player.edit.active ? 0 : (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
@@ -705,12 +714,17 @@ const SceneInputMixin = {
 
             const dragged = this.activeNodes.find((node) => node.index === edit.dragNode);
             if (dragged) {
-                dragged.x = edit.dragWorldX;
-                dragged.y = edit.dragWorldY;
-                dragged.displayX = edit.dragWorldX;
-                dragged.displayY = edit.dragWorldY;
-                dragged.vx = 0;
-                dragged.vy = 0;
+                if (this.getRedClusterForNode(dragged)) {
+                    dragged.displayX = edit.dragWorldX;
+                    dragged.displayY = edit.dragWorldY;
+                } else {
+                    dragged.x = edit.dragWorldX;
+                    dragged.y = edit.dragWorldY;
+                    dragged.displayX = edit.dragWorldX;
+                    dragged.displayY = edit.dragWorldY;
+                    dragged.vx = 0;
+                    dragged.vy = 0;
+                }
             }
         }
 

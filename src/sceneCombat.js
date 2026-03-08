@@ -270,8 +270,10 @@ const SceneCombatMixin = {
         }
 
         // // this.player.health -= remaining; // Infinite health currently enabled // infinite health
-        node.vx -= dirX * push * 0.22;
-        node.vy -= dirY * push * 0.22;
+        if (!this.applyRedClusterContactImpulse(node, dirX, dirY, push, 0.22)) {
+            node.vx -= dirX * push * 0.22;
+            node.vy -= dirY * push * 0.22;
+        }
         this.createRing(node.x, node.y, 34, COLORS.health, 0.2, 3);
 
         if (this.player.health <= 0) {

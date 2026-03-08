@@ -223,6 +223,9 @@ const SceneInitMixin = {
             maxRedLinkError: 0,
             maxRedLinkErrorRatio: 0,
             maxRedRadius: 0,
+            maxClusterSpeed: 0,
+            maxClusterOmega: 0,
+            maxClusterPoseOffset: 0,
             recent: []
         };
     },
@@ -258,6 +261,9 @@ const SceneInitMixin = {
         let maxRedLinkError = 0;
         let maxRedLinkErrorRatio = 0;
         let maxRedRadius = 0;
+        let maxClusterSpeed = 0;
+        let maxClusterOmega = 0;
+        let maxClusterPoseOffset = 0;
         let nonFinite = false;
         const groups = new Map();
 
@@ -310,28 +316,44 @@ const SceneInitMixin = {
             });
         });
 
+        (this.redClusters || new Map()).forEach((cluster) => {
+            maxClusterSpeed = Math.max(maxClusterSpeed, Math.hypot(cluster.vx || 0, cluster.vy || 0));
+            maxClusterOmega = Math.max(maxClusterOmega, Math.abs(cluster.omega || 0));
+            maxClusterPoseOffset = Math.max(maxClusterPoseOffset, cluster.poseOffsetMax || 0);
+        });
+
         probe.frames += 1;
         probe.current = {
+            redClusterCount: (this.redClusters || new Map()).size,
             redNodeCount: redNodes.length,
             redLinkCount: redLinks.length,
             maxRedSpeed,
             maxAbsCoord,
             maxRedLinkError,
             maxRedLinkErrorRatio,
-            maxRedRadius
+            maxRedRadius,
+            maxClusterSpeed,
+            maxClusterOmega,
+            maxClusterPoseOffset
         };
         probe.maxRedSpeed = Math.max(probe.maxRedSpeed || 0, maxRedSpeed);
         probe.maxAbsCoord = Math.max(probe.maxAbsCoord || 0, maxAbsCoord);
         probe.maxRedLinkError = Math.max(probe.maxRedLinkError || 0, maxRedLinkError);
         probe.maxRedLinkErrorRatio = Math.max(probe.maxRedLinkErrorRatio || 0, maxRedLinkErrorRatio);
         probe.maxRedRadius = Math.max(probe.maxRedRadius || 0, maxRedRadius);
+        probe.maxClusterSpeed = Math.max(probe.maxClusterSpeed || 0, maxClusterSpeed);
+        probe.maxClusterOmega = Math.max(probe.maxClusterOmega || 0, maxClusterOmega);
+        probe.maxClusterPoseOffset = Math.max(probe.maxClusterPoseOffset || 0, maxClusterPoseOffset);
         probe.recent.push({
             frame: probe.frames,
             speed: maxRedSpeed,
             coord: maxAbsCoord,
             error: maxRedLinkError,
             ratio: maxRedLinkErrorRatio,
-            radius: maxRedRadius
+            radius: maxRedRadius,
+            clusterSpeed: maxClusterSpeed,
+            clusterOmega: maxClusterOmega,
+            clusterPoseOffset: maxClusterPoseOffset
         });
         if (probe.recent.length > 180) {
             probe.recent.splice(0, probe.recent.length - 180);
@@ -348,6 +370,8 @@ const SceneInitMixin = {
             reason = 'link-error-ratio-overflow';
         } else if (maxRedRadius > 6000 && redNodes.length > 0 && redNodes.length <= 8) {
             reason = 'group-radius-overflow';
+        } else if (maxClusterPoseOffset > 900) {
+            reason = 'cluster-pose-overflow';
         }
 
         if (reason && !probe.exploded) {
@@ -429,6 +453,9 @@ const SceneInitMixin = {
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
         this.links = [];
+        this.redClusters = new Map();
+        this.redNodeToCluster = new Map();
+        this.clearRedClusterRestDirty();
         this.resetRedDebugProbe();
         this.player.topology.edges = this.normalizeTopologyEdges(this.buildExperimentalRedEdges(this.player.topology.edges));
         this.rebuildFormation(true);
