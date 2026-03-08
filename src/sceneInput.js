@@ -18,10 +18,38 @@ const SceneInputMixin = {
     captureEditSnapshot() {
         return {
             chain: [...this.player.chain],
+            centroidX: this.player.centroidX,
+            centroidY: this.player.centroidY,
             topology: {
                 slots: cloneData(this.player.topology?.slots || {}),
                 edges: cloneData(this.player.topology?.edges || [])
-            }
+            },
+            activeNodes: cloneData((this.activeNodes || []).map((node) => ({
+                index: node.index,
+                x: node.x,
+                y: node.y,
+                vx: node.vx,
+                vy: node.vy,
+                anchorX: node.anchorX,
+                anchorY: node.anchorY,
+                anchored: node.anchored,
+                stanceTimer: node.stanceTimer,
+                anchorStrength: node.anchorStrength,
+                pulseGlow: node.pulseGlow,
+                tension: node.tension,
+                displayX: node.displayX,
+                displayY: node.displayY,
+                displayAnchorX: node.displayAnchorX,
+                displayAnchorY: node.displayAnchorY,
+                attackTimer: node.attackTimer,
+                attackDirX: node.attackDirX,
+                attackDirY: node.attackDirY,
+                attackDamage: node.attackDamage
+            }))),
+            pulseRunners: cloneData(this.player.pulseRunners || []),
+            pulseCursor: this.player.pulseCursor,
+            pulseTimer: this.player.pulseTimer,
+            pulsePath: cloneData(this.player.pulsePath)
         };
     },
     getEditSnapshotSignature(snapshot) {
@@ -78,9 +106,19 @@ const SceneInputMixin = {
         }
 
         this.player.chain = [...snapshot.chain];
+        this.player.centroidX = getFiniteNumber(snapshot.centroidX, this.player.centroidX);
+        this.player.centroidY = getFiniteNumber(snapshot.centroidY, this.player.centroidY);
         this.player.topology = {
             slots: cloneData(snapshot.topology.slots || {}),
             edges: this.normalizeTopologyEdges(cloneData(snapshot.topology.edges || []))
+        };
+        this.activeNodes = cloneData(Array.isArray(snapshot.activeNodes) ? snapshot.activeNodes : []);
+        this.player.pulseRunners = cloneData(snapshot.pulseRunners || []);
+        this.player.pulseCursor = getFiniteNumber(snapshot.pulseCursor, this.player.pulseCursor);
+        this.player.pulseTimer = getFiniteNumber(snapshot.pulseTimer, this.player.pulseTimer);
+        this.player.pulsePath = {
+            ...this.createDefaultPulsePath(),
+            ...(cloneData(snapshot.pulsePath) || {})
         };
         this.clearEditDeleteState();
         this.clearEditSelection();
@@ -90,8 +128,10 @@ const SceneInputMixin = {
         this.player.edit.dragNode = -1;
         this.player.edit.hoverNode = -1;
         this.player.edit.hoverLink = '';
-        this.rebuildFormation(true);
-        this.resetPulseFlow();
+        this.rebuildFormation(false);
+        if (typeof this.syncLegacyPulseState === 'function') {
+            this.syncLegacyPulseState();
+        }
         return true;
     },
     undoLastEditAction() {
