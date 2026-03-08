@@ -318,30 +318,42 @@ const SceneMovementMixin = {
     },
     plantNode(node, profile) {
         const driveIntent = this.resolveNodeDriveIntent(node);
-        const lead = normalize(
-            driveIntent.flow.x * (profile.flowBias ?? 0.55) + driveIntent.focus.x * (profile.aimBias ?? 0.45),
-            driveIntent.flow.y * (profile.flowBias ?? 0.55) + driveIntent.focus.y * (profile.aimBias ?? 0.45),
-            driveIntent.focus.x,
-            driveIntent.focus.y
-        );
+        let leadX = driveIntent.flow.x * (profile.flowBias ?? 0.55) + driveIntent.focus.x * (profile.aimBias ?? 0.45);
+        let leadY = driveIntent.flow.y * (profile.flowBias ?? 0.55) + driveIntent.focus.y * (profile.aimBias ?? 0.45);
+        let lead = normalize(leadX, leadY, driveIntent.focus.x, driveIntent.focus.y);
+        
+        const T = window.TUNING || {};
+        const chaos = T.intentChaosDegree ?? 0.0;
+        if (chaos > 0 && driveIntent.activity > 0) {
+            const rot = (Math.random() - 0.5) * Math.PI * chaos;
+            const cosR = Math.cos(rot);
+            const sinR = Math.sin(rot);
+            const cx = lead.x * cosR - lead.y * sinR;
+            const cy = lead.x * sinR + lead.y * cosR;
+            lead = normalize(cx, cy, lead.x, lead.y);
+        }
+
         const right = { x: -lead.y, y: lead.x };
         const lateralBias = clamp((node.localY || 0) / Math.max(PARTIAL_MESH_RULES.slotSpacing, this.player.topologyRadius || PARTIAL_MESH_RULES.slotSpacing), -1, 1);
         const sideSign = Math.abs(lateralBias) < 0.18 ? (node.order % 2 === 0 ? -1 : 1) : Math.sign(lateralBias);
-        const T = window.TUNING || {};
         const spanFactor = T.formationSpanFactor ?? 0.16;
         const span = this.getIntentDriveSpan();
         const frontRatio = this.getNodeDriveFrontRatio(node, lead, span);
         const scaleBoost = driveIntent.aggression * span * 0.32;
         const frontBoost = Math.max(0, frontRatio) * span * (0.18 + driveIntent.aggression * 0.44);
         const rearDrag = Math.max(0, -frontRatio) * span * (0.06 + driveIntent.aggression * 0.12);
-        const forwardReach = (profile.forwardBase + span * spanFactor + scaleBoost + frontBoost - rearDrag) * profile.reachScale;
-        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias))) * (1 + driveIntent.aggression * 0.1);
+        
+        const reachJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.8 : 1.0;
+        const forwardReach = (profile.forwardBase + span * spanFactor + scaleBoost + frontBoost - rearDrag) * profile.reachScale * reachJitter;
+        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias))) * (1 + driveIntent.aggression * 0.1) * reachJitter;
+        
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
         node.pulseGlow = 1;
         if (this.nodeHasMoveAbility(node)) {
+            const stanceJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.5 : 1.0;
             node.anchorStrength = profile.strength * (1 + driveIntent.aggression * 0.52) * driveIntent.activity;
-            node.stanceTimer = profile.stance * lerp(1, 0.84, driveIntent.aggression);
+            node.stanceTimer = profile.stance * lerp(1, 0.84, driveIntent.aggression) * stanceJitter;
             node.anchored = driveIntent.activity > 0.05;
             if (!node.anchored) {
                 node.anchorStrength = 0;

@@ -77,7 +77,13 @@ const SceneInitMixin = {
     },
     getDesiredPulseOrbCount() {
         const T = window.TUNING || {};
-        return clamp(Math.round(T.pulseOrbCount ?? 1), 1, 8);
+        if (T.autoPulseOrbCount) {
+            const nodeCount = Math.max(1, this.activeNodes?.length === this.player?.chain?.length ? this.activeNodes.length : this.player?.chain?.length || 1);
+            const autoCount = clamp(2 + Math.floor(nodeCount / 10), 1, 20);
+            T.pulseOrbCount = autoCount;
+            return autoCount;
+        }
+        return clamp(Math.round(T.pulseOrbCount ?? 2), 1, 20);
     },
     syncLegacyPulseState() {
         const leadRunner = Array.isArray(this.player?.pulseRunners) && this.player.pulseRunners.length > 0

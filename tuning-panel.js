@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
- *  玩家能力调试面板  —  Player Ability Debug Panel
+ *  调试面板  —  Player Ability Debug Panel
  *  在游戏画面上叠加一个可折叠的侧栏，暴露玩家能力与结构驱动参数
  * ═══════════════════════════════════════════════════════════════ */
 
@@ -8,6 +8,7 @@ window.TUNING = {
     legacyAllNodesMove: true,
     enableUpgradedIntentDrive: false,
     splitPolarityIntentDrive: false,
+    intentChaosDegree: 0.0,
 
     // ─── 力开关 ───────────────────────────────────
     enableFormationPull: false,
@@ -147,7 +148,8 @@ window.TUNING = {
     forwardStep: 72,
 
     // ─── 脉冲循环 ────────────────────────────────
-    pulseOrbCount: 1,
+    autoPulseOrbCount: true,
+    pulseOrbCount: 2,
 
     // ─── 相机 ────────────────────────────────────
     cameraZoomDamp: 3.2,
@@ -181,7 +183,7 @@ function loadPersistedTuning() {
 
         Object.keys(window.TUNING).forEach((key) => {
             if (Object.prototype.hasOwnProperty.call(saved, key)) {
-                window.TUNING[key] = saved[key];
+                if (key !== 'pulseOrbCount' && key !== 'autoPulseOrbCount') { window.TUNING[key] = saved[key]; }
             }
         });
         return true;
@@ -193,7 +195,10 @@ function loadPersistedTuning() {
 
 function savePersistedTuning() {
     try {
-        window.localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(window.TUNING));
+        const toSave = { ...window.TUNING };
+        delete toSave.pulseOrbCount;
+        delete toSave.autoPulseOrbCount;
+        window.localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(toSave));
         return true;
     } catch (error) {
         console.warn('保存本地调参配置失败:', error);
@@ -206,189 +211,179 @@ function savePersistedTuning() {
 // ═══════════════════════════════════════════════════════════════
 
 const TUNING_DEFS = [
-    // ── 移动能力对比 ──
-    { section: '🧪 移动能力对比', sectionDesc: '当前默认开启“所有节点都主动移动”；关闭后切到调试模式，只允许蓝色节点主动驱动，红色节点暂时屏蔽主动移动与功能触发' },
-    { key: 'legacyAllNodesMove', label: '全节点主动移动（关=仅蓝色驱动）', desc: '默认开启，保持当前版本：所有节点都能参与脉冲牵引、漂移推进和功能触发；关闭后只保留蓝色节点的主动移动与功能，红色节点只保留结构上的被动跟随', type: 'toggle' },
-    { key: 'enableUpgradedIntentDrive', label: '升级版意图驱动', desc: '默认关闭。开启后，大集群会按规模放大前压范围与推进强度，整体会更偏向侵略性的扑咬/追猎手感；关闭时完全回到旧版单 flow 驱动', type: 'toggle' },
-    { key: 'splitPolarityIntentDrive', label: '红蓝分驱（红=WASD，蓝=鼠标）', desc: '默认关闭。仅在“升级版意图驱动”开启时生效：红色节点优先吃键盘意图，蓝色节点优先吃鼠标意图，用来制造更强的形态分工与布阵策略感；若同时关闭“全节点主动移动”，红色仍会退回被动跟随', type: 'toggle' },
+    { category: '🕹️ 控制与驱动系统' },
+    
+    { section: '模式与意图控制', sectionDesc: '移动模式与玩家意图的驱动逻辑' },
+    { key: 'legacyAllNodesMove', label: '全节点主动移动（关=仅蓝色驱动）', desc: '默认开启。关闭后只保留蓝色节点的主动移动与牵引', type: 'toggle' },
+    { key: 'enableUpgradedIntentDrive', label: '升级版意图驱动', desc: '默认关闭。开启后按规模放大前压范围与推进强度', type: 'toggle' },
+    { key: 'splitPolarityIntentDrive', label: '红蓝分驱（红=WASD，蓝=鼠标）', desc: '红优先键盘，蓝优先鼠标，强化分工感', type: 'toggle' },
+    { key: 'intentChaosDegree', label: '意图混沌度 (Hot值)', desc: '为脉冲冲刺增添随机偏移、抖动与独立性', min: 0.0, max: 1.5, step: 0.05 },
 
-    // ── 力开关 ──
-    { section: '⚡ 力场开关', sectionDesc: '关掉某个力可以观察剩余力的独立效果；当前默认以“脉冲锚定 + 连线拖拽”为核心' },
-    { key: 'enableFormationPull', label: '旧编队拉回', desc: '旧范式遗留开关：把节点拉回拓扑槽位。当前默认关闭，用于和纯软体模式做对照', type: 'toggle' },
-    { key: 'enableDrift', label: '漂移推进力', desc: 'WASD 驱动的实际移动推力；当前默认由所有节点施加，关闭“全节点主动移动”后只会由蓝色节点施加', type: 'toggle' },
-    { key: 'enableCorePull', label: '核心收束力', desc: '仅对圆形节点(source/compressor)施加的向质心拉力；关掉后核心会被甩到外围', type: 'toggle' },
-    { key: 'enableAnchor', label: '脉冲牵引力', desc: '脉冲触发时，将节点拉向目标点；当前默认所有节点都会被驱动，关闭“全节点主动移动”后只保留蓝色节点的主动牵引', type: 'toggle' },
-    { key: 'enableSpring', label: '弹簧连线力', desc: '连线的弹簧-阻尼约束力；关掉后节点间没有弹性联系', type: 'toggle' },
-    { key: 'enableRepulsion', label: '节点排斥力', desc: '防止节点互相重叠的短程排斥力；关掉后节点可能堆在一起', type: 'toggle' },
-    { key: 'enablePBD', label: 'PBD 位置校正', desc: '力学积分后的约束求解迭代；关掉后弹簧更容易过度拉伸', type: 'toggle' },
-    { key: 'enablePulse', label: '脉冲系统', desc: '整个脉冲循环系统；关掉后不会有节点触发和植入', type: 'toggle' },
+    { section: '脉冲循环与触发', sectionDesc: '决定了组织体的“心跳”与驱动节奏' },
+    { key: 'enablePulse', label: '脉冲全局开关', desc: '整个脉冲循环系统；关掉后不会有节点触发', type: 'toggle' },
+    { key: 'autoPulseOrbCount', label: '自动脉冲球数量', desc: '根据节点数(每多10节点+1)自动计算并限制系统内的球数并维持默认基础。', type: 'toggle' },
+    { key: 'pulseOrbCount', label: '手动脉冲球数', desc: '强制覆盖当前系统的球数。一旦手动改动会立刻关闭自动数量控制。', min: 1, max: 20, step: 1 },
 
-    // ── 编队拉力 ──
-    { section: '🧲 旧编队拉回', sectionDesc: '旧系统遗留参数。只有打开“旧编队拉回”时才会生效，默认不参与当前软体方案' },
-    { key: 'formationPullAnchored', label: '锚定态拉回', desc: '节点被脉冲锚定时的旧版槽位拉回强度', min: 0, max: 200, step: 1 },
-    { key: 'formationPullFreeBase', label: '自由态拉回', desc: '未锚定节点的旧版槽位拉回基础值', min: 0, max: 300, step: 1 },
-    { key: 'formationPullStabilityBonus', label: '稳定性加成', desc: '旧版拉回里 stability 带来的额外回拽', min: 0, max: 100, step: 1 },
+    { section: '操作方向与手感', sectionDesc: 'WASD 移动权重与鼠标朝向跟随' },
+    { key: 'normalMoveWeight', label: '普通模式移动权重', desc: '松开 Shift 时 WASD 占比 (0~1)', min: 0, max: 1, step: 0.01 },
+    { key: 'shiftMoveWeight', label: '瞄准模式移动权重', desc: '按住 Shift 时 WASD 占比 (0~1)', min: 0, max: 1, step: 0.01 },
+    { key: 'baseTurnRate', label: '基础转向速率', desc: '结构朝向旋转速率 (rad/s)', min: 0, max: 10, step: 0.1 },
+    { key: 'turnAssistBonus', label: '转向辅助加成', desc: '特定节点提供的额外转向速率', min: 0, max: 8, step: 0.1 },
 
-    // ── 漂移力 ──
-    { section: '💨 漂移推进力', sectionDesc: '不同角色在 WASD 方向上的推进力大小差异；当前默认所有角色都会真正把推力施加到结构上' },
-    { key: 'driftAttack', label: '攻击节点漂移力', desc: 'dart(远程)/blade(近战) 的推进力；关闭“全节点主动移动”后只有蓝色攻击节点还会实际施加推进', min: 0, max: 200, step: 1 },
-    { key: 'driftShell', label: '护盾节点漂移力', desc: 'shell(方形/本色) 的推进力；无论哪种模式它都是主要移动来源之一', min: 0, max: 200, step: 1 },
-    { key: 'driftDefault', label: '标准移动节点漂移力', desc: '当前用于 source/compressor/prism 等默认移动节点；关闭“全节点主动移动”后主要只剩蓝色 source 使用', min: 0, max: 200, step: 1 },
+    { category: '🔧 物理与运动约束' },
 
-    // ── 核心收束 ──
-    { section: '🎯 核心收束力', sectionDesc: '仅对圆形节点(source/compressor)的额外向心力' },
-    { key: 'corePullStrength', label: '收束力强度', desc: '圆形节点额外受到的向质心拉力系数（确保能量核心不被甩出去）', min: 0, max: 100, step: 1 },
+    { section: '全局物理力场', sectionDesc: '决定全局运动物理反馈的各项基本力' },
+    { key: 'enableFormationPull', label: '旧编队拉回', desc: '旧范式遗留：把节点拉回黄金角槽位', type: 'toggle' },
+    { key: 'enableDrift', label: '漂移推进力', desc: '引擎：控制 WASD 向结构的直接推力', type: 'toggle' },
+    { key: 'enableCorePull', label: '核心收束力开关', desc: '对圆形核心节点的收束倾向', type: 'toggle' },
+    { key: 'enableAnchor', label: '脉冲牵引力', desc: '节点被脉冲锁定时向锚点移动', type: 'toggle' },
+    { key: 'enableSpring', label: '弹簧相连力', desc: '节点间互相牵扯连接', type: 'toggle' },
+    { key: 'enableRepulsion', label: '体积排斥力', desc: '防止节点重叠叠加', type: 'toggle' },
+    { key: 'enablePBD', label: 'PBD位置校正', desc: '针对大网格防止散架的高级保形', type: 'toggle' },
 
-    // ── 弹簧系统 ──
-    { section: '🔗 弹簧-阻尼系统', sectionDesc: '连线的基础弹性与粘滞；真正的刚柔分档由下面的“拓扑刚性”继续细分' },
-    { key: 'springK', label: '弹簧基础刚度 K', desc: '弹簧回复力的基础系数（越大连线越硬）', min: 0, max: 800, step: 5 },
-    { key: 'springDamping', label: '弹簧基础阻尼 C', desc: '弹簧相对速度阻尼的基础系数（越大震荡越少）', min: 0, max: 200, step: 1 },
-    { key: 'spineStiffness', label: '骨干边刚度系数', desc: 'spine 类型连线（脉冲骨干）的刚度乘数', min: 0, max: 2, step: 0.01 },
-    { key: 'supportStiffness', label: '支撑边刚度系数', desc: 'support 类型连线（辅助支撑）的刚度乘数', min: 0, max: 2, step: 0.01 },
-    { key: 'spineDamping', label: '骨干边阻尼系数', desc: 'spine 类型连线的阻尼乘数', min: 0, max: 1, step: 0.01 },
-    { key: 'supportDamping', label: '支撑边阻尼系数', desc: 'support 类型连线的阻尼乘数', min: 0, max: 1, step: 0.01 },
-    { section: '🦴 平行连线刚性', sectionDesc: '按同一对节点之间叠了几根线分档：1 根=触须，2 根=关节，3 根及以上=硬骨架' },
-    { key: 'flexStiffness', label: '1 线刚度', desc: 'A-B 之间只有 1 根线时的额外刚度倍率，越低越软', min: 0, max: 1, step: 0.01 },
-    { key: 'flexDamping', label: '1 线阻尼', desc: 'A-B 单线连接的轴向阻尼倍率，越低越容易甩动', min: 0, max: 1, step: 0.01 },
-    { key: 'flexStretchSlack', label: '1 线容差', desc: 'A-B 单线连接在真正回拉前允许额外伸长的距离 (px)', min: 0, max: 120, step: 1 },
-    { key: 'flexPbdWeight', label: '1 线 PBD', desc: 'A-B 单线连接的位置校正硬度，低值意味着更像软肉', min: 0, max: 1, step: 0.01 },
-    { key: 'jointStiffness', label: '2 线刚度', desc: 'A-B 之间有 2 根线时的额外刚度倍率', min: 0, max: 2, step: 0.01 },
-    { key: 'jointDamping', label: '2 线阻尼', desc: 'A-B 双线连接的额外阻尼倍率', min: 0, max: 2, step: 0.01 },
-    { key: 'jointStretchSlack', label: '2 线容差', desc: 'A-B 双线连接允许的额外伸长距离 (px)', min: 0, max: 80, step: 1 },
-    { key: 'jointPbdWeight', label: '2 线 PBD', desc: 'A-B 双线连接的位置校正硬度', min: 0, max: 2, step: 0.01 },
-    { key: 'rigidStiffness', label: '3+ 线刚度', desc: 'A-B 之间有 3 根及以上时的额外刚度倍率', min: 0.5, max: 5, step: 0.05 },
-    { key: 'rigidDamping', label: '3+ 线阻尼', desc: 'A-B 三线及以上连接的额外阻尼倍率', min: 0.5, max: 3, step: 0.05 },
-    { key: 'rigidStretchSlack', label: '3+ 线容差', desc: 'A-B 三线及以上连接允许的额外伸长距离 (px)，建议保持很低', min: 0, max: 20, step: 0.5 },
-    { key: 'rigidPbdWeight', label: '3+ 线 PBD', desc: 'A-B 三线及以上连接的距离约束权重，越高越接近焊死', min: 0.5, max: 5, step: 0.05 },
-    { key: 'inversePolarityStiffnessMul', label: '异极性刚度折扣', desc: '不同极性节点之间连线的刚度倍率（<1 表示更软）', min: 0, max: 1.5, step: 0.01 },
-    { key: 'inversePolarityDampingMul', label: '异极性阻尼折扣', desc: '不同极性节点之间连线的阻尼倍率（<1 表示更活跃）', min: 0, max: 1.5, step: 0.01 },
-    { key: 'samePolarityRestMul', label: '同极性自然长度', desc: '同极性连线自然长度倍率（>1 会稍微松一点）', min: 0.5, max: 2.0, step: 0.01 },
-    { key: 'inversePolarityRestMul', label: '异极性自然长度', desc: '异极性连线自然长度倍率（通常比同极性更长）', min: 0.5, max: 2.0, step: 0.01 },
-    { key: 'linkRestMin', label: '连线最短长度', desc: '弹簧自然长度的下限 clamp 值 (px)', min: 20, max: 200, step: 2 },
-    { key: 'linkRestMax', label: '连线最长长度', desc: '弹簧自然长度的上限 clamp 值 (px)', min: 100, max: 500, step: 5 },
+    { section: '阻尼与状态衰减', sectionDesc: '结构沉重感及持续状态的自然降低' },
+    { key: 'dragAnchored', label: '锚定态阻力', desc: '节点被锚定时速度下降率', min: 0, max: 20, step: 0.1 },
+    { key: 'dragFreeBase', label: '自由态阻力', desc: '基础的速度下降率', min: 0, max: 20, step: 0.1 },
+    { key: 'dragStabilityBonus', label: '稳定态阻力加成', desc: '稳定性越高越显得重', min: 0, max: 5, step: 0.1 },
+    { key: 'tensionDecay', label: '张力衰减', desc: '每帧张力消散率', min: 0, max: 1, step: 0.01 },
+    { key: 'stabilityDecay', label: 'stability 衰减/秒', desc: '稳定性减少衰减', min: 0, max: 2, step: 0.05 },
+    { key: 'stabilityMin', label: 'stability 最低值', desc: '稳定性保底下限', min: 0, max: 1, step: 0.05 },
+    { key: 'turnAssistDecay', label: 'turnAssist 衰减/秒', desc: '辅助能力衰减', min: 0, max: 5, step: 0.1 },
+    { key: 'tempoBoostDecay', label: 'tempoBoost 衰减/秒', desc: '加速能力衰减', min: 0, max: 5, step: 0.1 },
+    { key: 'agitationDecay', label: 'agitation 衰减/秒', desc: '暴躁度衰减', min: 0, max: 3, step: 0.1 },
 
-    // ── 排斥力 ──
-    { section: '🛡️ 节点排斥力', sectionDesc: '防止节点堆叠的短程力' },
-    { key: 'repulsionMinDist', label: '基础最小间距', desc: '两个节点之间允许的最近距离 (px)', min: 20, max: 200, step: 2 },
-    { key: 'repulsionDegreeMax', label: '连接度加成上限', desc: '连接度对间距的加成最大值', min: 0, max: 60, step: 1 },
-    { key: 'repulsionDegreeScale', label: '连接度加成系数', desc: '每单位连接度增加多少间距 (px)', min: 0, max: 5, step: 0.1 },
-    { key: 'repulsionStiffness', label: '排斥刚度', desc: '重叠量转化为排斥力的系数（越大推力越强）', min: 0, max: 80, step: 1 },
+    { section: '节点排斥体积系统', sectionDesc: '短距离体积碰撞效果' },
+    { key: 'repulsionMinDist', label: '基础最小间距', desc: '最近距离限制 (px)', min: 20, max: 200, step: 2 },
+    { key: 'repulsionDegreeMax', label: '连接度间距加成', desc: '密集连接带来多大程度散开', min: 0, max: 60, step: 1 },
+    { key: 'repulsionDegreeScale', label: '连接度加成系数', desc: '每单位连接引发的间距附加', min: 0, max: 5, step: 0.1 },
+    { key: 'repulsionStiffness', label: '排斥刚度', desc: '重叠引发推力的刚烈度', min: 0, max: 80, step: 1 },
 
-    // ── 阻力与积分 ──
-    { section: '🌊 阻力与速度积分', sectionDesc: '控制节点速度衰减——决定组织体的"重量感"' },
-    { key: 'dragAnchored', label: '锚定态阻力', desc: '节点被锚定时的指数衰减阻力系数（越大减速越快）', min: 0, max: 20, step: 0.1 },
-    { key: 'dragFreeBase', label: '自由态阻力基础', desc: '未锚定节点的基础阻力系数', min: 0, max: 20, step: 0.1 },
-    { key: 'dragStabilityBonus', label: '稳定性阻力加成', desc: '每单位 stability 增加的额外阻力（高稳定性 = 更沉）', min: 0, max: 5, step: 0.1 },
-    { key: 'tensionDecay', label: '张力衰减', desc: '每帧张力值的衰减倍率（0~1 之间）', min: 0, max: 1, step: 0.01 },
+    { section: 'PBD 大网格结构强保形', sectionDesc: '防止复杂结构在剧烈运动中被扯烂' },
+    { key: 'pbdIterations', label: '基础迭代步数', desc: '所有约束校正轮数', min: 0, max: 12, step: 1 },
+    { key: 'pbdCorrectionRate', label: '每次修正比例', desc: '修正率0-100%', min: 0, max: 0.8, step: 0.01 },
+    { key: 'pbdRigidPasses', label: '骨架强约束轮数', desc: '强化关键支撑结构的维持', min: 0, max: 8, step: 1 },
 
-    // ── PBD ──
-    { section: '📐 PBD 位置校正', sectionDesc: '力学积分后的约束求解；高连接骨架会在这里吃到额外的刚体校正' },
-    { key: 'pbdIterations', label: '迭代次数', desc: '每帧位置校正的迭代轮数（越多越精确，但更耗性能）', min: 0, max: 12, step: 1 },
-    { key: 'pbdCorrectionRate', label: '校正比例', desc: '每次迭代校正偏差的百分比（0.18 = 每次修正 18%）', min: 0, max: 0.8, step: 0.01 },
-    { key: 'pbdRigidPasses', label: '骨架额外轮数', desc: '对 rigid 连线追加的专用校正轮数，让三角/网格更不容易散架', min: 0, max: 8, step: 1 },
+    { category: '🕸️ 多形态连线系统' },
 
-    // ── 脉冲循环 ──
-    { section: '🫀 脉冲循环', sectionDesc: '控制有多少个能量脉冲球同时沿结构流动；新增球会尽量错相分布' },
-    { key: 'pulseOrbCount', label: '脉冲球数量', desc: '同时存在的能量脉冲球数量；越多触发越密、节奏越快', min: 1, max: 8, step: 1 },
+    { section: '基本弹簧与阻尼', sectionDesc: '整体弹簧连接的基础刚性与拉力' },
+    { key: 'springK', label: '基础弹簧K', desc: '核心弹射力度', min: 0, max: 800, step: 5 },
+    { key: 'springDamping', label: '基础阻尼C', desc: '震荡消减度', min: 0, max: 200, step: 1 },
+    { key: 'linkRestMin', label: '连线最短距离', desc: '弹簧下限界限', min: 20, max: 200, step: 2 },
+    { key: 'linkRestMax', label: '连线最长距离', desc: '弹簧上限界限', min: 100, max: 500, step: 5 },
+    { key: 'spineStiffness', label: '骨干刚度系数', desc: '中心主干边硬度', min: 0, max: 2, step: 0.01 },
+    { key: 'spineDamping', label: '骨干阻尼系数', desc: '中心主干边粘度', min: 0, max: 1, step: 0.01 },
+    { key: 'supportStiffness', label: '辅助刚度系数', desc: '外围边硬度', min: 0, max: 2, step: 0.01 },
+    { key: 'supportDamping', label: '辅助阻尼系数', desc: '外围边粘度', min: 0, max: 1, step: 0.01 },
+    { key: 'supportSoftness', label: '辅助线放松度', desc: '默认容差', min: 0.5, max: 2.0, step: 0.01 },
 
-    // ── 转向 ──
-    { section: '🔄 转向与意图混合', sectionDesc: 'flow 方向的混合比例和朝向旋转速度' },
-    { key: 'baseTurnRate', label: '基础转向速率', desc: '组织体朝向旋转的基础速率 (rad/s)', min: 0, max: 10, step: 0.1 },
-    { key: 'turnAssistBonus', label: '转向辅助加成', desc: 'shell/prism 提供的 turnAssist 能额外增加的转向速率', min: 0, max: 8, step: 0.1 },
-    { key: 'normalMoveWeight', label: '普通模式移动权重', desc: '松开 Shift 时 WASD 在 flow 混合中的占比 (0~1)', min: 0, max: 1, step: 0.01 },
-    { key: 'shiftMoveWeight', label: '瞄准模式移动权重', desc: '按住 Shift 时 WASD 在 flow 混合中的占比 (0~1)', min: 0, max: 1, step: 0.01 },
+    { section: '多重堆叠连线级联', sectionDesc: '双线与多线的动态物理强化' },
+    { key: 'flexStiffness', label: '1级: 触须刚度', desc: '单线软连接时的衰减', min: 0, max: 1, step: 0.01 },
+    { key: 'flexDamping', label: '1级: 触须阻尼', desc: '单线的易拽动度', min: 0, max: 1, step: 0.01 },
+    { key: 'flexStretchSlack', label: '1级: 容忍延伸', desc: '彻底拉扯前的容许缓冲区', min: 0, max: 120, step: 1 },
+    { key: 'flexPbdWeight', label: '1级: PBD比重', desc: '多线校正时这根线的发言权', min: 0, max: 1, step: 0.01 },
+    
+    { key: 'jointStiffness', label: '2级: 关节刚度', desc: '双线形成铰链时的强度', min: 0, max: 2, step: 0.01 },
+    { key: 'jointDamping', label: '2级: 关节阻尼', desc: '铰链的稳定性', min: 0, max: 2, step: 0.01 },
+    { key: 'jointStretchSlack', label: '2级: 关节断层', desc: '微小拉伸容许度', min: 0, max: 80, step: 1 },
+    { key: 'jointPbdWeight', label: '2级: PBD比重', desc: '维持框架的话语权', min: 0, max: 2, step: 0.01 },
 
-    // ── 状态衰减 ──
-    { section: '📉 状态衰减速率', sectionDesc: '影响组织体手感的各项 buff 衰减' },
-    { key: 'stabilityDecay', label: 'stability 衰减/秒', desc: '稳定性每秒自然减少量（越大越难维持高稳定性）', min: 0, max: 2, step: 0.05 },
-    { key: 'stabilityMin', label: 'stability 最低值', desc: '稳定性不会低于此值', min: 0, max: 1, step: 0.05 },
-    { key: 'turnAssistDecay', label: 'turnAssist 衰减/秒', desc: '转向辅助每秒减少量', min: 0, max: 5, step: 0.1 },
-    { key: 'tempoBoostDecay', label: 'tempoBoost 衰减/秒', desc: '节奏加速每秒减少量', min: 0, max: 5, step: 0.1 },
-    { key: 'agitationDecay', label: 'agitation 衰减/秒', desc: '激进度每秒减少量', min: 0, max: 3, step: 0.1 },
+    { key: 'rigidStiffness', label: '3级: 硬骨刚度', desc: '三线即以上绑死结构的惊人硬度', min: 0.5, max: 5, step: 0.05 },
+    { key: 'rigidDamping', label: '3级: 硬骨阻尼', desc: '避免结构因过高K而震飞崩溃', min: 0.5, max: 3, step: 0.05 },
+    { key: 'rigidStretchSlack', label: '3级: 零容忍', desc: '越级逼近0，毫无松弛感', min: 0, max: 20, step: 0.5 },
+    { key: 'rigidPbdWeight', label: '3级: 强制保形', desc: '位置解算绝对主导地位', min: 0.5, max: 5, step: 0.05 },
 
-    // ── 节点质量 ──
-    { section: '⚖️ 节点质量', sectionDesc: '质量影响加速度 a=F/m，越大越迟钝' },
-    { key: 'massShell', label: 'Shell 质量', desc: '方形护盾节点的质量（最重，最迟钝）', min: 0.1, max: 5, step: 0.05 },
-    { key: 'massBlade', label: 'Blade 质量', desc: '三角近战节点的质量', min: 0.1, max: 5, step: 0.05 },
-    { key: 'massDefault', label: '默认节点质量', desc: 'source/compressor/dart/prism 的质量', min: 0.1, max: 5, step: 0.05 },
+    { section: '异色混合连线', sectionDesc: '红蓝混合组装时的节点相性差异' },
+    { key: 'inversePolarityStiffnessMul', label: '互斥极性刚度', desc: '红蓝节点的连线会更松弛软塌', min: 0, max: 1.5, step: 0.01 },
+    { key: 'inversePolarityDampingMul', label: '互斥极性阻尼', desc: '更易发生非同频震荡', min: 0, max: 1.5, step: 0.01 },
+    { key: 'samePolarityRestMul', label: '同相长度拓展', desc: '同型组网的距离调节', min: 0.5, max: 2.0, step: 0.01 },
+    { key: 'inversePolarityRestMul', label: '排斥长度拓展', desc: '异极性结构之间撑得更开', min: 0.5, max: 2.0, step: 0.01 },
 
-    // ── 植入参数 - Source ──
-    { section: '🟦 Source 植入参数', sectionDesc: '圆/本色——能量源节点被脉冲触发时的锚点计算' },
-    { key: 'plantSourceForward', label: '前推距离', desc: '植入锚点在前进方向上的基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantSourceSide', label: '侧展距离', desc: '植入锚点在侧方向上的基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantSourceStance', label: '锚定时长', desc: '节点被钉在锚点上的持续时间 (秒)，会乘以极性修正', min: 0, max: 2, step: 0.02 },
-    { key: 'plantSourceStrength', label: '锚定力强度', desc: '将节点拉向锚点的弹簧力系数', min: 0, max: 800, step: 10 },
+    { category: '🧬 各节点个体属性与植入' },
 
-    // ── 植入参数 - Compressor ──
-    { section: '🟥 Compressor 植入参数', sectionDesc: '圆/反色——过载加速节点' },
-    { key: 'plantCompressorForward', label: '前推距离', desc: '植入锚点前进方向基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantCompressorSide', label: '侧展距离', desc: '植入锚点侧方向基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantCompressorStance', label: '锚定时长', desc: '每次植入的锚定持续时间 (秒)', min: 0, max: 2, step: 0.02 },
-    { key: 'plantCompressorStrength', label: '锚定力强度', desc: '锚定弹簧力系数', min: 0, max: 800, step: 10 },
+    { section: '各单位质量(Mass)', sectionDesc: '决定了它们响应系统施力的速度反应(a=F/m)' },
+    { key: 'massShell', label: 'Shell 护盾质量', desc: '笨重防御方块', min: 0.1, max: 5, step: 0.05 },
+    { key: 'massBlade', label: 'Blade 近战质量', desc: '重击斩首三角', min: 0.1, max: 5, step: 0.05 },
+    { key: 'massDefault', label: '基础单元质量', desc: '圆与远射三角基准', min: 0.1, max: 5, step: 0.05 },
 
-    // ── 植入参数 - Shell ──
-    { section: '🟦 Shell 植入参数', sectionDesc: '方/本色——护盾节点，侧向展开很大' },
-    { key: 'plantShellForward', label: '前推距离', desc: '植入前进方向偏移 (px)——shell 前推最短', min: 0, max: 300, step: 2 },
-    { key: 'plantShellSide', label: '侧展距离', desc: '植入侧方向偏移 (px)——shell 侧展最大', min: 0, max: 400, step: 2 },
-    { key: 'plantShellStance', label: '锚定时长', desc: '锚定持续时间——shell 最长 (秒)', min: 0, max: 2, step: 0.02 },
-    { key: 'plantShellStrength', label: '锚定力强度', desc: '锚定弹簧力系数——shell 最强', min: 0, max: 1000, step: 10 },
-    { key: 'plantShellFlowBias', label: 'flow 权重', desc: '锚点方向中"移动方向"的占比 (0~1)', min: 0, max: 1, step: 0.02 },
-    { key: 'plantShellAimBias', label: 'aim 权重', desc: '锚点方向中"瞄准方向"的占比 (0~1)', min: 0, max: 1, step: 0.02 },
+    { section: '日常推流力 (Drift)', sectionDesc: '玩家不使用冲刺时，平时移动自带推力差异' },
+    { key: 'driftShell', label: 'Shell 护盾拖拽', desc: '提供缓慢且巨大的阻挡阻力/慢速推力', min: 0, max: 200, step: 1 },
+    { key: 'driftAttack', label: 'Blade/Dart 引擎', desc: '三角战斗单位赋予组织高推力机动', min: 0, max: 200, step: 1 },
+    { key: 'driftDefault', label: '基础推力分配', desc: '常规补位力量', min: 0, max: 200, step: 1 },
+    { key: 'corePullStrength', label: '收束聚集', desc: '维持圆形在网格中心不被抛出来的强聚拢', min: 0, max: 100, step: 1 },
 
-    // ── 植入参数 - Prism ──
-    { section: '🟥 Prism 植入参数', sectionDesc: '方/反色——回响与转向辅助' },
-    { key: 'plantPrismForward', label: '前推距离', desc: '前进方向基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantPrismSide', label: '侧展距离', desc: '侧方向基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantPrismStance', label: '锚定时长', desc: '锚定持续时间 (秒)', min: 0, max: 2, step: 0.02 },
-    { key: 'plantPrismStrength', label: '锚定力强度', desc: '锚定弹簧力系数', min: 0, max: 800, step: 10 },
-    { key: 'plantPrismFlowBias', label: 'flow 权重', desc: '锚点方向中移动方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
-    { key: 'plantPrismAimBias', label: 'aim 权重', desc: '锚点方向中瞄准方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
+    { section: '🟦 Source (圆/本)', sectionDesc: '平滑基础核心' },
+    { key: 'plantSourceForward', label: '前纵延展', desc: '植入推前多少px', min: 0, max: 300, step: 2 },
+    { key: 'plantSourceSide', label: '侧方位展', desc: '左右扩张分布宽度', min: 0, max: 300, step: 2 },
+    { key: 'plantSourceStance', label: '生根时长', desc: '牢牢钉在环境上发劲多久(秒)', min: 0, max: 2, step: 0.02 },
+    { key: 'plantSourceStrength', label: '牵引冲爆发', desc: '基础强度爆发力', min: 0, max: 800, step: 10 },
 
-    // ── 植入参数 - Dart ──
-    { section: '🟦 Dart 植入参数', sectionDesc: '三角/本色——远程齐射' },
-    { key: 'plantDartForward', label: '前推距离', desc: '前进方向基础偏移 (px)——dart 前推较远', min: 0, max: 400, step: 2 },
-    { key: 'plantDartSide', label: '侧展距离', desc: '侧方向基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantDartStance', label: '锚定时长', desc: '锚定持续时间 (秒)', min: 0, max: 2, step: 0.02 },
-    { key: 'plantDartStrength', label: '锚定力强度', desc: '锚定弹簧力系数', min: 0, max: 800, step: 10 },
-    { key: 'plantDartFlowBias', label: 'flow 权重', desc: '锚点方向中移动方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
-    { key: 'plantDartAimBias', label: 'aim 权重', desc: '锚点方向中瞄准方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
+    { section: '🟥 Compressor (圆/反)', sectionDesc: '能量过载引擎' },
+    { key: 'plantCompressorForward', label: '前纵延展', desc: '-', min: 0, max: 300, step: 2 },
+    { key: 'plantCompressorSide', label: '侧方位展', desc: '-', min: 0, max: 300, step: 2 },
+    { key: 'plantCompressorStance', label: '生根时长', desc: '-', min: 0, max: 2, step: 0.02 },
+    { key: 'plantCompressorStrength', label: '牵引冲爆发', desc: '强爆发弹射加速', min: 0, max: 800, step: 10 },
 
-    // ── 植入参数 - Blade ──
-    { section: '🟥 Blade 植入参数', sectionDesc: '三角/反色——近身斩击，前推最远' },
-    { key: 'plantBladeForward', label: '前推距离', desc: '前进方向基础偏移 (px)——blade 前推最远', min: 0, max: 400, step: 2 },
-    { key: 'plantBladeSide', label: '侧展距离', desc: '侧方向基础偏移 (px)', min: 0, max: 300, step: 2 },
-    { key: 'plantBladeStance', label: '锚定时长', desc: '锚定持续时间 (秒)', min: 0, max: 2, step: 0.02 },
-    { key: 'plantBladeStrength', label: '锚定力强度', desc: '锚定弹簧力系数——blade 最强', min: 0, max: 1000, step: 10 },
-    { key: 'plantBladeFlowBias', label: 'flow 权重', desc: '锚点方向中移动方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
-    { key: 'plantBladeAimBias', label: 'aim 权重', desc: '锚点方向中瞄准方向占比 (0~1)', min: 0, max: 1, step: 0.02 },
+    { section: '🟦 Shell (方/本)', sectionDesc: '巨盾防护偏侧' },
+    { key: 'plantShellForward', label: '前纵延展', desc: '几乎不往前，主防护', min: 0, max: 300, step: 2 },
+    { key: 'plantShellSide', label: '侧方位展', desc: '极限侧撑扩张屏障横波', min: 0, max: 400, step: 2 },
+    { key: 'plantShellStance', label: '生根时长', desc: '长停留扛伤掩护', min: 0, max: 2, step: 0.02 },
+    { key: 'plantShellStrength', label: '牵引冲爆发', desc: '无坚不摧的抗拉', min: 0, max: 1000, step: 10 },
+    { key: 'plantShellFlowBias', label: 'Flow权重比', desc: '面向移动的占比', min: 0, max: 1, step: 0.02 },
+    { key: 'plantShellAimBias', label: 'Aim权重比', desc: '面向瞄准的占比', min: 0, max: 1, step: 0.02 },
 
-    // ── 拓扑 ──
-    { section: '🌐 拓扑与槽位', sectionDesc: '控制结构生长时的空间基准；旧黄金角槽位已降级为实验开关' },
-    { key: 'enableCompoundTopologyEdges', label: '复合连线（关=强制单线）', desc: '默认关闭。开启后允许同一对节点保留多根连线，并对新生成结构启用复合连线种子；关闭后回到旧单线实现，已有复合连线会直接压成一根', type: 'toggle' },
-    { key: 'enableSunflowerTopologySlots', label: '旧向日葵槽位', desc: '旧范式遗留开关：使用黄金角向日葵分布生成默认槽位。当前默认关闭，优先保留现有软体结构的局部轮廓', type: 'toggle' },
-    { key: 'slotSpacing', label: '槽位间距', desc: '节点排布的基准间距 (px)——影响整体密度', min: 40, max: 250, step: 2 },
-    { key: 'slotYCompression', label: 'Y 轴压缩', desc: '槽位在 Y 方向的压缩比 (0.84=稍扁)', min: 0.3, max: 1.5, step: 0.02 },
-    { key: 'slotRadiusScale', label: '半径缩放', desc: '槽位散布半径的总缩放系数', min: 0.3, max: 2, step: 0.02 },
-    { key: 'forwardStep', label: '前进步进', desc: '新节点扩展时保持的前进距离 (px)', min: 20, max: 200, step: 2 },
+    { section: '🟥 Prism (方/反)', sectionDesc: '辅助折射指挥' },
+    { key: 'plantPrismForward', label: '前纵延展', desc: '-', min: 0, max: 300, step: 2 },
+    { key: 'plantPrismSide', label: '侧方位展', desc: '-', min: 0, max: 300, step: 2 },
+    { key: 'plantPrismStance', label: '生根时长', desc: '-', min: 0, max: 2, step: 0.02 },
+    { key: 'plantPrismStrength', label: '牵引冲爆发', desc: '-', min: 0, max: 800, step: 10 },
+    { key: 'plantPrismFlowBias', label: 'Flow权重比', desc: '-', min: 0, max: 1, step: 0.02 },
+    { key: 'plantPrismAimBias', label: 'Aim权重比', desc: '-', min: 0, max: 1, step: 0.02 },
 
-    // ── 相机 ──
-    { section: '📷 相机跟踪', sectionDesc: '相机平滑跟踪和自适应缩放' },
-    { key: 'cameraZoomDamp', label: '缩放阻尼', desc: '缩放平滑追赶速率（越大越快跟上）', min: 0.5, max: 15, step: 0.1 },
-    { key: 'cameraPosDamp', label: '位置阻尼', desc: '位置平滑追赶速率（越大越快跟上）', min: 0.5, max: 15, step: 0.1 },
-    { key: 'cameraMinZoom', label: '最小缩放', desc: '大组织体时相机拉远的下限', min: 0.1, max: 1, step: 0.02 },
-    { key: 'cameraMaxZoom', label: '最大缩放', desc: '小组织体时相机拉近的上限', min: 0.5, max: 3, step: 0.02 },
-    { key: 'cameraSpanPadding', label: '视野余量', desc: '编队跨度外的额外视野边距 (px)', min: 0, max: 500, step: 10 },
+    { section: '🟦 Dart (三角/本)', sectionDesc: '远程火力齐射兵' },
+    { key: 'plantDartForward', label: '前纵延展', desc: '远程长刺入', min: 0, max: 400, step: 2 },
+    { key: 'plantDartSide', label: '侧方位展', desc: '-', min: 0, max: 300, step: 2 },
+    { key: 'plantDartStance', label: '生根时长', desc: '-', min: 0, max: 2, step: 0.02 },
+    { key: 'plantDartStrength', label: '牵引冲爆发', desc: '-', min: 0, max: 800, step: 10 },
+    { key: 'plantDartFlowBias', label: 'Flow权重比', desc: '-', min: 0, max: 1, step: 0.02 },
+    { key: 'plantDartAimBias', label: 'Aim权重比', desc: '极其重视鼠标朝向', min: 0, max: 1, step: 0.02 },
 
-    // ── 显示 ──
-    { section: '✨ 显示平滑', sectionDesc: '物理仿真与渲染之间的平滑层' },
-    { key: 'displayDamping', label: '显示追赶阻尼', desc: '渲染位置追赶物理位置的速率（越大越紧密跟随）', min: 1, max: 60, step: 1 },
-    { key: 'pulseGlowDecay', label: '脉冲光衰减', desc: '脉冲触发后光晕消退速率', min: 0.5, max: 10, step: 0.1 },
-    { key: 'showIntentCenter', label: '显示意图中心', desc: '可视化移动、鼠标瞄准及复合出的意图方向', type: 'toggle' },
+    { section: '🟥 Blade (三角/反)', sectionDesc: '近战极限冲锋兵' },
+    { key: 'plantBladeForward', label: '前纵延展', desc: '极限前突突进打击', min: 0, max: 400, step: 2 },
+    { key: 'plantBladeSide', label: '侧方位展', desc: '阵型锋利收窄', min: 0, max: 300, step: 2 },
+    { key: 'plantBladeStance', label: '生根时长', desc: '快出快回斩落', min: 0, max: 2, step: 0.02 },
+    { key: 'plantBladeStrength', label: '牵引冲爆发', desc: '最可怕的攻击驱动', min: 0, max: 1000, step: 10 },
+    { key: 'plantBladeFlowBias', label: 'Flow权重比', desc: '-', min: 0, max: 1, step: 0.02 },
+    { key: 'plantBladeAimBias', label: 'Aim权重比', desc: '-', min: 0, max: 1, step: 0.02 },
 
-    // ── 编队跨度 ──
-    { section: '📏 编队参数', sectionDesc: '影响植入前推距离的编队跨度系数' },
-    { key: 'formationSpanFactor', label: '跨度系数', desc: '植入时 forwardReach += formationSpan × 此值', min: 0, max: 0.5, step: 0.01 },
+    { category: '🎥 视觉呈现与结构扩建' },
+
+    { section: '拓扑结构基底分布', sectionDesc: '当有新细胞生长与加入时的基建布局指导' },
+    { key: 'enableCompoundTopologyEdges', label: '复合连线允许', desc: '打开后结构网不再强制规整，可多重叠加韧带', type: 'toggle' },
+    { key: 'enableSunflowerTopologySlots', label: '向日葵槽位', desc: '退回老版整齐环列的黄金角分布律', type: 'toggle' },
+    { key: 'slotSpacing', label: '基础散件距离', desc: '生成骨架之间初始缝隙(不等于最终拉扯弹性长度)', min: 40, max: 250, step: 2 },
+    { key: 'slotYCompression', label: '前后侧轴压缩', desc: '做扁长或圆阵', min: 0.3, max: 1.5, step: 0.02 },
+    { key: 'slotRadiusScale', label: '结构网半径倍缩', desc: '调整全体胖瘦', min: 0.3, max: 2, step: 0.02 },
+    { key: 'forwardStep', label: '前探延展间隔', desc: '', min: 20, max: 200, step: 2 },
+    
+    { section: '弃用老旧编队规则', sectionDesc: '老一套硬套座标方案残留' },
+    { key: 'formationPullAnchored', label: '锚定硬拉力度', desc: '-', min: 0, max: 200, step: 1 },
+    { key: 'formationPullFreeBase', label: '脱机硬拉力度', desc: '-', min: 0, max: 300, step: 1 },
+    { key: 'formationPullStabilityBonus', label: '稳定态强拉成', desc: '-', min: 0, max: 100, step: 1 },
+    { key: 'formationSpanFactor', label: '编队跨度延伸比', desc: '大组织自动更拉长前伸力', min: 0, max: 0.5, step: 0.01 },
+
+    { section: '智能镜头跟踪', sectionDesc: '相机的平滑与宏大拉伸' },
+    { key: 'cameraZoomDamp', label: '缩放追赶弹力', desc: '-', min: 0.5, max: 15, step: 0.1 },
+    { key: 'cameraPosDamp', label: '走位追赶弹力', desc: '-', min: 0.5, max: 15, step: 0.1 },
+    { key: 'cameraMinZoom', label: '群像极近推距', desc: '网格太大时的自动缩小下限', min: 0.1, max: 1, step: 0.02 },
+    { key: 'cameraMaxZoom', label: '单体贴敷放大', desc: '独狼或者极少时的自动拉大上限', min: 0.5, max: 3, step: 0.02 },
+    { key: 'cameraSpanPadding', label: '边缘视口留白', desc: '不要让结构压迫屏幕边缘', min: 0, max: 500, step: 10 },
+
+    { section: '渲染后期平滑', sectionDesc: '抽离物理层和绘制层，使之无断层表现' },
+    { key: 'displayDamping', label: '骨架拟合插值率', desc: '越低越拖出果冻物理粘丝缓冲感', min: 1, max: 60, step: 1 },
+    { key: 'pulseGlowDecay', label: '脉冲亮光淡出', desc: '-', min: 0.5, max: 10, step: 0.1 },
+    { key: 'showIntentCenter', label: '标出意图重心', desc: '把计算用的重心箭头显示出来辅助调试', type: 'toggle' }
 ];
+
 
 // ═══════════════════════════════════════════════════════════════
 //  保存默认值以供重置
@@ -517,6 +512,18 @@ function buildTuningPanel() {
             background: rgba(79, 169, 198, 0.3);
             border-radius: 3px;
         }
+        
+        .tuning-category {
+            margin: 6px 0 2px;
+            padding: 8px 18px 4px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #ffca28;
+            border-bottom: 2px solid rgba(255, 202, 40, 0.3);
+            display: flex;
+            align-items: center;
+        }
+
         .tuning-section {
             margin: 2px 0;
         }
@@ -786,7 +793,7 @@ function buildTuningPanel() {
     const header = document.createElement('div');
     header.id = 'tuning-header';
     header.innerHTML = `
-        <h2>玩家能力调试面板</h2>
+        <h2>调试面板</h2>
         <div class="header-btns">
             <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
             <button class="export-btn" id="tuning-export">📋 导出</button>
@@ -812,6 +819,14 @@ function buildTuningPanel() {
     const allRows = [];
 
     TUNING_DEFS.forEach((def) => {
+        
+        if (def.category) {
+            const catEl = document.createElement('div');
+            catEl.className = 'tuning-category';
+            catEl.innerHTML = def.category;
+            body.appendChild(catEl);
+            return;
+        }
         if (def.section) {
             // 新建 section
             const sectionEl = document.createElement('div');
@@ -866,6 +881,16 @@ function buildTuningPanel() {
     document.body.appendChild(toggle);
 
     // ─── 搜索 ─────────────────────────────────────
+    
+    setInterval(() => {
+        if (window.TUNING.autoPulseOrbCount) {
+             const orbRow = allRows.find(r => r.key === 'pulseOrbCount');
+             if (orbRow) {
+                 orbRow.sync(); // sync display with current auto value
+             }
+        }
+    }, 500);
+
     search.addEventListener('input', () => {
         const query = search.value.trim().toLowerCase();
         const sections = body.querySelectorAll('.tuning-section');
@@ -964,6 +989,9 @@ function createToggleRow(def) {
 
     checkbox.addEventListener('change', () => {
         window.TUNING[def.key] = checkbox.checked;
+        if (def.key === 'autoPulseOrbCount' && checkbox.checked) {
+             // Game will auto-update orb count in next frame
+        }
         row.classList.toggle('modified', checkbox.checked !== TUNING_DEFAULTS[def.key]);
     });
 
@@ -972,7 +1000,7 @@ function createToggleRow(def) {
 
     return {
         element: row,
-        sync: () => {
+        key: def.key, sync: () => {
             checkbox.checked = window.TUNING[def.key];
             row.classList.toggle('modified', checkbox.checked !== TUNING_DEFAULTS[def.key]);
         }
@@ -1015,12 +1043,18 @@ function createSliderRow(def) {
         numberInput.value = clamped;
         valueDisplay.textContent = clamped.toFixed(decimals);
         row.classList.toggle('modified', Math.abs(clamped - defaultVal) > def.step * 0.1);
+
+        if (manual && def.key === 'pulseOrbCount' && window.TUNING.autoPulseOrbCount) {
+             window.TUNING.autoPulseOrbCount = false;
+             const toggleRow = allRows.find(r => r.key === 'autoPulseOrbCount');
+             if (toggleRow) toggleRow.sync();
+        }
     };
 
-    rangeInput.addEventListener('input', () => update(rangeInput.value));
-    numberInput.addEventListener('input', () => update(numberInput.value));
-    numberInput.addEventListener('change', () => update(numberInput.value));
-    resetBtn.addEventListener('click', () => update(defaultVal));
+    rangeInput.addEventListener('input', () => update(rangeInput.value, true));
+    numberInput.addEventListener('input', () => update(numberInput.value, true));
+    numberInput.addEventListener('change', () => update(numberInput.value, true));
+    resetBtn.addEventListener('click', () => update(defaultVal, true));
 
     return {
         element: row,
