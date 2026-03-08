@@ -130,6 +130,31 @@ function ensureGameUiStyles() {
             border-color: rgba(255, 93, 73, 0.38);
             color: #ffd4ce;
         }
+        #game-debug-monitor {
+            position: fixed;
+            left: 18px;
+            bottom: 18px;
+            z-index: 20020;
+            min-width: 280px;
+            max-width: min(460px, calc(100vw - 36px));
+            max-height: min(42vh, 420px);
+            overflow: auto;
+            margin: 0;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(79, 169, 198, 0.28);
+            background: rgba(7, 16, 23, 0.9);
+            color: #c8dfe6;
+            font: 12px/1.45 Consolas, 'Courier New', monospace;
+            white-space: pre-wrap;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+            display: none;
+        }
+        #game-debug-monitor.alert {
+            border-color: rgba(255, 93, 73, 0.52);
+            color: #ffd4ce;
+        }
         @media (max-width: 640px) {
             .game-menu-panel {
                 width: calc(100vw - 24px);
@@ -137,6 +162,13 @@ function ensureGameUiStyles() {
             }
             .game-menu-title {
                 font-size: 30px;
+            }
+            #game-debug-monitor {
+                left: 12px;
+                right: 12px;
+                bottom: 12px;
+                min-width: 0;
+                max-width: none;
             }
         }
     `;
@@ -171,13 +203,17 @@ const SceneUiMixin = {
 
         const toast = document.createElement('div');
         toast.id = 'game-toast';
+        const debugMonitor = document.createElement('pre');
+        debugMonitor.id = 'game-debug-monitor';
 
         document.body.appendChild(overlay);
         document.body.appendChild(toast);
+        document.body.appendChild(debugMonitor);
 
         this.ui = {
             overlay,
             toast,
+            debugMonitor,
             title: overlay.querySelector('#game-menu-title'),
             subtitle: overlay.querySelector('#game-menu-subtitle'),
             slot: overlay.querySelector('#game-menu-slot'),
@@ -279,5 +315,41 @@ const SceneUiMixin = {
         this.menuMode = 'main';
         this.paused = true;
         this.refreshMenuState();
+    },
+    updateDebugMonitor() {
+        if (!this.ui?.debugMonitor) {
+            return;
+        }
+
+        const probe = this.redDebugProbe;
+        if (!probe?.active) {
+            this.ui.debugMonitor.style.display = 'none';
+            this.ui.debugMonitor.classList.remove('alert');
+            return;
+        }
+
+        const current = probe.current || {};
+        const lastExplosion = probe.lastExplosion;
+        const lines = [
+            'RED DEBUG MONITOR',
+            `label: ${probe.label || '-'}`,
+            `frames: ${probe.frames || 0}`,
+            `redNodes: ${current.redNodeCount ?? 0}  redLinks: ${current.redLinkCount ?? 0}`,
+            `speed now/max: ${(current.maxRedSpeed ?? 0).toFixed(2)} / ${(probe.maxRedSpeed ?? 0).toFixed(2)}`,
+            `coord now/max: ${(current.maxAbsCoord ?? 0).toFixed(2)} / ${(probe.maxAbsCoord ?? 0).toFixed(2)}`,
+            `link err now/max: ${(current.maxRedLinkError ?? 0).toFixed(2)} / ${(probe.maxRedLinkError ?? 0).toFixed(2)}`,
+            `err ratio now/max: ${(current.maxRedLinkErrorRatio ?? 0).toFixed(4)} / ${(probe.maxRedLinkErrorRatio ?? 0).toFixed(4)}`,
+            `group radius now/max: ${(current.maxRedRadius ?? 0).toFixed(2)} / ${(probe.maxRedRadius ?? 0).toFixed(2)}`,
+            `exploded: ${probe.exploded ? 'YES' : 'NO'}`
+        ];
+
+        if (lastExplosion) {
+            lines.push(`reason: ${lastExplosion.reason}`);
+            lines.push(`explode frame: ${lastExplosion.frame}`);
+        }
+
+        this.ui.debugMonitor.textContent = lines.join('\n');
+        this.ui.debugMonitor.style.display = 'block';
+        this.ui.debugMonitor.classList.toggle('alert', !!probe.exploded);
     },
 };

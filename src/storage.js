@@ -21,6 +21,24 @@ function writeStoredJson(key, value) {
     }
 }
 
+function removeStoredValue(key) {
+    try {
+        window.localStorage.removeItem(key);
+        return true;
+    } catch (error) {
+        console.warn(`Failed to remove storage key "${key}"`, error);
+        return false;
+    }
+}
+
+function clearStoredKeys(keys) {
+    (Array.isArray(keys) ? keys : []).forEach((key) => {
+        if (typeof key === 'string' && key.length > 0) {
+            removeStoredValue(key);
+        }
+    });
+}
+
 function formatSaveTimestamp(timestamp) {
     if (!Number.isFinite(timestamp)) {
         return '未知时间';
@@ -39,4 +57,3 @@ function formatSaveTimestamp(timestamp) {
         return new Date(timestamp).toLocaleString();
     }
 }
-

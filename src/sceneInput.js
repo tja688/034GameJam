@@ -20,6 +20,11 @@ const SceneInputMixin = {
             chain: [...this.player.chain],
             centroidX: this.player.centroidX,
             centroidY: this.player.centroidY,
+            poolNodeStates: cloneData((this.poolNodes || []).map((node) => ({
+                index: node.index,
+                experimentalColorState: node.experimentalColorState === 'red' ? 'red' : 'blue',
+                experimentalRedGroupId: Number(node.experimentalRedGroupId) || 0
+            }))),
             topology: {
                 slots: cloneData(this.player.topology?.slots || {}),
                 edges: cloneData(this.player.topology?.edges || [])
@@ -108,6 +113,15 @@ const SceneInputMixin = {
         this.player.chain = [...snapshot.chain];
         this.player.centroidX = getFiniteNumber(snapshot.centroidX, this.player.centroidX);
         this.player.centroidY = getFiniteNumber(snapshot.centroidY, this.player.centroidY);
+        const nodeStateByIndex = new Map(
+            (Array.isArray(snapshot.poolNodeStates) ? snapshot.poolNodeStates : []).map((entry) => [entry.index, entry])
+        );
+        (this.poolNodes || []).forEach((node) => {
+            const savedState = nodeStateByIndex.get(node.index);
+            node.experimentalColorState = savedState?.experimentalColorState === 'red' ? 'red' : 'blue';
+            node.experimentalRedGroupId = Number(savedState?.experimentalRedGroupId) || 0;
+        });
+        this.syncExperimentalRedGroupUid();
         this.player.topology = {
             slots: cloneData(snapshot.topology.slots || {}),
             edges: this.normalizeTopologyEdges(cloneData(snapshot.topology.edges || []))
@@ -128,6 +142,7 @@ const SceneInputMixin = {
         this.player.edit.dragNode = -1;
         this.player.edit.hoverNode = -1;
         this.player.edit.hoverLink = '';
+        this.syncExperimentalRedTopology(false);
         this.rebuildFormation(false);
         if (typeof this.syncLegacyPulseState === 'function') {
             this.syncLegacyPulseState();
@@ -205,6 +220,44 @@ const SceneInputMixin = {
         edit.selectedNodes = this.getUniqueNodeSelection(nodeIds);
         edit.selectedLinks = this.getUniqueLinkSelection(linkIds);
         this.syncEditSelectionState();
+    },
+    getExperimentalPaintTargets(index) {
+        const T = window.TUNING || {};
+        if ((T.redBatchPaintSelected ?? true) && this.isEditNodeSelected(index) && this.player.edit.selectedNodes.length > 0) {
+            return [...this.player.edit.selectedNodes];
+        }
+        return [index];
+    },
+    applyExperimentalPaintToNodes(nodeIds, clear = false) {
+        const targets = [...new Set((Array.isArray(nodeIds) ? nodeIds : []).filter((index) => this.player.chain.includes(index)))];
+        if (targets.length === 0) {
+            return false;
+        }
+
+        const snapshot = this.captureEditSnapshot();
+        const changed = clear ? this.clearExperimentalNodes(targets) : this.paintExperimentalNodesRed(targets);
+        if (!changed) {
+            return false;
+        }
+
+        if (!clear) {
+            const groupId = this.getExperimentalRedGroupId(targets[0]);
+            if (groupId > 0) {
+                this.bakeExperimentalGroupShape(groupId, -1, 1);
+            }
+        }
+
+        this.syncExperimentalRedTopology();
+        this.pushEditHistorySnapshot(snapshot);
+        this.setEditSelection(targets, []);
+        this.clearEditDeleteState();
+        return true;
+    },
+    paintSelectedNodesRed() {
+        return this.applyExperimentalPaintToNodes(this.player.edit.selectedNodes, false);
+    },
+    clearSelectedExperimentalNodes() {
+        return this.applyExperimentalPaintToNodes(this.player.edit.selectedNodes, true);
     },
     isEditNodeSelected(index) {
         return this.player.edit.selectedNodes.includes(index);
@@ -452,11 +505,20 @@ const SceneInputMixin = {
         if (!edit.active) {
             if (hitNode || hitLink) {
                 this.enterEditMode();
+                if (pointer.button === 2 && hitNode && this.isExperimentalRedTopologyEnabled() && (window.TUNING.redRightClickPaintNodes ?? true)) {
+                    const clearMode = !!pointer.event?.altKey;
+                    this.applyExperimentalPaintToNodes(this.getExperimentalPaintTargets(hitNode.index), clearMode);
+                }
             }
             return;
         }
 
         if (pointer.button === 2) {
+            if (hitNode && this.isExperimentalRedTopologyEnabled() && (window.TUNING.redRightClickPaintNodes ?? true)) {
+                const clearMode = !!pointer.event?.altKey;
+                this.applyExperimentalPaintToNodes(this.getExperimentalPaintTargets(hitNode.index), clearMode);
+                return;
+            }
             if (hitNode) {
                 this.startNodeDelete(hitNode.index);
                 return;
@@ -691,7 +753,9 @@ const SceneInputMixin = {
         this.poolNodes.push({
             ...template,
             index,
-            id: `${template.id}-${index}`
+            id: `${template.id}-${index}`,
+            experimentalColorState: 'blue',
+            experimentalRedGroupId: 0
         });
 
         const anchorDrift = normalize(anchor.x, anchor.y, expansion.local.x, expansion.local.y);

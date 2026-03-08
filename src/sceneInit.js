@@ -203,7 +203,212 @@ const SceneInitMixin = {
         return { swarm: 0.35, stinger: 8, brute: 46, flank: 21 };
     },
     createPoolNodesFromLibrary() {
-        return NODE_LIBRARY.map((node, index) => ({ ...node, index }));
+        return NODE_LIBRARY.map((node, index) => ({
+            ...node,
+            index,
+            experimentalColorState: 'blue',
+            experimentalRedGroupId: 0
+        }));
+    },
+    createDefaultRedDebugProbe(label = '') {
+        return {
+            active: false,
+            label,
+            frames: 0,
+            exploded: false,
+            current: null,
+            lastExplosion: null,
+            maxRedSpeed: 0,
+            maxAbsCoord: 0,
+            maxRedLinkError: 0,
+            maxRedLinkErrorRatio: 0,
+            maxRedRadius: 0,
+            recent: []
+        };
+    },
+    resetRedDebugProbe(label = '') {
+        this.redDebugProbe = this.createDefaultRedDebugProbe(label);
+        window.__redDebugProbe = this.redDebugProbe;
+        return this.redDebugProbe;
+    },
+    activateRedDebugProbe(label = 'manual') {
+        const probe = this.resetRedDebugProbe(label);
+        probe.active = true;
+        window.__redDebugProbe = probe;
+        return probe;
+    },
+    deactivateRedDebugProbe() {
+        if (!this.redDebugProbe) {
+            this.resetRedDebugProbe();
+            return;
+        }
+        this.redDebugProbe.active = false;
+        window.__redDebugProbe = this.redDebugProbe;
+    },
+    recordRedDebugProbe() {
+        const probe = this.redDebugProbe;
+        if (!probe?.active) {
+            return;
+        }
+
+        const redNodes = (this.activeNodes || []).filter((node) => this.isExperimentalRedNode(node));
+        const redLinks = (this.links || []).filter((link) => link.isExperimentalRed);
+        let maxRedSpeed = 0;
+        let maxAbsCoord = 0;
+        let maxRedLinkError = 0;
+        let maxRedLinkErrorRatio = 0;
+        let maxRedRadius = 0;
+        let nonFinite = false;
+        const groups = new Map();
+
+        redNodes.forEach((node) => {
+            const speed = Math.hypot(node.vx || 0, node.vy || 0);
+            const absCoord = Math.max(Math.abs(node.x || 0), Math.abs(node.y || 0));
+            maxRedSpeed = Math.max(maxRedSpeed, speed);
+            maxAbsCoord = Math.max(maxAbsCoord, absCoord);
+            if (!Number.isFinite(node.x) || !Number.isFinite(node.y) || !Number.isFinite(node.vx) || !Number.isFinite(node.vy)) {
+                nonFinite = true;
+            }
+            const groupId = this.getExperimentalRedGroupId(node);
+            if (groupId > 0) {
+                if (!groups.has(groupId)) {
+                    groups.set(groupId, []);
+                }
+                groups.get(groupId).push(node);
+            }
+        });
+
+        redLinks.forEach((link) => {
+            const first = this.activeNodes[link.a];
+            const second = this.activeNodes[link.b];
+            if (!first || !second) {
+                return;
+            }
+            const distance = Math.hypot((second.x || 0) - (first.x || 0), (second.y || 0) - (first.y || 0));
+            const error = Math.abs(distance - (link.rest || 0));
+            const errorRatio = error / Math.max(Math.abs(link.rest || 0), 1);
+            maxRedLinkError = Math.max(maxRedLinkError, error);
+            maxRedLinkErrorRatio = Math.max(maxRedLinkErrorRatio, errorRatio);
+            if (!Number.isFinite(distance) || !Number.isFinite(link.rest)) {
+                nonFinite = true;
+            }
+        });
+
+        groups.forEach((nodes) => {
+            if (!Array.isArray(nodes) || nodes.length === 0) {
+                return;
+            }
+            const centroid = nodes.reduce((acc, node) => {
+                acc.x += node.x || 0;
+                acc.y += node.y || 0;
+                return acc;
+            }, { x: 0, y: 0 });
+            centroid.x /= nodes.length;
+            centroid.y /= nodes.length;
+            nodes.forEach((node) => {
+                maxRedRadius = Math.max(maxRedRadius, Math.hypot((node.x || 0) - centroid.x, (node.y || 0) - centroid.y));
+            });
+        });
+
+        probe.frames += 1;
+        probe.current = {
+            redNodeCount: redNodes.length,
+            redLinkCount: redLinks.length,
+            maxRedSpeed,
+            maxAbsCoord,
+            maxRedLinkError,
+            maxRedLinkErrorRatio,
+            maxRedRadius
+        };
+        probe.maxRedSpeed = Math.max(probe.maxRedSpeed || 0, maxRedSpeed);
+        probe.maxAbsCoord = Math.max(probe.maxAbsCoord || 0, maxAbsCoord);
+        probe.maxRedLinkError = Math.max(probe.maxRedLinkError || 0, maxRedLinkError);
+        probe.maxRedLinkErrorRatio = Math.max(probe.maxRedLinkErrorRatio || 0, maxRedLinkErrorRatio);
+        probe.maxRedRadius = Math.max(probe.maxRedRadius || 0, maxRedRadius);
+        probe.recent.push({
+            frame: probe.frames,
+            speed: maxRedSpeed,
+            coord: maxAbsCoord,
+            error: maxRedLinkError,
+            ratio: maxRedLinkErrorRatio,
+            radius: maxRedRadius
+        });
+        if (probe.recent.length > 180) {
+            probe.recent.splice(0, probe.recent.length - 180);
+        }
+
+        let reason = '';
+        if (nonFinite) {
+            reason = 'non-finite-state';
+        } else if (maxAbsCoord > 24000) {
+            reason = 'abs-coord-overflow';
+        } else if (maxRedSpeed > 12000) {
+            reason = 'speed-overflow';
+        } else if (maxRedLinkErrorRatio > 4) {
+            reason = 'link-error-ratio-overflow';
+        } else if (maxRedRadius > 6000 && redNodes.length > 0 && redNodes.length <= 8) {
+            reason = 'group-radius-overflow';
+        }
+
+        if (reason && !probe.exploded) {
+            probe.exploded = true;
+            probe.lastExplosion = {
+                reason,
+                frame: probe.frames,
+                ...probe.current
+            };
+            console.warn('RED_DEBUG_EXPLODED', JSON.stringify(probe.lastExplosion));
+        }
+
+        window.__redDebugProbe = probe;
+    },
+    runExperimentalRedDebugSetup() {
+        const T = window.TUNING || {};
+        T.enableRedTopologyExperiment = true;
+
+        this.resetSimulation(true);
+
+        const triad = [0, 1, 2];
+        const radius = 112;
+        this.baseChain = [...triad];
+        this.player.chain = [...triad];
+        (this.poolNodes || []).forEach((node) => {
+            node.experimentalColorState = 'blue';
+            node.experimentalRedGroupId = 0;
+        });
+        this.player.topology = {
+            slots: {
+                0: { x: 0, y: -radius },
+                1: { x: -radius * 0.8660254, y: radius * 0.5 },
+                2: { x: radius * 0.8660254, y: radius * 0.5 }
+            },
+            edges: [
+                this.createTopologyEdgeDescriptor(0, 1, 'spine'),
+                this.createTopologyEdgeDescriptor(1, 2, 'spine'),
+                this.createTopologyEdgeDescriptor(2, 0, 'spine')
+            ]
+        };
+        this.player.centroidX = 0;
+        this.player.centroidY = 0;
+        this.player.heading = -Math.PI * 0.5;
+        this.player.edit = this.createDefaultEditState();
+        this.activeNodes = [];
+        this.links = [];
+        this.syncExperimentalRedGroupUid();
+        this.rebuildFormation(true);
+        this.enterEditMode();
+        this.setEditSelection(triad, []);
+        this.paintSelectedNodesRed();
+        this.setEditSelection(triad, []);
+        this.resetPulseFlow();
+        this.activateRedDebugProbe('triad-red-test');
+        this.updateDisplay(0);
+        this.menuMode = null;
+        this.paused = false;
+        this.sessionStarted = true;
+        this.refreshMenuState();
+        this.showToast('红测试 x3 已启动');
+        return true;
     },
     resetSimulation(startSession = true) {
         this.paused = false;
@@ -220,12 +425,16 @@ const SceneInitMixin = {
         this.intent = this.createDefaultIntent();
         this.cameraRig = this.createDefaultCameraRig();
         this.poolNodes = this.createPoolNodesFromLibrary();
+        this.syncExperimentalRedGroupUid();
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
         this.links = [];
+        this.resetRedDebugProbe();
+        this.player.topology.edges = this.normalizeTopologyEdges(this.buildExperimentalRedEdges(this.player.topology.edges));
         this.rebuildFormation(true);
         this.lastCompoundTopologyEdgesEnabled = this.isCompoundTopologyEdgesEnabled();
         this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
+        this.lastExperimentalRedTopologyEnabled = this.isExperimentalRedTopologyEnabled();
         this.expandHoldTimer = 0;
         this.expandAddCount = 0;
         this.nextExpandThreshold = 0;
@@ -299,6 +508,7 @@ const SceneInitMixin = {
         this.updateEditMode(frameDt);
         this.syncCompoundTopologyEdgesMode();
         this.syncTopologySlotLayoutMode();
+        this.syncExperimentalRedTopologyMode();
 
         const simDt = frameDt * this.timeScaleFactor;
         this.worldTime += simDt;

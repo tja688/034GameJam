@@ -1,12 +1,23 @@
 
 
 const SceneSaveLoadMixin = {
+    clearLegacySaveData() {
+        clearStoredKeys(STORAGE_KEYS.legacySaveSlots || []);
+    },
     hasSavedGame() {
         return !!this.getSavedGameData();
     },
     getSavedGameData() {
         const data = readStoredJson(STORAGE_KEYS.saveSlot);
-        if (!data || !Array.isArray(data.player?.chain) || !data.player?.topology || !Array.isArray(data.poolNodes) || !Array.isArray(data.activeNodes)) {
+        if (data && data.version !== SAVE_DATA_VERSION) {
+            removeStoredValue(STORAGE_KEYS.saveSlot);
+            return null;
+        }
+        if (!data
+            || !Array.isArray(data.player?.chain)
+            || !data.player?.topology
+            || !Array.isArray(data.poolNodes)
+            || !Array.isArray(data.activeNodes)) {
             return null;
         }
         return data;
@@ -14,7 +25,7 @@ const SceneSaveLoadMixin = {
     buildSaveData() {
         this.rebalancePulseRunners();
         return {
-            version: 2,
+            version: SAVE_DATA_VERSION,
             savedAt: Date.now(),
             baseChain: [...this.baseChain],
             player: {
@@ -52,7 +63,9 @@ const SceneSaveLoadMixin = {
                 shape: node.shape,
                 polarity: node.polarity,
                 role: node.role,
-                color: node.color
+                color: node.color,
+                experimentalColorState: node.experimentalColorState === 'red' ? 'red' : 'blue',
+                experimentalRedGroupId: Number(node.experimentalRedGroupId) || 0
             })),
             activeNodes: this.activeNodes.map((node) => ({
                 index: node.index,
@@ -118,8 +131,11 @@ const SceneSaveLoadMixin = {
         this.cameraZoomScale = 1;
         this.poolNodes = savedPoolNodes.map((node, index) => ({
             ...node,
-            index: Number.isInteger(node.index) ? node.index : index
+            index: Number.isInteger(node.index) ? node.index : index,
+            experimentalColorState: node.experimentalColorState === 'red' ? 'red' : 'blue',
+            experimentalRedGroupId: Number(node.experimentalRedGroupId) || 0
         }));
+        this.syncExperimentalRedGroupUid();
 
         Object.assign(this.player, {
             centroidX: getFiniteNumber(data.player.centroidX, this.player.centroidX),
@@ -159,6 +175,8 @@ const SceneSaveLoadMixin = {
             },
             edit: this.createDefaultEditState()
         });
+
+        this.player.topology.edges = this.normalizeTopologyEdges(this.buildExperimentalRedEdges(this.player.topology.edges));
 
         this.activeNodes = [];
         this.links = [];
@@ -200,6 +218,7 @@ const SceneSaveLoadMixin = {
         this.updateDisplay(0);
         this.lastCompoundTopologyEdgesEnabled = this.isCompoundTopologyEdgesEnabled();
         this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
+        this.lastExperimentalRedTopologyEnabled = this.isExperimentalRedTopologyEnabled();
         this.menuMode = null;
         this.refreshMenuState();
         return true;

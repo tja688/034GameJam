@@ -27,6 +27,8 @@ const SceneRenderMixin = {
             this.drawIntentCenter(g);
         }
         this.drawHud(g);
+        this.recordRedDebugProbe?.();
+        this.updateDebugMonitor?.();
     },
     drawWorld(g) {
         const width = this.cameraRig.viewportWidth;
@@ -89,10 +91,12 @@ const SceneRenderMixin = {
             const to = this.worldToScreen(render.toX, render.toY);
             const rigidityWidth = link.rigidity === 'rigid' ? 0.9 : link.rigidity === 'flex' ? -0.35 : 0.15;
             const width = clamp(((link.kind === 'support' ? 1.4 : 2.1) + rigidityWidth + link.tension * (link.kind === 'support' ? 8 : 12)) * this.cameraRig.zoom, 1, 9);
-            const color = link.samePolarity ? COLORS.link : COLORS.pulse;
-            const baseAlpha = link.samePolarity
-                ? (link.kind === 'support' ? 0.3 : 0.52)
-                : (link.kind === 'support' ? 0.54 : 0.76);
+            const color = link.isExperimentalRed ? COLORS.inverse : (link.samePolarity ? COLORS.link : COLORS.pulse);
+            const baseAlpha = link.isExperimentalRed
+                ? (link.kind === 'support' ? 0.62 : 0.8)
+                : link.samePolarity
+                    ? (link.kind === 'support' ? 0.3 : 0.52)
+                    : (link.kind === 'support' ? 0.54 : 0.76);
             const alpha = clamp(baseAlpha + (link.rigidity === 'rigid' ? 0.12 : link.rigidity === 'flex' ? -0.08 : 0), 0.18, 0.95);
             g.lineStyle(width, color, alpha);
             g.lineBetween(from.x, from.y, to.x, to.y);
@@ -182,7 +186,7 @@ const SceneRenderMixin = {
             const render = this.getLinkRenderPoints(link);
             const from = this.worldToScreen(render.fromX, render.fromY);
             const to = this.worldToScreen(render.toX, render.toY);
-            g.lineStyle(clamp(6 * this.cameraRig.zoom, 2, 7), COLORS.base, 0.8);
+            g.lineStyle(clamp(6 * this.cameraRig.zoom, 2, 7), link.isExperimentalRed ? COLORS.inverse : COLORS.base, 0.8);
             g.lineBetween(from.x, from.y, to.x, to.y);
         });
 
@@ -191,7 +195,7 @@ const SceneRenderMixin = {
             const render = this.getLinkRenderPoints(hoverLink);
             const from = this.worldToScreen(render.fromX, render.fromY);
             const to = this.worldToScreen(render.toX, render.toY);
-            g.lineStyle(clamp(5 * this.cameraRig.zoom, 2, 6), COLORS.inverse, 0.68);
+            g.lineStyle(clamp(5 * this.cameraRig.zoom, 2, 6), hoverLink.isExperimentalRed ? COLORS.inverse : COLORS.pulse, 0.68);
             g.lineBetween(from.x, from.y, to.x, to.y);
         }
 
@@ -202,7 +206,7 @@ const SceneRenderMixin = {
             }
             const selectedPos = this.worldToScreen(node.displayX, node.displayY);
             const pulse = 20 + Math.sin(this.worldTime * 10) * 4;
-            g.lineStyle(3, COLORS.pulse, 0.9);
+            g.lineStyle(3, this.isExperimentalRedNode(node) ? COLORS.inverse : COLORS.pulse, 0.9);
             g.strokeCircle(selectedPos.x, selectedPos.y, clamp(pulse * this.cameraRig.zoom, 10, 26));
         });
 
@@ -223,7 +227,7 @@ const SceneRenderMixin = {
             const hovered = this.activeNodes.find((node) => node.index === edit.hoverNode);
             if (hovered) {
                 const hoveredPos = this.worldToScreen(hovered.displayX, hovered.displayY);
-                g.lineStyle(3, COLORS.base, 0.9);
+                g.lineStyle(3, this.isExperimentalRedNode(hovered) ? COLORS.inverse : COLORS.base, 0.9);
                 g.strokeCircle(hoveredPos.x, hoveredPos.y, clamp(18 * this.cameraRig.zoom, 9, 20));
             }
         }

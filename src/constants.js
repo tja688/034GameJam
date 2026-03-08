@@ -50,8 +50,12 @@ const ENEMY_DEFS = {
 
 const DEFAULT_BASE_CHAIN = [0, 2, 5, 4, 1, 7];
 
+const SAVE_DATA_VERSION = 3;
+
 const STORAGE_KEYS = {
-    saveSlot: 'bio-core-save-slot-1'
+    saveSlot: 'bio-core-save-slot-red-structure-v1',
+    legacySaveSlots: ['bio-core-save-slot-1']
 };
 
 let TOPOLOGY_EDGE_UID = 1;
+let EXPERIMENTAL_RED_GROUP_UID = 1;

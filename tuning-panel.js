@@ -71,11 +71,14 @@ window.TUNING = {
     dragFreeBase: 5.6,
     dragStabilityBonus: 1.1,
     tensionDecay: 0.85,
+    maxNodeSpeed: 800,
+    redStructureExtraDrag: 2.0,
 
     // ─── PBD 约束求解 ────────────────────────────
     pbdIterations: 3,
     pbdCorrectionRate: 0.18,
     pbdRigidPasses: 5,
+    pbdVelocityCorrection: 0.6,
 
     // ─── 转向与意图 ──────────────────────────────
     baseTurnRate: 3.1,
@@ -147,6 +150,36 @@ window.TUNING = {
     slotRadiusScale: 0.94,
     forwardStep: 72,
 
+    // ─── 红色架构实验 ────────────────────────────
+    enableRedTopologyExperiment: false,
+    redRightClickPaintNodes: true,
+    redBatchPaintSelected: true,
+    redStructureDensePairs: false,
+    redStructureStiffness: 5.2,
+    redStructureDamping: 2.6,
+    redStructureStretchSlack: 0.4,
+    redStructurePbdWeight: 5.2,
+    redStructureRestMul: 1.0,
+    redStructureRestMin: 0,
+    redStructureRestMax: 2000,
+    redPulseImpulse: 160,
+    redPulseSpread: 180,
+    redPulseLeadBoost: 1.4,
+    redPulseFalloffSoftness: 0.45,
+    redPulseFlowWeight: 1.0,
+    redPulseFocusWeight: 0.18,
+    redPulseReachScale: 1.08,
+    redPulseStanceScale: 1.0,
+    redPulseStabilityScale: 1.1,
+    redPulseStabilityGain: 0.04,
+    redPulseRingRadius: 38,
+    redPulseMaxBudget: 600,
+    redPulseSpeedCap: 500,
+    redDragShapeEnabled: true,
+    redDragPbdPasses: 6,
+    redDragPbdRate: 0.32,
+    redDragShapeBlend: 0.36,
+
     // ─── 脉冲循环 ────────────────────────────────
     autoPulseOrbCount: true,
     pulseOrbCount: 2,
@@ -169,6 +202,7 @@ window.TUNING = {
 };
 
 const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
+const TUNING_STORAGE_SCHEMA_VERSION = 2;
 
 function loadPersistedTuning() {
     try {
@@ -180,6 +214,12 @@ function loadPersistedTuning() {
         const saved = JSON.parse(raw);
         if (!saved || typeof saved !== 'object') {
             return false;
+        }
+
+        const schemaVersion = Number(saved.__schemaVersion) || 1;
+        if (schemaVersion < 2 && saved.redStructureRestMin === 64 && saved.redStructureRestMax === 260) {
+            saved.redStructureRestMin = window.TUNING.redStructureRestMin;
+            saved.redStructureRestMax = window.TUNING.redStructureRestMax;
         }
 
         Object.keys(window.TUNING).forEach((key) => {
@@ -196,7 +236,7 @@ function loadPersistedTuning() {
 
 function savePersistedTuning() {
     try {
-        const toSave = { ...window.TUNING };
+        const toSave = { ...window.TUNING, __schemaVersion: TUNING_STORAGE_SCHEMA_VERSION };
         delete toSave.pulseOrbCount;
         delete toSave.autoPulseOrbCount;
         window.localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(toSave));
@@ -247,6 +287,8 @@ const TUNING_DEFS = [
     { key: 'dragFreeBase', label: '自由态阻力', desc: '基础的速度下降率', min: 0, max: 20, step: 0.1 },
     { key: 'dragStabilityBonus', label: '稳定态阻力加成', desc: '稳定性越高越显得重', min: 0, max: 5, step: 0.1 },
     { key: 'tensionDecay', label: '张力衰减', desc: '每帧张力消散率', min: 0, max: 1, step: 0.01 },
+    { key: 'maxNodeSpeed', label: '全局最大速度', desc: '所有节点的速度硬上限(px/s)。防止发散爆炸。', min: 100, max: 3000, step: 50 },
+    { key: 'redStructureExtraDrag', label: '红节点额外阻力', desc: '红结构节点的额外速度衰减，帮助收敛。', min: 0, max: 10, step: 0.1 },
     { key: 'stabilityDecay', label: 'stability 衰减/秒', desc: '稳定性减少衰减', min: 0, max: 2, step: 0.05 },
     { key: 'stabilityMin', label: 'stability 最低值', desc: '稳定性保底下限', min: 0, max: 1, step: 0.05 },
     { key: 'turnAssistDecay', label: 'turnAssist 衰减/秒', desc: '辅助能力衰减', min: 0, max: 5, step: 0.1 },
@@ -263,6 +305,7 @@ const TUNING_DEFS = [
     { key: 'pbdIterations', label: '基础迭代步数', desc: '所有约束校正轮数', min: 0, max: 12, step: 1 },
     { key: 'pbdCorrectionRate', label: '每次修正比例', desc: '修正率0-100%', min: 0, max: 0.8, step: 0.01 },
     { key: 'pbdRigidPasses', label: '骨架强约束轮数', desc: '强化关键支撑结构的维持', min: 0, max: 8, step: 1 },
+    { key: 'pbdVelocityCorrection', label: 'PBD速度校正比', desc: 'PBD位置校正后同步修正速度的比例。防止PBD和速度脱节导致弹射。', min: 0, max: 1, step: 0.05 },
 
     { category: '🕸️ 多形态连线系统' },
 
@@ -366,6 +409,44 @@ const TUNING_DEFS = [
     { key: 'slotYCompression', label: '前后侧轴压缩', desc: '做扁长或圆阵', min: 0.3, max: 1.5, step: 0.02 },
     { key: 'slotRadiusScale', label: '结构网半径倍缩', desc: '调整全体胖瘦', min: 0.3, max: 2, step: 0.02 },
     { key: 'forwardStep', label: '前探延展间隔', desc: '', min: 20, max: 200, step: 2 },
+
+    { category: '🧪 红色架构实验' },
+
+    { section: '实验总开关与编辑手势', sectionDesc: '默认关闭。开启后所有节点默认为蓝态，右键节点染红，Alt+右键可把命中的选中节点清回蓝态。' },
+    { key: 'enableRedTopologyExperiment', label: '启用红架构实验', desc: '总开关。关闭时回到当前常规节点/连线体系。', type: 'toggle' },
+    { key: 'redRightClickPaintNodes', label: '右键节点染红', desc: '编辑态右键命中节点时触发染红；Alt+右键为清蓝。', type: 'toggle' },
+    { key: 'redBatchPaintSelected', label: '多选批量染红', desc: '命中已选节点时，整组选中节点一起切进红架构。', type: 'toggle' },
+
+    { section: '红线刚性参数', sectionDesc: '红节点组会自动补三重杆性连线，并复用旧多线刚性求解。' },
+    { key: 'redStructureDensePairs', label: '红架构全互连', desc: '高风险旧方案。开=组内两两相连；关=稀疏刚性骨架，更稳定。', type: 'toggle' },
+    { key: 'redStructureStiffness', label: '红线刚度', desc: '红架构三重边的基础硬度。越高越像杆。', min: 0.5, max: 10, step: 0.1 },
+    { key: 'redStructureDamping', label: '红线阻尼', desc: '压掉红架构高刚度带来的抖动。', min: 0.1, max: 6, step: 0.05 },
+    { key: 'redStructureStretchSlack', label: '红线容伸', desc: '杆性连线允许的拉伸余量。越低越不许变长。', min: 0, max: 8, step: 0.05 },
+    { key: 'redStructurePbdWeight', label: '红线PBD权重', desc: '位置解算里红架构的保形话语权。', min: 0.5, max: 8, step: 0.1 },
+    { key: 'redStructureRestMul', label: '红线长度倍率', desc: '红架构生成时对当前节点距离的缩放。', min: 0.5, max: 1.5, step: 0.01 },
+    { key: 'redStructureRestMin', label: '红线最短长度', desc: '安全下限。默认 0，尽量不在固化瞬间改写当前形状。', min: 0, max: 240, step: 2 },
+    { key: 'redStructureRestMax', label: '红线最长长度', desc: '安全上限。默认足够大，避免固化瞬间被强行压回。', min: 100, max: 4000, step: 10 },
+
+    { section: '红架构脉冲推进', sectionDesc: '脉冲命中红节点时，不再单点探出，而是沿当前 flow 推整组。' },
+    { key: 'redPulseImpulse', label: '整组推进力度', desc: '直接加到红架构成员速度上的推动量。', min: 20, max: 500, step: 5 },
+    { key: 'redPulseSpread', label: '推进扩散半径', desc: '红架构中距离命中点多远仍会吃到推动。', min: 20, max: 400, step: 5 },
+    { key: 'redPulseLeadBoost', label: '命中点额外推力', desc: '被脉冲点自身比其余成员再多吃多少推力。', min: 1, max: 3, step: 0.05 },
+    { key: 'redPulseFalloffSoftness', label: '扩散衰减', desc: '推进从命中点向外衰减的速度。', min: 0, max: 1, step: 0.02 },
+    { key: 'redPulseFlowWeight', label: 'Flow权重', desc: '整组推进时对当前 flow 朝向的依赖。', min: 0, max: 1.5, step: 0.02 },
+    { key: 'redPulseFocusWeight', label: 'Focus权重', desc: '整组推进时掺入瞄准/聚焦方向的比重。', min: 0, max: 1.0, step: 0.02 },
+    { key: 'redPulseReachScale', label: '红脉冲 reach 倍率', desc: '给红架构脉冲触发器保留一个额外 reach 放大。', min: 0.5, max: 2.0, step: 0.02 },
+    { key: 'redPulseStanceScale', label: '红脉冲 stance 倍率', desc: '保留给后续更细触发权重的倍率。', min: 0.5, max: 2.0, step: 0.02 },
+    { key: 'redPulseStabilityScale', label: '红脉冲 stability 倍率', desc: '保留给后续更细触发权重的倍率。', min: 0.5, max: 2.0, step: 0.02 },
+    { key: 'redPulseStabilityGain', label: '脉冲稳定增益', desc: '每次红脉冲额外回一点整体稳定度。', min: 0, max: 0.3, step: 0.01 },
+    { key: 'redPulseRingRadius', label: '红脉冲表现半径', desc: '红架构被击中时的表现圈大小。', min: 10, max: 90, step: 1 },
+    { key: 'redPulseMaxBudget', label: '每帧脉冲能量预算', desc: '限制每帧注入单个红结构群的总推力上限。防止多脉冲叠加导致爆炸。', min: 50, max: 2000, step: 25 },
+    { key: 'redPulseSpeedCap', label: '脉冲速度衰减阈值', desc: '红结构群速度超过此值时，脉冲推力自动衰减。', min: 100, max: 2000, step: 25 },
+
+    { section: '编辑态塑形', sectionDesc: '拖拽红节点时，给红架构追加保形求解，并把结果逐步回写成新槽位。' },
+    { key: 'redDragShapeEnabled', label: '拖拽红架构塑形', desc: '开启后拖一个红点时，整组保持稳固同时允许被塑形成新结构。', type: 'toggle' },
+    { key: 'redDragPbdPasses', label: '拖拽额外PBD轮数', desc: '编辑态拖拽红架构时追加的保形解算次数。', min: 0, max: 16, step: 1 },
+    { key: 'redDragPbdRate', label: '拖拽额外修正率', desc: '编辑态拖拽红架构时每轮额外修正比例。', min: 0, max: 0.9, step: 0.01 },
+    { key: 'redDragShapeBlend', label: '塑形烘焙比例', desc: '把拖拽中形成的新形状写回槽位的速度。', min: 0, max: 1, step: 0.02 },
     
     { section: '弃用老旧编队规则', sectionDesc: '老一套硬套座标方案残留' },
     { key: 'formationPullAnchored', label: '锚定硬拉力度', desc: '-', min: 0, max: 200, step: 1 },
@@ -466,6 +547,8 @@ function buildTuningPanel() {
         #tuning-header .header-btns {
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
         #tuning-header button {
             background: rgba(255, 93, 73, 0.12);
@@ -827,6 +910,10 @@ function buildTuningPanel() {
             <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
             <button class="export-btn" id="tuning-export">📋 导出</button>
             <button id="tuning-reset-all">🔄 全部重置</button>
+            <button id="tuning-red-test">🧪 红测试x3</button>
+            <button id="tuning-paint-red">🔴 选中染红</button>
+            <button id="tuning-clear-red">🔵 选中清蓝</button>
+            <button id="tuning-reset-red">🧹 清空红架构</button>
         </div>
     `;
     panel.appendChild(header);
@@ -992,6 +1079,10 @@ function buildTuningPanel() {
 
     // ─── 全部重置 ──────────────────────────────────
     document.getElementById('tuning-add-node').addEventListener('mousedown', () => { if (window.activeScene) window.activeScene.addDebugNode(); });
+    document.getElementById('tuning-red-test').addEventListener('click', () => { if (window.activeScene) window.activeScene.runExperimentalRedDebugSetup(); });
+    document.getElementById('tuning-paint-red').addEventListener('click', () => { if (window.activeScene) window.activeScene.paintSelectedNodesRed(); });
+    document.getElementById('tuning-clear-red').addEventListener('click', () => { if (window.activeScene) window.activeScene.clearSelectedExperimentalNodes(); });
+    document.getElementById('tuning-reset-red').addEventListener('click', () => { if (window.activeScene) window.activeScene.clearAllExperimentalRedState(); });
 
     document.getElementById('tuning-reset-all').addEventListener('click', () => {
         Object.keys(TUNING_DEFAULTS).forEach((key) => {
