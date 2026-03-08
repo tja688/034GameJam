@@ -677,7 +677,9 @@ const SceneInputMixin = {
         }
     },
     addDebugNode() {
-        if (this.poolNodes.length >= 96) {
+        const T = window.TUNING || {};
+        const maxNodes = T.maxNodeCount ?? 96;
+        if (this.poolNodes.length >= maxNodes) {
             return;
         }
 

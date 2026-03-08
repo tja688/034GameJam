@@ -226,6 +226,9 @@ const SceneInitMixin = {
         this.rebuildFormation(true);
         this.lastCompoundTopologyEdgesEnabled = this.isCompoundTopologyEdgesEnabled();
         this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
+        this.expandHoldTimer = 0;
+        this.expandAddCount = 0;
+        this.nextExpandThreshold = 0;
         this.refreshMenuState();
     },
     update(_, deltaMs) {
@@ -270,8 +273,21 @@ const SceneInitMixin = {
             return;
         }
 
-        if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
-            this.addDebugNode();
+        if (!this.player.dead && !this.player.edit.active) {
+            if (Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
+                this.addDebugNode();
+                this.expandHoldTimer = 0;
+                this.expandAddCount = 0;
+                this.nextExpandThreshold = 0.45;
+            } else if (this.keys.expand.isDown) {
+                this.expandHoldTimer += frameDt;
+                if (this.expandHoldTimer > this.nextExpandThreshold) {
+                    this.addDebugNode();
+                    this.expandAddCount++;
+                    const interval = Math.max(0.015, 0.18 * Math.pow(0.88, this.expandAddCount));
+                    this.nextExpandThreshold += interval;
+                }
+            }
         }
         if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
             this.resetSimulation(true);
@@ -344,3 +360,4 @@ const SceneInitMixin = {
         });
     },
 };
+

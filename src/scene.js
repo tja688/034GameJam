@@ -5,6 +5,7 @@ class CoreDemoScene extends Phaser.Scene {
     }
 
     create() {
+        window.activeScene = this;
         ensureGameUiStyles();
         this.cameras.main.setBackgroundColor(COLORS.background);
         this.graphics = this.add.graphics();

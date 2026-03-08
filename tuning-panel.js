@@ -165,6 +165,7 @@ window.TUNING = {
 
     // ─── 编队跨度比例 ────────────────────────────
     formationSpanFactor: 0.16,
+    maxNodeCount: 2000,
 };
 
 const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
@@ -358,6 +359,7 @@ const TUNING_DEFS = [
     { category: '🎥 视觉呈现与结构扩建' },
 
     { section: '拓扑结构基底分布', sectionDesc: '当有新细胞生长与加入时的基建布局指导' },
+    { key: 'maxNodeCount', label: '最大节点数量限制', desc: '限制玩家可拥有的最大节点总数', min: 1, max: 2000, step: 1 },
     { key: 'enableCompoundTopologyEdges', label: '复合连线允许', desc: '打开后结构网不再强制规整，可多重叠加韧带', type: 'toggle' },
     { key: 'enableSunflowerTopologySlots', label: '向日葵槽位', desc: '退回老版整齐环列的黄金角分布律', type: 'toggle' },
     { key: 'slotSpacing', label: '基础散件距离', desc: '生成骨架之间初始缝隙(不等于最终拉扯弹性长度)', min: 40, max: 250, step: 2 },
@@ -821,6 +823,7 @@ function buildTuningPanel() {
     header.innerHTML = `
         <h2>调试面板</h2>
         <div class="header-btns">
+            <button id="tuning-add-node" style="background: rgba(54, 214, 255, 0.12); border-color: rgba(54, 214, 255, 0.35); color: #36d6ff; padding: 4px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s;">➕ 新增节点 (E)</button>
             <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
             <button class="export-btn" id="tuning-export">📋 导出</button>
             <button id="tuning-reset-all">🔄 全部重置</button>
@@ -988,6 +991,8 @@ function buildTuningPanel() {
     });
 
     // ─── 全部重置 ──────────────────────────────────
+    document.getElementById('tuning-add-node').addEventListener('mousedown', () => { if (window.activeScene) window.activeScene.addDebugNode(); });
+
     document.getElementById('tuning-reset-all').addEventListener('click', () => {
         Object.keys(TUNING_DEFAULTS).forEach((key) => {
             window.TUNING[key] = TUNING_DEFAULTS[key];
@@ -1144,3 +1149,4 @@ if (document.readyState === 'loading') {
 } else {
     buildTuningPanel();
 }
+
