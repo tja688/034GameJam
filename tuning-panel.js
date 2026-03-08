@@ -513,17 +513,43 @@ function buildTuningPanel() {
             border-radius: 3px;
         }
         
+        .tuning-category-container {
+            margin-top: 10px;
+        }
         .tuning-category {
             margin: 6px 0 2px;
-            padding: 8px 18px 4px;
+            padding: 10px 18px 6px;
             font-size: 14px;
             font-weight: bold;
             color: #ffca28;
             border-bottom: 2px solid rgba(255, 202, 40, 0.3);
             display: flex;
             align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: background 0.15s;
         }
-
+        .tuning-category:hover {
+            background: rgba(255, 202, 40, 0.08);
+        }
+        .tuning-category .category-title {
+            letter-spacing: 0.5px;
+        }
+        .tuning-category .category-arrow {
+            color: #ffca28;
+            transition: transform 0.2s;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .tuning-category.open .category-arrow {
+            transform: rotate(90deg);
+        }
+        .tuning-category-body {
+            display: none;
+        }
+        .tuning-category-body.open {
+            display: block;
+        }
         .tuning-section {
             margin: 2px 0;
         }
@@ -817,16 +843,59 @@ function buildTuningPanel() {
     let currentSectionBody = null;
 
     const allRows = [];
+    
+    // UI State Persistence
+    const UI_STATE_KEY = 'bio-core-tuning-ui-state';
+    let uiState = { categories: {}, sections: {} };
+    try {
+        const stored = window.localStorage.getItem(UI_STATE_KEY);
+        if (stored) uiState = { categories: {}, sections: {}, ...JSON.parse(stored) };
+    } catch(e) {}
+    
+    const saveUiState = () => {
+        try { window.localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState)); } catch(e) {}
+    };
+
+    let currentCategoryBody = body; // default to body if no category
 
     TUNING_DEFS.forEach((def) => {
         
         if (def.category) {
-            const catEl = document.createElement('div');
-            catEl.className = 'tuning-category';
-            catEl.innerHTML = def.category;
-            body.appendChild(catEl);
+            const catContainer = document.createElement('div');
+            catContainer.className = 'tuning-category-container';
+            
+            const catHeader = document.createElement('div');
+            catHeader.className = 'tuning-category';
+            const isOpen = uiState.categories[def.category] !== false; // def open
+            
+            catHeader.innerHTML = `
+                <span class="category-title">${def.category}</span>
+                <span class="category-arrow">▶</span>
+            `;
+            
+            const catBody = document.createElement('div');
+            catBody.className = 'tuning-category-body';
+            
+            if (isOpen) {
+                catHeader.classList.add('open');
+                catBody.classList.add('open');
+            }
+            
+            catHeader.addEventListener('click', () => {
+                const isNowOpen = catHeader.classList.toggle('open');
+                catBody.classList.toggle('open');
+                uiState.categories[def.category] = isNowOpen;
+                saveUiState();
+            });
+            
+            catContainer.appendChild(catHeader);
+            catContainer.appendChild(catBody);
+            body.appendChild(catContainer);
+            
+            currentCategoryBody = catBody;
             return;
         }
+        
         if (def.section) {
             // 新建 section
             const sectionEl = document.createElement('div');
@@ -842,9 +911,16 @@ function buildTuningPanel() {
             const sectionBody = document.createElement('div');
             sectionBody.className = 'tuning-section-body';
 
+            const isSecOpen = uiState.sections[def.section] === true;
+            if (isSecOpen) {
+                sectionHeader.classList.add('open');
+                sectionBody.classList.add('open');
+            }
             sectionHeader.addEventListener('click', () => {
-                sectionHeader.classList.toggle('open');
+                const isNowOpen = sectionHeader.classList.toggle('open');
                 sectionBody.classList.toggle('open');
+                uiState.sections[def.section] = isNowOpen;
+                saveUiState();
             });
 
             sectionEl.appendChild(sectionHeader);
@@ -857,7 +933,7 @@ function buildTuningPanel() {
             }
 
             sectionEl.appendChild(sectionBody);
-            body.appendChild(sectionEl);
+            currentCategoryBody.appendChild(sectionEl);
             currentSection = sectionEl;
             currentSectionBody = sectionBody;
             return;
@@ -870,7 +946,7 @@ function buildTuningPanel() {
             currentSectionBody.appendChild(row.element);
             allRows.push(row);
         } else {
-            const row = createSliderRow(def);
+            const row = createSliderRow(def, allRows);
             currentSectionBody.appendChild(row.element);
             allRows.push(row);
         }
@@ -1007,7 +1083,7 @@ function createToggleRow(def) {
     };
 }
 
-function createSliderRow(def) {
+function createSliderRow(def, allRows) {
     const row = document.createElement('div');
     row.className = 'tuning-row';
     row.dataset.searchText = `${def.label} ${def.desc} ${def.key}`;
@@ -1034,7 +1110,7 @@ function createSliderRow(def) {
     const valueDisplay = row.querySelector('.value-display');
     const resetBtn = row.querySelector('.reset-btn');
 
-    const update = (val) => {
+    const update = (val, manual = false) => {
         const num = parseFloat(val);
         if (isNaN(num)) return;
         const clamped = Math.max(def.min, Math.min(def.max, num));
@@ -1045,9 +1121,9 @@ function createSliderRow(def) {
         row.classList.toggle('modified', Math.abs(clamped - defaultVal) > def.step * 0.1);
 
         if (manual && def.key === 'pulseOrbCount' && window.TUNING.autoPulseOrbCount) {
-             window.TUNING.autoPulseOrbCount = false;
-             const toggleRow = allRows.find(r => r.key === 'autoPulseOrbCount');
-             if (toggleRow) toggleRow.sync();
+            window.TUNING.autoPulseOrbCount = false;
+            const toggleRow = allRows.find(r => r.key === 'autoPulseOrbCount');
+            if (toggleRow) toggleRow.sync();
         }
     };
 

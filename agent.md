@@ -366,6 +366,18 @@ If any answer is **yes**, the document must be updated.
 
 ---
 
+# Tuning Panel & Debug Interfaces Requirement
+
+When adding variables to tuning/debug panels (e.g., `tuning-panel.js`), AI agents **MUST NOT randomly append new variables to the end of the list**.
+
+- All settings must be **logically categorized** within the existing `{ category: '...' }` and `{ section: '...' }` structures.
+- If a variable clearly belongs to an existing section (like dragging forces, visual damping, or node spawning), put it there.
+- If a system is entirely new and does not fit any existing domain, you **must create a new `category` or `section`** with a clear, descriptive header and place your variables inside it.
+
+The tuning tools must remain readable and perfectly organized for the developer.
+
+---
+
 # Goal
 
 The technical document should tell the **story of the game's architecture**.
@@ -388,4 +400,5 @@ Agents should prioritize:
 - fast iteration
 - playful mechanics
 - elegant minimalism
+
 
