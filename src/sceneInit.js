@@ -157,7 +157,16 @@ const SceneInitMixin = {
             aimY: -1,
             aimLength: 1,
             flowX: 0,
-            flowY: -1
+            flowY: -1,
+            legacyFlowX: 0,
+            legacyFlowY: -1,
+            aggressiveFlowX: 0,
+            aggressiveFlowY: -1,
+            baseFlowX: 0,
+            baseFlowY: -1,
+            inverseFlowX: 0,
+            inverseFlowY: -1,
+            clusterAggro: 0
         };
     },
     createDefaultCameraRig() {

@@ -87,7 +87,45 @@ const SceneInputMixin = {
         const T = window.TUNING || {};
         const moveWeight = this.keys.shift.isDown ? (T.shiftMoveWeight ?? 0.32) : (T.normalMoveWeight ?? 0.58);
         const aimWeight = 1 - moveWeight;
-        const flow = normalize(move.x * moveWeight + aim.x * aimWeight, move.y * moveWeight + aim.y * aimWeight, aim.x, aim.y);
+        const legacyFlow = normalize(move.x * moveWeight + aim.x * aimWeight, move.y * moveWeight + aim.y * aimWeight, aim.x, aim.y);
+        const upgradedIntentEnabled = this.isUpgradedIntentDriveEnabled();
+        const clusterAggro = upgradedIntentEnabled ? this.getIntentClusterAggression() : 0;
+        const aggressiveAimWeight = lerp(aimWeight, 0.78, clusterAggro);
+        const aggressiveMoveWeight = 1 - aggressiveAimWeight;
+        const aggressiveFlow = upgradedIntentEnabled
+            ? normalize(
+                move.x * aggressiveMoveWeight + aim.x * aggressiveAimWeight,
+                move.y * aggressiveMoveWeight + aim.y * aggressiveAimWeight,
+                legacyFlow.x,
+                legacyFlow.y
+            )
+            : legacyFlow;
+        const splitPolarityIntent = this.isSplitPolarityIntentEnabled();
+        const heading = vectorFromAngle(this.player.heading);
+        const baseFlow = splitPolarityIntent
+            ? normalize(
+                aim.x * 0.92 + aggressiveFlow.x * 0.28,
+                aim.y * 0.92 + aggressiveFlow.y * 0.28,
+                aggressiveFlow.x,
+                aggressiveFlow.y
+            )
+            : aggressiveFlow;
+        const inverseFlow = splitPolarityIntent
+            ? move.length > 0.01
+                ? normalize(
+                    move.x * 0.96 + aggressiveFlow.x * 0.34,
+                    move.y * 0.96 + aggressiveFlow.y * 0.34,
+                    aggressiveFlow.x,
+                    aggressiveFlow.y
+                )
+                : normalize(
+                    aggressiveFlow.x * 0.72 + heading.x * 0.28,
+                    aggressiveFlow.y * 0.72 + heading.y * 0.28,
+                    aggressiveFlow.x,
+                    aggressiveFlow.y
+                )
+            : aggressiveFlow;
+        const flow = upgradedIntentEnabled ? aggressiveFlow : legacyFlow;
 
         this.intent.moveX = move.x;
         this.intent.moveY = move.y;
@@ -97,6 +135,15 @@ const SceneInputMixin = {
         this.intent.aimLength = aim.length;
         this.intent.flowX = flow.x;
         this.intent.flowY = flow.y;
+        this.intent.legacyFlowX = legacyFlow.x;
+        this.intent.legacyFlowY = legacyFlow.y;
+        this.intent.aggressiveFlowX = aggressiveFlow.x;
+        this.intent.aggressiveFlowY = aggressiveFlow.y;
+        this.intent.baseFlowX = baseFlow.x;
+        this.intent.baseFlowY = baseFlow.y;
+        this.intent.inverseFlowX = inverseFlow.x;
+        this.intent.inverseFlowY = inverseFlow.y;
+        this.intent.clusterAggro = clusterAggro;
     },
     handleModeInputs() {
         if (!this.player.edit.active) {

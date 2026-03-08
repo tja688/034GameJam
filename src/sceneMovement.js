@@ -246,24 +246,107 @@ const SceneMovementMixin = {
         }
         return node.polarity === 'base';
     },
-    plantNode(node, profile) {
-        const flow = normalize(this.intent.flowX, this.intent.flowY, Math.cos(this.player.heading), Math.sin(this.player.heading));
+    isUpgradedIntentDriveEnabled() {
+        const T = window.TUNING || {};
+        return !!(T.enableUpgradedIntentDrive ?? false);
+    },
+    isSplitPolarityIntentEnabled() {
+        const T = window.TUNING || {};
+        return this.isUpgradedIntentDriveEnabled() && !!(T.splitPolarityIntentDrive ?? false);
+    },
+    getIntentDriveSpan() {
+        const liveSpan = this.activeNodes && this.activeNodes.length > 0 ? this.getFormationSpan() : 0;
+        return Math.max(PARTIAL_MESH_RULES.slotSpacing, this.player.topologyRadius || 0, liveSpan);
+    },
+    getIntentClusterAggression() {
+        const nodeCount = this.activeNodes?.length || this.player?.chain?.length || 0;
+        const span = this.getIntentDriveSpan();
+        const countBias = clamp((nodeCount - 8) / 18, 0, 1);
+        const spanBias = clamp((span - 180) / 360, 0, 1);
+        return clamp(Math.max(countBias, spanBias), 0, 1);
+    },
+    getNodeDriveFrontRatio(node, direction, span = this.getIntentDriveSpan()) {
+        const rotated = rotateLocal(node.localX || 0, node.localY || 0, this.player.heading);
+        const projection = rotated.x * direction.x + rotated.y * direction.y;
+        return clamp(projection / Math.max(span, PARTIAL_MESH_RULES.slotSpacing), -1, 1);
+    },
+    resolveNodeDriveIntent(node) {
+        const forward = vectorFromAngle(this.player.heading);
+        const flow = normalize(this.intent.flowX, this.intent.flowY, forward.x, forward.y);
         const aim = normalize(this.intent.aimX, this.intent.aimY, flow.x, flow.y);
-        const lead = normalize(flow.x * (profile.flowBias ?? 0.55) + aim.x * (profile.aimBias ?? 0.45), flow.y * (profile.flowBias ?? 0.55) + aim.y * (profile.aimBias ?? 0.45), aim.x, aim.y);
+        const move = normalize(this.intent.moveX, this.intent.moveY, flow.x, flow.y);
+        const clusterAggro = clamp(this.intent.clusterAggro ?? 0, 0, 1);
+
+        if (!this.isUpgradedIntentDriveEnabled()) {
+            return {
+                flow,
+                focus: aim,
+                aggression: 0,
+                activity: 1
+            };
+        }
+
+        if (!this.isSplitPolarityIntentEnabled()) {
+            return {
+                flow,
+                focus: aim,
+                aggression: clusterAggro,
+                activity: 1
+            };
+        }
+
+        if (node.polarity === 'base') {
+            const baseFlow = normalize(this.intent.baseFlowX, this.intent.baseFlowY, flow.x, flow.y);
+            return {
+                flow: baseFlow,
+                focus: normalize(this.intent.aimX, this.intent.aimY, baseFlow.x, baseFlow.y),
+                aggression: clamp(0.18 + clusterAggro * 0.92, 0, 1),
+                activity: 1
+            };
+        }
+
+        const hasMoveInput = (this.intent.moveLength ?? 0) > 0.01;
+        const inverseFlow = normalize(this.intent.inverseFlowX, this.intent.inverseFlowY, flow.x, flow.y);
+        return {
+            flow: inverseFlow,
+            focus: hasMoveInput
+                ? normalize(move.x, move.y, inverseFlow.x, inverseFlow.y)
+                : normalize(forward.x, forward.y, inverseFlow.x, inverseFlow.y),
+            aggression: clamp(clusterAggro * 0.8 + (hasMoveInput ? 0.2 : 0), 0, 1),
+            activity: hasMoveInput ? 1 : 0.4
+        };
+    },
+    plantNode(node, profile) {
+        const driveIntent = this.resolveNodeDriveIntent(node);
+        const lead = normalize(
+            driveIntent.flow.x * (profile.flowBias ?? 0.55) + driveIntent.focus.x * (profile.aimBias ?? 0.45),
+            driveIntent.flow.y * (profile.flowBias ?? 0.55) + driveIntent.focus.y * (profile.aimBias ?? 0.45),
+            driveIntent.focus.x,
+            driveIntent.focus.y
+        );
         const right = { x: -lead.y, y: lead.x };
         const lateralBias = clamp((node.localY || 0) / Math.max(PARTIAL_MESH_RULES.slotSpacing, this.player.topologyRadius || PARTIAL_MESH_RULES.slotSpacing), -1, 1);
         const sideSign = Math.abs(lateralBias) < 0.18 ? (node.order % 2 === 0 ? -1 : 1) : Math.sign(lateralBias);
         const T = window.TUNING || {};
         const spanFactor = T.formationSpanFactor ?? 0.16;
-        const forwardReach = (profile.forwardBase + this.getFormationSpan() * spanFactor) * profile.reachScale;
-        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias)));
+        const span = this.getIntentDriveSpan();
+        const frontRatio = this.getNodeDriveFrontRatio(node, lead, span);
+        const scaleBoost = driveIntent.aggression * span * 0.32;
+        const frontBoost = Math.max(0, frontRatio) * span * (0.18 + driveIntent.aggression * 0.44);
+        const rearDrag = Math.max(0, -frontRatio) * span * (0.06 + driveIntent.aggression * 0.12);
+        const forwardReach = (profile.forwardBase + span * spanFactor + scaleBoost + frontBoost - rearDrag) * profile.reachScale;
+        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias))) * (1 + driveIntent.aggression * 0.1);
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
         node.pulseGlow = 1;
         if (this.nodeHasMoveAbility(node)) {
-            node.anchorStrength = profile.strength;
-            node.stanceTimer = profile.stance;
-            node.anchored = true;
+            node.anchorStrength = profile.strength * (1 + driveIntent.aggression * 0.52) * driveIntent.activity;
+            node.stanceTimer = profile.stance * lerp(1, 0.84, driveIntent.aggression);
+            node.anchored = driveIntent.activity > 0.05;
+            if (!node.anchored) {
+                node.anchorStrength = 0;
+                node.stanceTimer = 0;
+            }
             return;
         }
 
@@ -322,8 +405,6 @@ const SceneMovementMixin = {
     },
     updateFormation(simDt) {
         const T = window.TUNING || {};
-        const forward = vectorFromAngle(this.player.heading);
-        const drift = normalize(this.intent.flowX, this.intent.flowY, forward.x, forward.y);
         const draggedTarget = this.player.edit.active && this.player.edit.dragNode >= 0
             ? {
                 index: this.player.edit.dragNode,
@@ -333,6 +414,7 @@ const SceneMovementMixin = {
             : null;
 
         this.computeCentroid();
+        const driveSpan = this.getIntentDriveSpan();
 
         this.activeNodes.forEach((node) => {
             node.fx = 0;
@@ -361,6 +443,7 @@ const SceneMovementMixin = {
 
         this.activeNodes.forEach((node) => {
             const canDrive = this.nodeHasMoveAbility(node);
+            const driveIntent = this.resolveNodeDriveIntent(node);
             // ── 编队拉力 ──
             if ((T.enableFormationPull ?? true) && canDrive) {
                 const nominal = this.computeNominalOffset(node);
@@ -383,8 +466,12 @@ const SceneMovementMixin = {
                     : node.role === 'shell'
                         ? (T.driftShell ?? 18)
                         : (T.driftDefault ?? 28);
-                node.fx += drift.x * drive;
-                node.fy += drift.y * drive;
+                const frontRatio = this.getNodeDriveFrontRatio(node, driveIntent.flow, driveSpan);
+                const driftScale = (1 + driveIntent.aggression * 0.85)
+                    * lerp(0.92, 1.42, clamp((frontRatio + 1) * 0.5, 0, 1))
+                    * driveIntent.activity;
+                node.fx += driveIntent.flow.x * drive * driftScale;
+                node.fy += driveIntent.flow.y * drive * driftScale;
             }
 
             // ── 核心收束力 ──
@@ -511,7 +598,8 @@ const SceneMovementMixin = {
     updatePlayerState(simDt) {
         const T = window.TUNING || {};
         const desiredHeading = Math.atan2(this.intent.flowY, this.intent.flowX);
-        const turnRate = (T.baseTurnRate ?? 3.1) + this.player.turnAssist * (T.turnAssistBonus ?? 2.1);
+        const clusterAggro = this.isUpgradedIntentDriveEnabled() ? clamp(this.intent.clusterAggro ?? 0, 0, 1) : 0;
+        const turnRate = ((T.baseTurnRate ?? 3.1) + this.player.turnAssist * (T.turnAssistBonus ?? 2.1)) * (1 + clusterAggro * 0.28);
         this.player.heading = Phaser.Math.Angle.RotateTo(this.player.heading, desiredHeading, turnRate * simDt);
         this.player.shieldTimer = Math.max(0, this.player.shieldTimer - simDt);
         this.player.tempoBoost = Math.max(0, this.player.tempoBoost - simDt * (T.tempoBoostDecay ?? 1.5));

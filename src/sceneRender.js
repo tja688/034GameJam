@@ -23,6 +23,9 @@ const SceneRenderMixin = {
         if (this.player.edit.active || this.player.edit.ambience > 0.01) {
             this.drawEditOverlay(g);
         }
+        if (window.TUNING && window.TUNING.showIntentCenter) {
+            this.drawIntentCenter(g);
+        }
         this.drawHud(g);
     },
     drawWorld(g) {
@@ -218,5 +221,37 @@ const SceneRenderMixin = {
                 g.strokePath();
             }
         }
+    },
+    drawIntentCenter(g) {
+        if (!this.player || !this.intent) return;
+        
+        const cx = this.player.centroidX;
+        const cy = this.player.centroidY;
+        const centerScreen = this.worldToScreen(cx, cy);
+
+        // WASD 移动意图向量 (绿色虚指)
+        if (this.intent.moveLength && this.intent.moveLength > 0.01) {
+            const moveEnd = this.worldToScreen(cx + this.intent.moveX * 150, cy + this.intent.moveY * 150);
+            g.lineStyle(2, 0x55ff55, 0.4);
+            g.lineBetween(centerScreen.x, centerScreen.y, moveEnd.x, moveEnd.y);
+            g.strokeCircle(moveEnd.x, moveEnd.y, Math.max(5 * this.cameraRig.zoom, 3));
+        }
+
+        // 鼠标瞄准意图向量 (红色虚指)
+        const aimEnd = this.worldToScreen(cx + this.intent.aimX * 150, cy + this.intent.aimY * 150);
+        g.lineStyle(2, 0xff5555, 0.4);
+        g.lineBetween(centerScreen.x, centerScreen.y, aimEnd.x, aimEnd.y);
+        g.strokeCircle(aimEnd.x, aimEnd.y, Math.max(5 * this.cameraRig.zoom, 3));
+
+        // 核心综合意图向量 Flow (黄色粗线指示出质心的真正偏向)
+        const flowEnd = this.worldToScreen(cx + this.intent.flowX * 180, cy + this.intent.flowY * 180);
+        g.lineStyle(4, 0xffdd44, 0.8);
+        g.lineBetween(centerScreen.x, centerScreen.y, flowEnd.x, flowEnd.y);
+        g.fillStyle(0xffdd44, 0.8);
+        g.fillCircle(flowEnd.x, flowEnd.y, Math.max(8 * this.cameraRig.zoom, 5));
+
+        // 质心本人 (加一个黄色圈表示当前的出发点)
+        g.lineStyle(2, 0xffdd44, 0.9);
+        g.strokeCircle(centerScreen.x, centerScreen.y, Math.max(12 * this.cameraRig.zoom, 6));
     },
 };

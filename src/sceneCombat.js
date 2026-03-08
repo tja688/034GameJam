@@ -49,7 +49,13 @@ const SceneCombatMixin = {
         this.clearExecutionState();
     },
     performSlash(node, edge) {
-        const strikeDir = normalize(this.intent.flowX * 0.58 + this.intent.aimX * 0.42, this.intent.flowY * 0.58 + this.intent.aimY * 0.42, Math.cos(this.player.heading), Math.sin(this.player.heading));
+        const driveIntent = this.resolveNodeDriveIntent(node);
+        const strikeDir = normalize(
+            driveIntent.flow.x * 0.58 + driveIntent.focus.x * 0.42,
+            driveIntent.flow.y * 0.58 + driveIntent.focus.y * 0.42,
+            Math.cos(this.player.heading),
+            Math.sin(this.player.heading)
+        );
         const effectiveEnergy = Math.max(1, this.player.energy);
         const damage = (13 + effectiveEnergy * 6 + this.player.overload * 4) * edge.reach;
 

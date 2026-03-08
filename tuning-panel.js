@@ -6,6 +6,8 @@
 window.TUNING = {
     // ─── 移动能力对比 ─────────────────────────────
     legacyAllNodesMove: true,
+    enableUpgradedIntentDrive: false,
+    splitPolarityIntentDrive: false,
 
     // ─── 力开关 ───────────────────────────────────
     enableFormationPull: false,
@@ -157,6 +159,7 @@ window.TUNING = {
     // ─── 显示平滑 ────────────────────────────────
     displayDamping: 18,
     pulseGlowDecay: 3.2,
+    showIntentCenter: false,
 
     // ─── 编队跨度比例 ────────────────────────────
     formationSpanFactor: 0.16,
@@ -206,6 +209,8 @@ const TUNING_DEFS = [
     // ── 移动能力对比 ──
     { section: '🧪 移动能力对比', sectionDesc: '当前默认开启“所有节点都主动移动”；关闭后切到调试模式，只允许蓝色节点主动驱动，红色节点暂时屏蔽主动移动与功能触发' },
     { key: 'legacyAllNodesMove', label: '全节点主动移动（关=仅蓝色驱动）', desc: '默认开启，保持当前版本：所有节点都能参与脉冲牵引、漂移推进和功能触发；关闭后只保留蓝色节点的主动移动与功能，红色节点只保留结构上的被动跟随', type: 'toggle' },
+    { key: 'enableUpgradedIntentDrive', label: '升级版意图驱动', desc: '默认关闭。开启后，大集群会按规模放大前压范围与推进强度，整体会更偏向侵略性的扑咬/追猎手感；关闭时完全回到旧版单 flow 驱动', type: 'toggle' },
+    { key: 'splitPolarityIntentDrive', label: '红蓝分驱（红=WASD，蓝=鼠标）', desc: '默认关闭。仅在“升级版意图驱动”开启时生效：红色节点优先吃键盘意图，蓝色节点优先吃鼠标意图，用来制造更强的形态分工与布阵策略感；若同时关闭“全节点主动移动”，红色仍会退回被动跟随', type: 'toggle' },
 
     // ── 力开关 ──
     { section: '⚡ 力场开关', sectionDesc: '关掉某个力可以观察剩余力的独立效果；当前默认以“脉冲锚定 + 连线拖拽”为核心' },
@@ -378,6 +383,7 @@ const TUNING_DEFS = [
     { section: '✨ 显示平滑', sectionDesc: '物理仿真与渲染之间的平滑层' },
     { key: 'displayDamping', label: '显示追赶阻尼', desc: '渲染位置追赶物理位置的速率（越大越紧密跟随）', min: 1, max: 60, step: 1 },
     { key: 'pulseGlowDecay', label: '脉冲光衰减', desc: '脉冲触发后光晕消退速率', min: 0.5, max: 10, step: 0.1 },
+    { key: 'showIntentCenter', label: '显示意图中心', desc: '可视化移动、鼠标瞄准及复合出的意图方向', type: 'toggle' },
 
     // ── 编队跨度 ──
     { section: '📏 编队参数', sectionDesc: '影响植入前推距离的编队跨度系数' },
