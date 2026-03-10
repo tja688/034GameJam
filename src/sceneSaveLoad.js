@@ -14,11 +14,11 @@ const SceneSaveLoadMixin = {
     buildSaveData() {
         this.rebalancePulseRunners();
         return {
-            version: 2,
+            version: 3,
             savedAt: Date.now(),
             baseChain: [...this.baseChain],
-            clusterVolume: {
-                target: this.clusterVolume?.target ?? this.createDefaultClusterVolumeState().target
+            camera: {
+                zoom: this.cameraRig?.manualZoom ?? this.cameraRig?.targetZoom ?? this.cameraRig?.zoom ?? this.createDefaultCameraRig().zoom
             },
             player: {
                 chain: [...this.player.chain],
@@ -124,14 +124,16 @@ const SceneSaveLoadMixin = {
             ...node,
             index: Number.isInteger(node.index) ? node.index : index
         }));
-        const savedClusterVolumeTarget = clamp(
-            getFiniteNumber(data.clusterVolume?.target, this.clusterVolume.target),
-            0,
-            1
+        const T = window.TUNING || {};
+        const savedCameraZoom = clamp(
+            getFiniteNumber(data.camera?.zoom, this.cameraRig.manualZoom),
+            T.cameraMinZoom ?? 0.03,
+            T.cameraMaxZoom ?? 1.12
         );
-        this.clusterVolume.target = savedClusterVolumeTarget;
-        this.clusterVolume.manual = savedClusterVolumeTarget;
-        this.clusterVolume.effective = savedClusterVolumeTarget;
+        this.cameraRig.manualZoom = savedCameraZoom;
+        this.cameraRig.zoom = savedCameraZoom;
+        this.cameraRig.targetZoom = savedCameraZoom;
+        this.cameraRig.desiredZoom = savedCameraZoom;
 
         Object.assign(this.player, {
             centroidX: getFiniteNumber(data.player.centroidX, this.player.centroidX),

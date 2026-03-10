@@ -39,8 +39,6 @@ const SceneInitMixin = {
         const neutral = clamp(T.clusterVolumeNeutral ?? 0.36, 0.05, 0.95);
         return {
             target: neutral,
-            manual: neutral,
-            auto: 0,
             effective: neutral,
             normalized: 0,
             expansion: 0,
@@ -52,11 +50,15 @@ const SceneInitMixin = {
             repulsionScale: 1,
             latticePull: 0,
             corePullScale: 1,
-            cameraPadding: 0
+            stableWeight: 0,
+            cruiseWeight: 1,
+            pursuitWeight: 0,
+            huntWeight: 0
         };
     },
     createDefaultBurstDriveState() {
         return {
+            rawPhase: 'cruise',
             phase: 'cruise',
             pressure: 0,
             releaseTimer: 0,
@@ -73,12 +75,17 @@ const SceneInitMixin = {
             lookAhead: 0,
             centerCompression: 0,
             distance: 0,
+            worldDistance: 0,
             distanceNorm: 0,
             outwardSpeed: 0,
             pointerSpeed: 0,
-            centerRadius: 0,
-            chaseRadius: 0,
-            breakRadius: 0,
+            innerRadius: 0,
+            middleRadius: 0,
+            outerRadius: 0,
+            stableWeight: 0,
+            cruiseWeight: 1,
+            pursuitWeight: 0,
+            huntWeight: 0,
             initialized: false,
             lastPointerX: 0,
             lastPointerY: 0,
@@ -241,6 +248,15 @@ const SceneInitMixin = {
             pointerX: 0,
             pointerY: 0,
             pointerDistance: 0,
+            pointerWorldDistance: 0,
+            pointerDrivePhase: 'cruise',
+            pointerDriveInnerRadius: 0,
+            pointerDriveMiddleRadius: 0,
+            pointerDriveOuterRadius: 0,
+            pointerDriveStableWeight: 0,
+            pointerDriveCruiseWeight: 1,
+            pointerDrivePursuitWeight: 0,
+            pointerDriveHuntWeight: 0,
             burstPhase: 'cruise',
             burstAggro: 0,
             burstChaos: 0,
@@ -254,9 +270,6 @@ const SceneInitMixin = {
             burstPressure: 0,
             burstPointerSpeed: 0,
             burstOutwardSpeed: 0,
-            burstCenterRadius: 0,
-            burstChaseRadius: 0,
-            burstBreakRadius: 0,
             centerCompression: 0,
             clusterVolume: 0,
             clusterVolumeScale: 1,
@@ -265,15 +278,27 @@ const SceneInitMixin = {
         };
     },
     createDefaultCameraRig() {
+        const T = window.TUNING || {};
+        const minZoom = T.cameraMinZoom ?? 0.03;
+        const maxZoom = T.cameraMaxZoom ?? 1.12;
+        const defaultZoom = clamp(T.cameraDefaultZoom ?? 0.92, minZoom, maxZoom);
         return {
             x: 0,
             y: 0,
-            zoom: 0.92,
-            targetZoom: 0.92,
+            zoom: defaultZoom,
+            targetZoom: defaultZoom,
+            manualZoom: defaultZoom,
+            desiredZoom: defaultZoom,
             targetX: 0,
             targetY: 0,
             leadX: 0,
             leadY: 0,
+            baseFocusX: 0,
+            baseFocusY: 0,
+            focusX: 0,
+            focusY: 0,
+            compositionX: 0,
+            compositionY: 0,
             initialized: false,
             urgency: 0,
             subjectBounds: null,
@@ -469,8 +494,7 @@ const SceneInitMixin = {
             this.includeCameraBoundsPoint(bounds, this.player.edit.boxEndX, this.player.edit.boxEndY);
         }
 
-        const volumePadding = this.clusterVolume?.cameraPadding || 0;
-        const padding = (T.cameraSpanPadding ?? 110) + volumePadding;
+        const padding = T.cameraSpanPadding ?? 110;
         return this.finalizeCameraBounds(bounds, fallbackX, fallbackY, padding);
     },
     getCameraFitZoom(bounds, edgePaddingPx = 0, compositionShift = null) {
@@ -567,24 +591,14 @@ const SceneInitMixin = {
         const edgePaddingPx = T.cameraEdgePadding ?? 74;
         const bounds = this.getCameraSubjectBounds();
         const span = Math.max(bounds.width, bounds.height);
-        const previousSpan = Math.max(this.cameraRig.subjectSpan || span, 1);
-        const spanChange = Math.abs(span - previousSpan) / previousSpan;
         const maxZoom = T.cameraMaxZoom ?? 1.12;
-        const ambienceScale = lerp(1, 1.08, this.player.edit.ambience || 0);
-        const initialZoom = this.getCameraFitZoom(bounds, edgePaddingPx);
-        const seedLead = this.getCameraDesiredLead(bounds, initialZoom, edgePaddingPx);
-        let desiredZoom = clamp(
-            this.getCameraFitZoom(bounds, edgePaddingPx, { x: seedLead.screenX, y: seedLead.screenY }) * ambienceScale,
+        const desiredZoom = clamp(
+            this.cameraRig.manualZoom ?? (T.cameraDefaultZoom ?? this.cameraRig.zoom ?? 0.92),
             T.cameraMinZoom ?? 0.03,
             maxZoom
         );
-        let desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
-        desiredZoom = clamp(
-            this.getCameraFitZoom(bounds, edgePaddingPx, { x: desiredLead.screenX, y: desiredLead.screenY }) * ambienceScale,
-            T.cameraMinZoom ?? 0.03,
-            maxZoom
-        );
-        desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
+        this.cameraRig.manualZoom = desiredZoom;
+        const desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
         const baseFocus = this.getCameraBaseFocus(bounds, span, desiredLead.intensity);
 
         if (!this.cameraRig.initialized) {
@@ -594,6 +608,7 @@ const SceneInitMixin = {
             this.cameraRig.targetY = baseFocus.y;
             this.cameraRig.zoom = desiredZoom;
             this.cameraRig.targetZoom = desiredZoom;
+            this.cameraRig.manualZoom = desiredZoom;
             this.cameraRig.initialized = true;
         }
 
@@ -603,21 +618,24 @@ const SceneInitMixin = {
         const desiredFocusY = baseFocus.y + this.cameraRig.leadY;
         this.cameraRig.targetX = damp(this.cameraRig.targetX, desiredFocusX, T.cameraFocusTrackDamp ?? 7.2, frameDt);
         this.cameraRig.targetY = damp(this.cameraRig.targetY, desiredFocusY, T.cameraFocusTrackDamp ?? 7.2, frameDt);
-        const zoomTrackRate = (T.cameraZoomTrackDamp ?? 2.6) + clamp(spanChange * 10, 0, 6);
+        const zoomTrackRate = T.cameraZoomTrackDamp ?? 2.6;
         this.cameraRig.targetZoom = damp(this.cameraRig.targetZoom, desiredZoom, zoomTrackRate, frameDt);
-        const growthSnap = clamp((spanChange - 0.12) / 0.5, 0, 1);
-        if (growthSnap > 0) {
-            this.cameraRig.targetZoom = lerp(this.cameraRig.targetZoom, desiredZoom, growthSnap * 0.85);
-        }
 
         const zoomRate = this.cameraRig.targetZoom < this.cameraRig.zoom
-            ? (T.cameraZoomOutDamp ?? 4.4) + clamp(spanChange * 12, 0, 6)
+            ? (T.cameraZoomOutDamp ?? 4.4)
             : (T.cameraZoomDamp ?? 1.8);
         const posRate = T.cameraPosDamp ?? 4.2;
 
         this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, zoomRate, frameDt);
         this.cameraRig.x = damp(this.cameraRig.x, this.cameraRig.targetX, posRate, frameDt);
         this.cameraRig.y = damp(this.cameraRig.y, this.cameraRig.targetY, posRate, frameDt);
+        this.cameraRig.desiredZoom = desiredZoom;
+        this.cameraRig.baseFocusX = baseFocus.x;
+        this.cameraRig.baseFocusY = baseFocus.y;
+        this.cameraRig.focusX = desiredFocusX;
+        this.cameraRig.focusY = desiredFocusY;
+        this.cameraRig.compositionX = desiredLead.screenX;
+        this.cameraRig.compositionY = desiredLead.screenY;
         this.cameraRig.urgency = desiredLead.intensity;
         this.cameraRig.subjectBounds = bounds;
         this.cameraRig.subjectSpan = span;

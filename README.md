@@ -18,15 +18,15 @@
     ├── utils.js          # 全局帮助函数：数学计算、绘图基础等
     ├── storage.js        # 数据持久化封装
     ├── ui.js             # 游戏内叠加UI（暂停菜单、消息提示）
-    ├── scene.js          # CoreDemoScene 的类定义与生命周期入口 (create, resize)
-    ├── sceneInit.js      # 数据初始化模型、脉冲轨道分配与主循环 update 控制
+    ├── scene.js          # CoreDemoScene 的类定义与生命周期入口 (create, resize, 滚轮镜头缩放入口)
+    ├── sceneInit.js      # 数据初始化模型、脉冲轨道分配、手控镜头状态与主循环 update 控制
     ├── sceneSaveLoad.js  # 复杂游戏状态的导入导出与存档恢复
     ├── sceneTopology.js  # 核心：局部网状节点算法设计、自动刚度生成与边缘计算
-    ├── sceneInput.js     # 键鼠交互：编辑模式下的节点拖拽、连线生成移除等
+    ├── sceneInput.js     # 键鼠交互：编辑模式下的节点拖拽、三圈距离驱动、爆发/体积状态生成
     ├── sceneMovement.js  # 动态运算：质心跟随、阻尼计算、形态布局与位置平滑
     ├── sceneCombat.js    # 交互实现：护盾执行、近战挥砍、飞弹与扇形爆炸逻辑
     ├── sceneEnemies.js   # 敌人系统：刷怪机制、单位运动与集群碰撞判定
-    ├── sceneRender.js    # 图形渲染系统：多层级绘制图形实体及特效、HUD
+    ├── sceneRender.js    # 图形渲染系统：多层级绘制图形实体、HUD 与驱动/镜头调试可视化
     └── main.js           # 组合全部 Mixin 并启动 Phaser 实例
 ```
 
@@ -44,29 +44,29 @@
 * **边界**：不处理交互，只依赖来自 Input 或 Combat 注入的 `intent` 和拓扑结构带来的张力。
 
 ### 3. 编辑态交互控制 (`sceneInput.js`)
-* **职责**：完全负责处理鼠标按下、移动与游戏内“场景坐标系”的关系换算。
-* **边界**：拦截原生输入，根据操作行为向 Topology 系统发送建立/销毁连线指令，并临时覆盖节点位置，实现场景内结构的直接捏造。
+* **职责**：完全负责处理鼠标按下、移动与游戏内“场景坐标系”的关系换算，并把鼠标与质心的真实世界距离解算为三圈驱动状态。
+* **边界**：拦截原生输入，根据操作行为向 Topology 系统发送建立/销毁连线指令，并生成爆发驱动、体积舒张/收缩以及镜头滚轮缩放所需的输入态。
 
 ### 4. 敌群决策逻辑 (`sceneEnemies.js` & `sceneCombat.js`)
 * **职责**：包含生成不同阵型敌机的规则，以及敌机运动向玩家核心靠近的索敌逻辑。玩家的进攻反击逻辑也在此执行。
 * **边界**：依赖实体列表 (`enemies`)，仅涉及碰撞结算，并不操作节点网络底层的状态变迁。
 
 ### 5. 生命周期与保存加载 (`sceneSaveLoad.js` & `sceneInit.js`)
-* **职责**：提供完全静态可序列化的 `buildSaveData` 数据模型及逆向构建 `applySaveData` 引擎状态重建的业务封装。主逻辑循环通过 `update` 每帧分发。
+* **职责**：提供完全静态可序列化的 `buildSaveData` 数据模型及逆向构建 `applySaveData` 引擎状态重建的业务封装。主逻辑循环通过 `update` 每帧分发，并维护手控镜头跟随状态。
 
 ## 三、核心主循环 (Main Loop)
 
 一切核心驱动由 `sceneInit.js` 中的 `update(_, deltaMs)` 完成。它分离了系统帧与模拟物理帧：
 
 1. **状态检查**：判定是否处于菜单模式、暂停状态、或死亡惩罚周期。
-2. **读入意图 (Intent)**：调用 `sceneInput.js -> handleModeInputs()` 及 `readIntent()` 更新全局方向向量。
+2. **读入意图 (Intent)**：调用 `sceneInput.js -> handleModeInputs()` 及 `readIntent()`，把鼠标世界距离解算成内圈/中圈/外圈驱动、爆发态和体积态。
 3. **拓扑反馈**：`syncTopologySlotLayoutMode()` 设置目前的规则体系支撑力度。
 4. **模拟推进 (Simulation Step)**：按物理缩放 `simDt`，顺序依次更新：
    * 脉冲流向推进 (`updatePulse`)
    * 重拉节点和变形计算 (`updateFormation`)
    * 核心基础属性判定 (`updatePlayerState`)
    * 剩余表现更新（回响、投射物、敌人索敌、敌群碰撞等）
-5. **视窗追踪与绘制**：根据最终态进行画幅适配及所有 Layer 的覆盖重绘 (`render`)。
+5. **视窗追踪与绘制**：根据最终态更新手控缩放镜头、镜头前探，并覆盖重绘所有 Layer 与调试图层 (`render`)。
 
 ## 四、开发与维护指南
 

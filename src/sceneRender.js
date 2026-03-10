@@ -23,8 +23,8 @@ const SceneRenderMixin = {
         if (this.player.edit.active || this.player.edit.ambience > 0.01) {
             this.drawEditOverlay(g);
         }
-        if (window.TUNING && window.TUNING.showIntentCenter) {
-            this.drawIntentCenter(g);
+        if (window.TUNING && window.TUNING.showDebugVisuals) {
+            this.drawDebugOverlays(g);
         }
         this.drawHud(g);
     },
@@ -258,38 +258,71 @@ const SceneRenderMixin = {
             });
         }
     },
-    drawIntentCenter(g) {
+    getDrivePhaseColor(phase) {
+        switch (phase) {
+            case 'burst':
+                return 0xff7755;
+            case 'hunt':
+                return 0xff665c;
+            case 'pursuit':
+                return 0xffb347;
+            case 'stable':
+                return 0x66c6ff;
+            default:
+                return 0xffdd44;
+        }
+    },
+    drawDebugOverlays(g) {
+        const T = window.TUNING || {};
+        if (T.showDriveRingsDebug) {
+            this.drawDriveRingsDebug(g);
+        }
+        if (T.showDriveVectorsDebug) {
+            this.drawDriveVectorsDebug(g);
+        }
+        if (T.showCameraRigDebug) {
+            this.drawCameraRigDebug(g);
+        }
+    },
+    drawDriveRingsDebug(g) {
         if (!this.player || !this.intent) return;
 
         const cx = this.player.centroidX;
         const cy = this.player.centroidY;
         const centerScreen = this.worldToScreen(cx, cy);
-        const pointerScreen = this.worldToScreen(this.intent.pointerX || cx, this.intent.pointerY || cy);
-        const phaseColor = this.intent.burstPhase === 'burst'
-            ? 0xff7755
-            : this.intent.burstPhase === 'pursuit'
-                ? 0xffb347
-                : this.intent.burstPhase === 'coil'
-                    ? 0x66c6ff
-                    : 0xffdd44;
+        const pointerScreen = this.worldToScreen(this.intent.pointerX ?? cx, this.intent.pointerY ?? cy);
+        const phaseColor = this.getDrivePhaseColor(this.intent.pointerDrivePhase || this.intent.burstPhase);
+        const innerRadius = this.intent.pointerDriveInnerRadius || 0;
+        const middleRadius = this.intent.pointerDriveMiddleRadius || 0;
+        const outerRadius = this.intent.pointerDriveOuterRadius || 0;
 
-        if ((this.intent.burstCenterRadius || 0) > 0) {
+        if (innerRadius > 0) {
             g.lineStyle(2, 0x66c6ff, 0.16);
-            g.strokeCircle(centerScreen.x, centerScreen.y, this.intent.burstCenterRadius * this.cameraRig.zoom);
+            g.strokeCircle(centerScreen.x, centerScreen.y, innerRadius * this.cameraRig.zoom);
             g.lineStyle(2, 0xffb347, 0.16);
-            g.strokeCircle(centerScreen.x, centerScreen.y, this.intent.burstChaseRadius * this.cameraRig.zoom);
-            g.lineStyle(2, 0xff7755, 0.18);
-            g.strokeCircle(centerScreen.x, centerScreen.y, this.intent.burstBreakRadius * this.cameraRig.zoom);
+            g.strokeCircle(centerScreen.x, centerScreen.y, middleRadius * this.cameraRig.zoom);
+            g.lineStyle(2, 0xff665c, 0.18);
+            g.strokeCircle(centerScreen.x, centerScreen.y, outerRadius * this.cameraRig.zoom);
         }
 
-        if ((this.intent.pointerDistance || 0) > 0.01) {
+        if ((this.intent.pointerWorldDistance || 0) > 0.01) {
             g.lineStyle(2, phaseColor, 0.28 + clamp(this.intent.burstAggro || 0, 0, 1) * 0.32);
             g.lineBetween(centerScreen.x, centerScreen.y, pointerScreen.x, pointerScreen.y);
             g.fillStyle(phaseColor, 0.72);
-            g.fillCircle(pointerScreen.x, pointerScreen.y, Math.max(5 * this.cameraRig.zoom, 4));
+            g.fillCircle(pointerScreen.x, pointerScreen.y, Math.max(6 * this.cameraRig.zoom, 4));
         }
 
-        // WASD 移动意图向量 (绿色虚指)
+        g.lineStyle(2, 0xffdd44, 0.9);
+        g.strokeCircle(centerScreen.x, centerScreen.y, Math.max(12 * this.cameraRig.zoom, 6));
+    },
+    drawDriveVectorsDebug(g) {
+        if (!this.player || !this.intent) return;
+
+        const cx = this.player.centroidX;
+        const cy = this.player.centroidY;
+        const centerScreen = this.worldToScreen(cx, cy);
+        const phaseColor = this.getDrivePhaseColor(this.intent.pointerDrivePhase || this.intent.burstPhase);
+
         if (this.intent.moveLength && this.intent.moveLength > 0.01) {
             const moveEnd = this.worldToScreen(cx + this.intent.moveX * 150, cy + this.intent.moveY * 150);
             g.lineStyle(2, 0x55ff55, 0.4);
@@ -297,27 +330,43 @@ const SceneRenderMixin = {
             g.strokeCircle(moveEnd.x, moveEnd.y, Math.max(5 * this.cameraRig.zoom, 3));
         }
 
-        // 鼠标瞄准意图向量 (红色虚指)
         const aimEnd = this.worldToScreen(cx + this.intent.aimX * 150, cy + this.intent.aimY * 150);
         g.lineStyle(2, 0xff5555, 0.4);
         g.lineBetween(centerScreen.x, centerScreen.y, aimEnd.x, aimEnd.y);
         g.strokeCircle(aimEnd.x, aimEnd.y, Math.max(5 * this.cameraRig.zoom, 3));
 
-        // 核心综合意图向量 Flow (黄色粗线指示出质心的真正偏向)
         const flowEnd = this.worldToScreen(cx + this.intent.flowX * 180, cy + this.intent.flowY * 180);
         g.lineStyle(4, phaseColor, 0.82);
         g.lineBetween(centerScreen.x, centerScreen.y, flowEnd.x, flowEnd.y);
         g.fillStyle(phaseColor, 0.8);
         g.fillCircle(flowEnd.x, flowEnd.y, Math.max(8 * this.cameraRig.zoom, 5));
 
-        // 质心本人 (加一个黄色圈表示当前的出发点)
         g.lineStyle(2, 0xffdd44, 0.9);
         g.strokeCircle(centerScreen.x, centerScreen.y, Math.max(12 * this.cameraRig.zoom, 6));
+    },
+    drawCameraRigDebug(g) {
+        if (!this.player || !this.cameraRig) return;
 
-        if (Math.abs((this.intent.clusterVolume || 0)) > 0.02) {
-            const volumeRadius = this.getFormationSpan() * Math.max(0.72, this.intent.clusterVolumeScale || 1) * this.cameraRig.zoom;
-            g.lineStyle(2, 0x7fe9ff, 0.2);
-            g.strokeCircle(centerScreen.x, centerScreen.y, volumeRadius);
-        }
+        const viewportCenterX = this.cameraRig.viewportWidth * 0.5;
+        const viewportCenterY = this.cameraRig.viewportHeight * 0.5;
+        const centroidScreen = this.worldToScreen(this.player.centroidX, this.player.centroidY);
+        const targetScreen = this.worldToScreen(this.cameraRig.targetX ?? this.cameraRig.x, this.cameraRig.targetY ?? this.cameraRig.y);
+        const baseFocusScreen = this.worldToScreen(this.cameraRig.baseFocusX ?? this.cameraRig.x, this.cameraRig.baseFocusY ?? this.cameraRig.y);
+
+        g.lineStyle(2, 0x6ce6ff, 0.4);
+        g.lineBetween(viewportCenterX, viewportCenterY, centroidScreen.x, centroidScreen.y);
+        g.lineStyle(2, 0xff7af6, 0.24);
+        g.lineBetween(viewportCenterX, viewportCenterY, targetScreen.x, targetScreen.y);
+        g.lineStyle(2, 0xa6fffa, 0.22);
+        g.lineBetween(baseFocusScreen.x, baseFocusScreen.y, centroidScreen.x, centroidScreen.y);
+
+        g.fillStyle(0x6ce6ff, 0.95);
+        g.fillCircle(viewportCenterX, viewportCenterY, 6);
+        g.lineStyle(2, 0xff7af6, 0.8);
+        g.strokeCircle(targetScreen.x, targetScreen.y, 7);
+        g.lineStyle(2, 0xa6fffa, 0.72);
+        g.strokeCircle(baseFocusScreen.x, baseFocusScreen.y, 6);
+        g.lineStyle(2, 0xffdd44, 0.88);
+        g.strokeCircle(centroidScreen.x, centroidScreen.y, 8);
     },
 };

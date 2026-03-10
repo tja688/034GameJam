@@ -27,8 +27,8 @@ class CoreDemoScene extends Phaser.Scene {
         this.input.on('pointerdown', this.handlePointerDown, this);
         this.input.on('pointerup', this.handlePointerUp, this);
         this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
-            if (typeof this.nudgeClusterVolume === 'function') {
-                this.nudgeClusterVolume(deltaY);
+            if (typeof this.nudgeCameraZoom === 'function') {
+                this.nudgeCameraZoom(deltaY);
             }
         });
         this.menuMode = null;
