@@ -153,6 +153,46 @@ const SceneMovementMixin = {
         });
         return maxDistance;
     },
+    getFormationBounds(padding = 0) {
+        if (!this.activeNodes || this.activeNodes.length === 0) {
+            return {
+                minX: this.player.centroidX - padding,
+                maxX: this.player.centroidX + padding,
+                minY: this.player.centroidY - padding,
+                maxY: this.player.centroidY + padding,
+                width: padding * 2,
+                height: padding * 2,
+                centerX: this.player.centroidX,
+                centerY: this.player.centroidY
+            };
+        }
+
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        this.activeNodes.forEach((node) => {
+            minX = Math.min(minX, node.x);
+            maxX = Math.max(maxX, node.x);
+            minY = Math.min(minY, node.y);
+            maxY = Math.max(maxY, node.y);
+        });
+
+        minX -= padding;
+        maxX += padding;
+        minY -= padding;
+        maxY += padding;
+        return {
+            minX,
+            maxX,
+            minY,
+            maxY,
+            width: Math.max(1, maxX - minX),
+            height: Math.max(1, maxY - minY),
+            centerX: (minX + maxX) * 0.5,
+            centerY: (minY + maxY) * 0.5
+        };
+    },
     updatePulse(simDt) {
         const T = window.TUNING || {};
         if (!(T.enablePulse ?? true) || this.activeNodes.length === 0) return;

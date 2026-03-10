@@ -410,22 +410,83 @@ const SceneInitMixin = {
             y: (y - this.cameraRig.viewportHeight * 0.5) / this.cameraRig.zoom + this.cameraRig.y
         };
     },
+    clampCameraFocusToBounds(bounds, zoom, targetX, targetY) {
+        const halfW = this.cameraRig.viewportWidth * 0.5 / Math.max(zoom, 0.0001);
+        const halfH = this.cameraRig.viewportHeight * 0.5 / Math.max(zoom, 0.0001);
+        const minFocusX = bounds.maxX - halfW;
+        const maxFocusX = bounds.minX + halfW;
+        const minFocusY = bounds.maxY - halfH;
+        const maxFocusY = bounds.minY + halfH;
+
+        return {
+            x: minFocusX <= maxFocusX ? clamp(targetX, minFocusX, maxFocusX) : bounds.centerX,
+            y: minFocusY <= maxFocusY ? clamp(targetY, minFocusY, maxFocusY) : bounds.centerY
+        };
+    },
+    getCameraContainmentRatio(bounds, focusX, focusY, zoom, safeMargin = 0) {
+        const usableHalfW = this.cameraRig.viewportWidth * 0.5 / Math.max(zoom, 0.0001) * (1 - safeMargin);
+        const usableHalfH = this.cameraRig.viewportHeight * 0.5 / Math.max(zoom, 0.0001) * (1 - safeMargin);
+        const overflowX = Math.max(0, bounds.maxX - (focusX + usableHalfW), (focusX - usableHalfW) - bounds.minX);
+        const overflowY = Math.max(0, bounds.maxY - (focusY + usableHalfH), (focusY - usableHalfH) - bounds.minY);
+        return Math.max(
+            overflowX / Math.max(usableHalfW, 1),
+            overflowY / Math.max(usableHalfH, 1)
+        );
+    },
+    resolveCameraFocus(bounds, containZoom, span) {
+        const T = window.TUNING || {};
+        const pointerWorld = this.input?.activePointer
+            ? this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y)
+            : { x: this.player.centroidX, y: this.player.centroidY };
+        const toPointerX = pointerWorld.x - this.player.centroidX;
+        const toPointerY = pointerWorld.y - this.player.centroidY;
+        const pointerDistance = Math.hypot(toPointerX, toPointerY);
+        const mouseDeadZone = T.cameraMouseDeadZone ?? 80;
+        const mouseLeadMax = (T.cameraMouseLeadMax ?? 180) + span * 0.12;
+        const mouseInfluence = T.cameraMouseInfluence ?? 0.32;
+        const mouseAlpha = clamp((pointerDistance - mouseDeadZone) / Math.max(mouseDeadZone, span * 0.6, 1), 0, 1) * mouseInfluence;
+        const mouseLeadDistance = pointerDistance > 0.0001
+            ? Math.min(mouseLeadMax, pointerDistance * mouseAlpha)
+            : 0;
+        const heading = vectorFromAngle(this.player.heading);
+        const burstLeadDistance = span * clamp(this.intent?.burstLookAhead ?? 0, 0, 1.5);
+        const targetX = this.player.centroidX
+            + (pointerDistance > 0.0001 ? (toPointerX / pointerDistance) * mouseLeadDistance : 0)
+            + heading.x * burstLeadDistance;
+        const targetY = this.player.centroidY
+            + (pointerDistance > 0.0001 ? (toPointerY / pointerDistance) * mouseLeadDistance : 0)
+            + heading.y * burstLeadDistance;
+        return this.clampCameraFocusToBounds(bounds, containZoom, targetX, targetY);
+    },
     updateCamera(frameDt) {
         const T = window.TUNING || {};
         const volumePadding = this.clusterVolume?.cameraPadding || 0;
-        const span = this.getFormationSpan() + (T.cameraSpanPadding ?? 180) + volumePadding;
-        const widthFit = this.cameraRig.viewportWidth / (span * 2.2);
-        const heightFit = this.cameraRig.viewportHeight / (span * 1.85);
+        const padding = (T.cameraSpanPadding ?? 180) + volumePadding;
+        const bounds = this.getFormationBounds(padding);
+        const span = Math.max(bounds.width, bounds.height);
+        const widthFit = this.cameraRig.viewportWidth / Math.max(bounds.width, 1);
+        const heightFit = this.cameraRig.viewportHeight / Math.max(bounds.height, 1);
         let targetZ = clamp(Math.min(widthFit, heightFit), T.cameraMinZoom ?? 0.36, T.cameraMaxZoom ?? 1.08);
         targetZ *= lerp(1, 1.12, this.player.edit.ambience || 0);
+
+        const focus = this.resolveCameraFocus(bounds, targetZ, span);
+        const containRatio = this.getCameraContainmentRatio(
+            bounds,
+            focus.x,
+            focus.y,
+            this.cameraRig.zoom,
+            clamp(T.cameraContainSafeMargin ?? 0.1, 0, 0.4)
+        );
+        const containBoost = clamp(containRatio * (T.cameraContainUrgency ?? 1.6), 0, 6);
+        const zoomRate = targetZ < this.cameraRig.zoom
+            ? (T.cameraZoomOutDamp ?? 8.4) + containBoost * 1.2
+            : (T.cameraZoomDamp ?? 3.2);
+        const posRate = (T.cameraPosDamp ?? 3.4) + containBoost;
+
         this.cameraRig.targetZoom = targetZ;
-        const heading = vectorFromAngle(this.player.heading);
-        const leadDistance = span * clamp(this.intent?.burstLookAhead ?? 0, 0, 1.5);
-        const targetX = this.player.centroidX + heading.x * leadDistance;
-        const targetY = this.player.centroidY + heading.y * leadDistance;
-        this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, T.cameraZoomDamp ?? 3.2, frameDt);
-        this.cameraRig.x = damp(this.cameraRig.x, targetX, T.cameraPosDamp ?? 3.4, frameDt);
-        this.cameraRig.y = damp(this.cameraRig.y, targetY, T.cameraPosDamp ?? 3.4, frameDt);
+        this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, zoomRate, frameDt);
+        this.cameraRig.x = damp(this.cameraRig.x, focus.x, posRate, frameDt);
+        this.cameraRig.y = damp(this.cameraRig.y, focus.y, posRate, frameDt);
     },
     updateDisplay(frameDt) {
         const T = window.TUNING || {};

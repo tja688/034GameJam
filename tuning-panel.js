@@ -8,6 +8,9 @@ const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
 
 const TUNING_FALLBACKS = {
     // ─── 移动能力对比 ─────────────────────────────
+    feelClusterBloom: 0.52,
+    feelPredatorSurge: 0.62,
+    feelCameraDirector: 0.58,
     legacyAllNodesMove: true,
     enableUpgradedIntentDrive: false,
     splitPolarityIntentDrive: false,
@@ -198,7 +201,13 @@ const TUNING_FALLBACKS = {
 
     // ─── 相机 ────────────────────────────────────
     cameraZoomDamp: 3.2,
+    cameraZoomOutDamp: 8.4,
     cameraPosDamp: 3.4,
+    cameraContainUrgency: 1.6,
+    cameraContainSafeMargin: 0.1,
+    cameraMouseInfluence: 0.32,
+    cameraMouseLeadMax: 180,
+    cameraMouseDeadZone: 80,
     cameraMinZoom: 0.36,
     cameraMaxZoom: 1.08,
     cameraSpanPadding: 180,
@@ -297,7 +306,12 @@ loadPersistedTuningProfile();
 
 const TUNING_DEFS = [
     { category: '🕹️ 控制与驱动系统' },
-    
+
+    { section: '主手感总控', sectionDesc: '先拧这 3 个总旋钮，再进下面折叠细项微调', defaultOpen: true },
+    { key: 'feelClusterBloom', label: '体积呼吸感', desc: '同时控制舒张尺度、骨架回显、排斥撑开和镜头留白', min: 0, max: 1, step: 0.01 },
+    { key: 'feelPredatorSurge', label: '追猎爆发感', desc: '同时控制蓄压速度、突破阈值、冲刺节奏、锚点爆发和外扩冲劲', min: 0, max: 1, step: 0.01 },
+    { key: 'feelCameraDirector', label: '镜头导演感', desc: '同时控制包边意识、懒迭代节奏和鼠标前探跟随', min: 0, max: 1, step: 0.01 },
+
     { section: '模式与意图控制', sectionDesc: '移动模式与玩家意图的驱动逻辑' },
     { key: 'legacyAllNodesMove', label: '全节点主动移动（关=仅蓝色驱动）', desc: '默认开启。关闭后只保留蓝色节点的主动移动与牵引', type: 'toggle' },
     { key: 'enableUpgradedIntentDrive', label: '升级版意图驱动', desc: '默认关闭。开启后按规模放大前压范围与推进强度', type: 'toggle' },
@@ -305,7 +319,7 @@ const TUNING_DEFS = [
     { key: 'enableBurstIntentDrive', label: '阶段爆发意图', desc: '根据鼠标相对质心的距离与外甩趋势，进入蓄压/追击/突破节奏', type: 'toggle' },
     { key: 'intentChaosDegree', label: '意图混沌度 (Hot值)', desc: '为脉冲冲刺增添随机偏移、抖动与独立性', min: 0.0, max: 1.5, step: 0.05 },
 
-    { section: '阶段爆发驱动', sectionDesc: '非线性“蓄压-追击-突破”侵略行为参数' },
+    { section: '爆发细项（展开微调）', sectionDesc: '非线性“蓄压-追击-突破”侵略行为参数' },
     { key: 'burstCenterRadiusFactor', label: '中心压缩半径系数', desc: '质心附近会偏收束与蓄势，按当前群体跨度乘算', min: 0.05, max: 0.8, step: 0.01 },
     { key: 'burstCenterRadiusMin', label: '中心压缩最小半径', desc: '即使小集群也保留一圈压缩缓冲区', min: 20, max: 240, step: 2 },
     { key: 'burstChaseRadiusFactor', label: '追击圈层系数', desc: '超出这圈后开始明显进入追击态', min: 0.2, max: 1.6, step: 0.02 },
@@ -329,7 +343,7 @@ const TUNING_DEFS = [
     { key: 'burstOutwardSpeedThreshold', label: '外甩判定阈值', desc: '多快算是在往外猛甩鼠标', min: 40, max: 800, step: 5 },
     { key: 'burstPointerSpeedThreshold', label: '指针速度阈值', desc: '多快算高压追击手势', min: 40, max: 1200, step: 5 },
 
-    { section: '体积舒张控制', sectionDesc: '滚轮手控 Network Density，并让结构按拓扑显形' },
+    { section: '体积细项（展开微调）', sectionDesc: '滚轮手控 Network Density，并让结构按拓扑显形' },
     { key: 'enableClusterVolumeControl', label: '启用体积系统', desc: '滚轮改为控制舒张/收缩，相机自动接管视野', type: 'toggle' },
     { key: 'clusterVolumeNeutral', label: '体积中性位', desc: '系统默认静息体积，围绕它往外舒张/向内收缩', min: 0.05, max: 0.95, step: 0.01 },
     { key: 'clusterVolumeWheelStep', label: '滚轮步进', desc: '每个滚轮刻度推动多少体积目标', min: 0.01, max: 0.25, step: 0.01 },
@@ -503,9 +517,15 @@ const TUNING_DEFS = [
     { key: 'formationPullStabilityBonus', label: '稳定态强拉成', desc: '-', min: 0, max: 100, step: 1 },
     { key: 'formationSpanFactor', label: '编队跨度延伸比', desc: '大组织自动更拉长前伸力', min: 0, max: 0.5, step: 0.01 },
 
-    { section: '智能镜头跟踪', sectionDesc: '相机的平滑与宏大拉伸' },
-    { key: 'cameraZoomDamp', label: '缩放追赶弹力', desc: '-', min: 0.5, max: 15, step: 0.1 },
-    { key: 'cameraPosDamp', label: '走位追赶弹力', desc: '-', min: 0.5, max: 15, step: 0.1 },
+    { section: '镜头细项（展开微调）', sectionDesc: '包住所有节点、懒迭代追镜、鼠标前探跟随' },
+    { key: 'cameraZoomDamp', label: '常态缩放阻尼', desc: '镜头日常收回/拉近时的柔和程度', min: 0.5, max: 15, step: 0.1 },
+    { key: 'cameraZoomOutDamp', label: '兜底拉远阻尼', desc: '快出框时镜头为了兜住所有节点而拉远得多快', min: 0.5, max: 20, step: 0.1 },
+    { key: 'cameraPosDamp', label: '常态平移阻尼', desc: '镜头平时走位跟随的柔顺程度', min: 0.5, max: 15, step: 0.1 },
+    { key: 'cameraContainUrgency', label: '包边兜底强度', desc: '节点逼近屏幕边缘时，镜头额外加速多少去兜住', min: 0, max: 4, step: 0.05 },
+    { key: 'cameraContainSafeMargin', label: '安全边距比', desc: '离屏幕边缘多近才开始明显紧张起来', min: 0, max: 0.4, step: 0.01 },
+    { key: 'cameraMouseInfluence', label: '鼠标前探权重', desc: '鼠标离开质心后，镜头愿意朝鼠标前探多少', min: 0, max: 1, step: 0.02 },
+    { key: 'cameraMouseLeadMax', label: '鼠标前探上限', desc: '镜头最多被鼠标拉出去多少世界距离', min: 0, max: 400, step: 5 },
+    { key: 'cameraMouseDeadZone', label: '鼠标静区半径', desc: '鼠标在这圈内时镜头尽量别乱前探', min: 0, max: 240, step: 2 },
     { key: 'cameraMinZoom', label: '群像极近推距', desc: '网格太大时的自动缩小下限', min: 0.1, max: 1, step: 0.02 },
     { key: 'cameraMaxZoom', label: '单体贴敷放大', desc: '独狼或者极少时的自动拉大上限', min: 0.5, max: 3, step: 0.02 },
     { key: 'cameraSpanPadding', label: '边缘视口留白', desc: '不要让结构压迫屏幕边缘', min: 0, max: 500, step: 10 },
@@ -515,6 +535,96 @@ const TUNING_DEFS = [
     { key: 'pulseGlowDecay', label: '脉冲亮光淡出', desc: '-', min: 0.5, max: 10, step: 0.1 },
     { key: 'showIntentCenter', label: '标出意图重心', desc: '把计算用的重心箭头显示出来辅助调试', type: 'toggle' }
 ];
+
+const TUNING_DEF_BY_KEY = Object.fromEntries(
+    TUNING_DEFS
+        .filter((def) => def && def.key)
+        .map((def) => [def.key, def])
+);
+
+const COMPOSITE_TUNING_MAPS = {
+    feelClusterBloom: [
+        { key: 'clusterVolumeExpandScale', min: 0.40, max: 1.05 },
+        { key: 'clusterVolumeCompressScale', min: 0.14, max: 0.50 },
+        { key: 'clusterVolumeForwardStretch', min: 0.08, max: 0.42 },
+        { key: 'clusterVolumeLateralBloom', min: 0.12, max: 0.75 },
+        { key: 'clusterVolumeLatticePull', min: 8, max: 30 },
+        { key: 'clusterVolumeRestScale', min: 0.06, max: 0.28 },
+        { key: 'clusterVolumeRepulsionBoost', min: 0.18, max: 0.82 },
+        { key: 'clusterVolumeCorePullRelax', min: 0.25, max: 0.78 },
+        { key: 'clusterVolumeCameraPaddingBoost', min: 70, max: 240 },
+        { key: 'clusterVolumeBurstAssist', min: 0.10, max: 0.48 },
+        { key: 'clusterVolumePulseReach', min: 0.08, max: 0.32 },
+        { key: 'clusterVolumeSideReach', min: 0.12, max: 0.58 }
+    ],
+    feelPredatorSurge: [
+        { key: 'burstCenterRadiusFactor', min: 0.34, max: 0.18 },
+        { key: 'burstChaseRadiusFactor', min: 0.90, max: 0.58 },
+        { key: 'burstBreakRadiusFactor', min: 1.36, max: 0.96 },
+        { key: 'burstPressureGain', min: 0.90, max: 2.40 },
+        { key: 'burstOutwardGain', min: 0.80, max: 2.10 },
+        { key: 'burstPointerSpeedGain', min: 0.30, max: 1.10 },
+        { key: 'burstPressureDecay', min: 1.45, max: 0.65 },
+        { key: 'burstReleaseThreshold', min: 1.18, max: 0.70 },
+        { key: 'burstReleaseDuration', min: 0.28, max: 0.58 },
+        { key: 'burstAggroBoost', min: 0.35, max: 1.00 },
+        { key: 'burstChaosBoost', min: 0.14, max: 0.70 },
+        { key: 'burstReachBoost', min: 0.20, max: 0.85 },
+        { key: 'burstStrengthBoost', min: 0.28, max: 1.00 },
+        { key: 'burstDriftBoost', min: 0.10, max: 0.70 },
+        { key: 'burstTempoBoost', min: 0.08, max: 0.55 },
+        { key: 'burstSpreadBoost', min: 0.10, max: 0.45 },
+        { key: 'burstLookAhead', min: 0.08, max: 0.32 }
+    ],
+    feelCameraDirector: [
+        { key: 'cameraZoomDamp', min: 2.2, max: 4.2 },
+        { key: 'cameraZoomOutDamp', min: 4.8, max: 12.0 },
+        { key: 'cameraPosDamp', min: 2.2, max: 5.6 },
+        { key: 'cameraContainUrgency', min: 0.8, max: 3.0 },
+        { key: 'cameraContainSafeMargin', min: 0.02, max: 0.16 },
+        { key: 'cameraMouseInfluence', min: 0.08, max: 0.58 },
+        { key: 'cameraMouseLeadMax', min: 70, max: 260 },
+        { key: 'cameraMouseDeadZone', min: 150, max: 45 },
+        { key: 'cameraSpanPadding', min: 120, max: 240 }
+    ]
+};
+
+function roundTuningValue(value, step = 0.01) {
+    if (!Number.isFinite(step) || step <= 0) {
+        return value;
+    }
+    const precision = step >= 1 ? 0 : step >= 0.1 ? 2 : 3;
+    return Number((Math.round(value / step) * step).toFixed(precision));
+}
+
+function applyCompositeTuning(masterKey, value, allRows = []) {
+    const targets = COMPOSITE_TUNING_MAPS[masterKey];
+    if (!targets) {
+        return;
+    }
+
+    const t = Math.max(0, Math.min(1, value));
+    const affectedKeys = [];
+    targets.forEach((target) => {
+        const def = TUNING_DEF_BY_KEY[target.key];
+        if (!def) {
+            return;
+        }
+        const raw = target.min + (target.max - target.min) * t;
+        const next = roundTuningValue(
+            Math.max(def.min, Math.min(def.max, raw)),
+            target.step ?? def.step
+        );
+        window.TUNING[target.key] = next;
+        affectedKeys.push(target.key);
+    });
+
+    allRows.forEach((row) => {
+        if (affectedKeys.includes(row.key)) {
+            row.sync();
+        }
+    });
+}
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -1046,7 +1156,9 @@ function buildTuningPanel() {
             const sectionBody = document.createElement('div');
             sectionBody.className = 'tuning-section-body';
 
-            const isSecOpen = uiState.sections[def.section] === true;
+            const isSecOpen = Object.prototype.hasOwnProperty.call(uiState.sections, def.section)
+                ? uiState.sections[def.section] === true
+                : !!def.defaultOpen;
             if (isSecOpen) {
                 sectionHeader.classList.add('open');
                 sectionBody.classList.add('open');
@@ -1262,21 +1374,30 @@ function createSliderRow(def, allRows) {
     const valueDisplay = row.querySelector('.value-display');
     const resetBtn = row.querySelector('.reset-btn');
 
-    const update = (val, manual = false) => {
-        const num = parseFloat(val);
-        if (isNaN(num)) return;
+    const renderValue = (num) => {
         const clamped = Math.max(def.min, Math.min(def.max, num));
-        window.TUNING[def.key] = clamped;
         rangeInput.value = clamped;
         numberInput.value = clamped;
         valueDisplay.textContent = clamped.toFixed(decimals);
         resetBtn.title = `重置为默认值 ${getDefaultVal()}`;
         row.classList.toggle('modified', Math.abs(clamped - getDefaultVal()) > def.step * 0.1);
+    };
+
+    const update = (val, manual = false) => {
+        const num = parseFloat(val);
+        if (isNaN(num)) return;
+        const clamped = Math.max(def.min, Math.min(def.max, num));
+        window.TUNING[def.key] = clamped;
+        renderValue(clamped);
 
         if (manual && def.key === 'pulseOrbCount' && window.TUNING.autoPulseOrbCount) {
             window.TUNING.autoPulseOrbCount = false;
             const toggleRow = allRows.find(r => r.key === 'autoPulseOrbCount');
             if (toggleRow) toggleRow.sync();
+        }
+
+        if (manual && COMPOSITE_TUNING_MAPS[def.key]) {
+            applyCompositeTuning(def.key, clamped, allRows);
         }
     };
 
@@ -1287,7 +1408,8 @@ function createSliderRow(def, allRows) {
 
     return {
         element: row,
-        sync: () => update(window.TUNING[def.key])
+        key: def.key,
+        sync: () => renderValue(window.TUNING[def.key])
     };
 }
 
