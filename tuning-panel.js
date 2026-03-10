@@ -4,6 +4,7 @@
  * ═══════════════════════════════════════════════════════════════ */
 
 const TUNING_PROFILE_PATH = 'tuning-profile.json';
+const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
 
 const TUNING_FALLBACKS = {
     // ─── 移动能力对比 ─────────────────────────────
@@ -211,7 +212,42 @@ function serializeTuningProfile(profile = window.TUNING) {
     return JSON.stringify(sanitizeTuningProfile(profile), null, 2);
 }
 
+function loadPersistedTuningProfile() {
+    try {
+        const raw = window.localStorage.getItem(TUNING_STORAGE_KEY);
+        if (!raw) {
+            return false;
+        }
+
+        const saved = JSON.parse(raw);
+        if (!saved || typeof saved !== 'object') {
+            return false;
+        }
+
+        Object.keys(window.TUNING).forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(saved, key)) {
+                window.TUNING[key] = saved[key];
+            }
+        });
+        return true;
+    } catch (error) {
+        console.warn('加载本地调参配置失败:', error);
+        return false;
+    }
+}
+
+function savePersistedTuningProfile(profile = window.TUNING) {
+    try {
+        window.localStorage.setItem(TUNING_STORAGE_KEY, serializeTuningProfile(profile));
+        return true;
+    } catch (error) {
+        console.warn('保存本地调参配置失败:', error);
+        return false;
+    }
+}
+
 window.TUNING = loadRepoTuningProfile();
+loadPersistedTuningProfile();
 
 // ═══════════════════════════════════════════════════════════════
 //  参数定义表：key → { label, desc, min, max, step, section }
@@ -394,7 +430,7 @@ const TUNING_DEFS = [
 
 
 // ═══════════════════════════════════════════════════════════════
-//  仓库默认值：来自 tuning-profile.json，用于重置和差异导出
+//  当前默认基线：优先使用本地已应用配置，否则回退到 tuning-profile.json
 // ═══════════════════════════════════════════════════════════════
 const TUNING_DEFAULTS = cloneTuningProfile(window.TUNING);
 
@@ -471,6 +507,8 @@ function buildTuningPanel() {
         #tuning-header .header-btns {
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
         #tuning-header button {
             background: rgba(255, 93, 73, 0.12);
@@ -829,7 +867,8 @@ function buildTuningPanel() {
         <h2>调试面板</h2>
         <div class="header-btns">
             <button id="tuning-add-node" style="background: rgba(54, 214, 255, 0.12); border-color: rgba(54, 214, 255, 0.35); color: #36d6ff; padding: 4px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s;">➕ 新增节点 (E)</button>
-            <button class="apply-btn" id="tuning-apply-local">📋 复制 JSON</button>
+            <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
+            <button class="export-btn" id="tuning-copy-json">📋 复制 JSON</button>
             <button class="export-btn" id="tuning-export">📋 复制差异</button>
             <button id="tuning-reset-all">🔄 全部重置</button>
         </div>
@@ -1007,6 +1046,24 @@ function buildTuningPanel() {
 
     document.getElementById('tuning-apply-local').addEventListener('click', () => {
         const btn = document.getElementById('tuning-apply-local');
+        const ok = savePersistedTuningProfile();
+        if (!ok) {
+            btn.textContent = '保存失败';
+            setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
+            return;
+        }
+
+        Object.keys(TUNING_DEFAULTS).forEach((key) => {
+            TUNING_DEFAULTS[key] = window.TUNING[key];
+        });
+        allRows.forEach((row) => row.sync());
+
+        btn.textContent = '✅ 已应用';
+        setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
+    });
+
+    document.getElementById('tuning-copy-json').addEventListener('click', () => {
+        const btn = document.getElementById('tuning-copy-json');
         const text = serializeTuningProfile();
         navigator.clipboard.writeText(text).then(() => {
             btn.textContent = '✅ 已复制';
@@ -1095,9 +1152,9 @@ function createSliderRow(def, allRows) {
     row.className = 'tuning-row';
     row.dataset.searchText = `${def.label} ${def.desc} ${def.key}`;
 
-    const defaultVal = TUNING_DEFAULTS[def.key];
     const currentVal = window.TUNING[def.key];
     const decimals = def.step < 1 ? (def.step < 0.1 ? 3 : 2) : 0;
+    const getDefaultVal = () => TUNING_DEFAULTS[def.key];
 
     row.innerHTML = `
         <div class="tuning-row-label">
@@ -1108,7 +1165,7 @@ function createSliderRow(def, allRows) {
         <div class="tuning-row-controls">
             <input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${currentVal}">
             <input type="number" min="${def.min}" max="${def.max}" step="${def.step}" value="${currentVal}">
-            <button class="reset-btn" title="重置为默认值 ${defaultVal}">↺</button>
+            <button class="reset-btn" title="重置为默认值 ${getDefaultVal()}">↺</button>
         </div>
     `;
 
@@ -1125,7 +1182,8 @@ function createSliderRow(def, allRows) {
         rangeInput.value = clamped;
         numberInput.value = clamped;
         valueDisplay.textContent = clamped.toFixed(decimals);
-        row.classList.toggle('modified', Math.abs(clamped - defaultVal) > def.step * 0.1);
+        resetBtn.title = `重置为默认值 ${getDefaultVal()}`;
+        row.classList.toggle('modified', Math.abs(clamped - getDefaultVal()) > def.step * 0.1);
 
         if (manual && def.key === 'pulseOrbCount' && window.TUNING.autoPulseOrbCount) {
             window.TUNING.autoPulseOrbCount = false;
@@ -1137,7 +1195,7 @@ function createSliderRow(def, allRows) {
     rangeInput.addEventListener('input', () => update(rangeInput.value, true));
     numberInput.addEventListener('input', () => update(numberInput.value, true));
     numberInput.addEventListener('change', () => update(numberInput.value, true));
-    resetBtn.addEventListener('click', () => update(defaultVal, true));
+    resetBtn.addEventListener('click', () => update(getDefaultVal(), true));
 
     return {
         element: row,
