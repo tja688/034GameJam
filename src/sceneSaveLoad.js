@@ -17,6 +17,9 @@ const SceneSaveLoadMixin = {
             version: 2,
             savedAt: Date.now(),
             baseChain: [...this.baseChain],
+            clusterVolume: {
+                target: this.clusterVolume?.target ?? this.createDefaultClusterVolumeState().target
+            },
             player: {
                 chain: [...this.player.chain],
                 centroidX: this.player.centroidX,
@@ -115,11 +118,20 @@ const SceneSaveLoadMixin = {
         this.player = this.createDefaultPlayer(chain);
         this.intent = this.createDefaultIntent();
         this.cameraRig = this.createDefaultCameraRig();
-        this.cameraZoomScale = 1;
+        this.clusterVolume = this.createDefaultClusterVolumeState();
+        this.burstDrive = this.createDefaultBurstDriveState();
         this.poolNodes = savedPoolNodes.map((node, index) => ({
             ...node,
             index: Number.isInteger(node.index) ? node.index : index
         }));
+        const savedClusterVolumeTarget = clamp(
+            getFiniteNumber(data.clusterVolume?.target, this.clusterVolume.target),
+            0,
+            1
+        );
+        this.clusterVolume.target = savedClusterVolumeTarget;
+        this.clusterVolume.manual = savedClusterVolumeTarget;
+        this.clusterVolume.effective = savedClusterVolumeTarget;
 
         Object.assign(this.player, {
             centroidX: getFiniteNumber(data.player.centroidX, this.player.centroidX),

@@ -34,6 +34,57 @@ const SceneInitMixin = {
             deleteProgress: 0
         };
     },
+    createDefaultClusterVolumeState() {
+        const T = window.TUNING || {};
+        const neutral = clamp(T.clusterVolumeNeutral ?? 0.36, 0.05, 0.95);
+        return {
+            target: neutral,
+            manual: neutral,
+            auto: 0,
+            effective: neutral,
+            normalized: 0,
+            expansion: 0,
+            compression: 0,
+            radialScale: 1,
+            forwardScale: 1,
+            lateralScale: 1,
+            restScale: 1,
+            repulsionScale: 1,
+            latticePull: 0,
+            corePullScale: 1,
+            cameraPadding: 0
+        };
+    },
+    createDefaultBurstDriveState() {
+        return {
+            phase: 'cruise',
+            pressure: 0,
+            releaseTimer: 0,
+            breakthrough: 0,
+            output: 0,
+            aggro: 0,
+            chaosBoost: 0,
+            reachBoost: 0,
+            strengthBoost: 0,
+            driftBoost: 0,
+            tempoBoost: 0,
+            spreadBoost: 0,
+            forwardBias: 0,
+            lookAhead: 0,
+            centerCompression: 0,
+            distance: 0,
+            distanceNorm: 0,
+            outwardSpeed: 0,
+            pointerSpeed: 0,
+            centerRadius: 0,
+            chaseRadius: 0,
+            breakRadius: 0,
+            initialized: false,
+            lastPointerX: 0,
+            lastPointerY: 0,
+            lastDistance: 0
+        };
+    },
     createDefaultPlayer(chain = this.baseChain) {
         return {
             chain: [...chain],
@@ -186,7 +237,31 @@ const SceneInitMixin = {
             baseFlowY: -1,
             inverseFlowX: 0,
             inverseFlowY: -1,
-            clusterAggro: 0
+            clusterAggro: 0,
+            pointerX: 0,
+            pointerY: 0,
+            pointerDistance: 0,
+            burstPhase: 'cruise',
+            burstAggro: 0,
+            burstChaos: 0,
+            burstReachBoost: 0,
+            burstStrengthBoost: 0,
+            burstDriftBoost: 0,
+            burstTempo: 0,
+            burstSpreadBoost: 0,
+            burstForwardBias: 0,
+            burstLookAhead: 0,
+            burstPressure: 0,
+            burstPointerSpeed: 0,
+            burstOutwardSpeed: 0,
+            burstCenterRadius: 0,
+            burstChaseRadius: 0,
+            burstBreakRadius: 0,
+            centerCompression: 0,
+            clusterVolume: 0,
+            clusterVolumeScale: 1,
+            clusterVolumeForwardScale: 1,
+            clusterVolumeLateralScale: 1
         };
     },
     createDefaultCameraRig() {
@@ -219,6 +294,8 @@ const SceneInitMixin = {
         this.player = this.createDefaultPlayer();
         this.intent = this.createDefaultIntent();
         this.cameraRig = this.createDefaultCameraRig();
+        this.clusterVolume = this.createDefaultClusterVolumeState();
+        this.burstDrive = this.createDefaultBurstDriveState();
         this.poolNodes = this.createPoolNodesFromLibrary();
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
@@ -295,7 +372,7 @@ const SceneInitMixin = {
         }
 
         this.handleModeInputs();
-        this.readIntent();
+        this.readIntent(frameDt);
         this.updateEditMode(frameDt);
         this.syncCompoundTopologyEdgesMode();
         this.syncTopologySlotLayoutMode();
@@ -335,16 +412,20 @@ const SceneInitMixin = {
     },
     updateCamera(frameDt) {
         const T = window.TUNING || {};
-        const span = this.getFormationSpan() + (T.cameraSpanPadding ?? 180);
+        const volumePadding = this.clusterVolume?.cameraPadding || 0;
+        const span = this.getFormationSpan() + (T.cameraSpanPadding ?? 180) + volumePadding;
         const widthFit = this.cameraRig.viewportWidth / (span * 2.2);
         const heightFit = this.cameraRig.viewportHeight / (span * 1.85);
         let targetZ = clamp(Math.min(widthFit, heightFit), T.cameraMinZoom ?? 0.36, T.cameraMaxZoom ?? 1.08);
         targetZ *= lerp(1, 1.12, this.player.edit.ambience || 0);
-        targetZ *= (this.cameraZoomScale || 1);
         this.cameraRig.targetZoom = targetZ;
+        const heading = vectorFromAngle(this.player.heading);
+        const leadDistance = span * clamp(this.intent?.burstLookAhead ?? 0, 0, 1.5);
+        const targetX = this.player.centroidX + heading.x * leadDistance;
+        const targetY = this.player.centroidY + heading.y * leadDistance;
         this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, T.cameraZoomDamp ?? 3.2, frameDt);
-        this.cameraRig.x = damp(this.cameraRig.x, this.player.centroidX, T.cameraPosDamp ?? 3.4, frameDt);
-        this.cameraRig.y = damp(this.cameraRig.y, this.player.centroidY, T.cameraPosDamp ?? 3.4, frameDt);
+        this.cameraRig.x = damp(this.cameraRig.x, targetX, T.cameraPosDamp ?? 3.4, frameDt);
+        this.cameraRig.y = damp(this.cameraRig.y, targetY, T.cameraPosDamp ?? 3.4, frameDt);
     },
     updateDisplay(frameDt) {
         const T = window.TUNING || {};

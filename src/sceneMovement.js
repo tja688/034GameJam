@@ -109,6 +109,8 @@ const SceneMovementMixin = {
                 pairKey,
                 topologyA: edge.a,
                 topologyB: edge.b,
+                slotDx: slotB.x - slotA.x,
+                slotDy: slotB.y - slotA.y,
                 rest: clamp(distance * (samePolarity ? sameRestMul : invRestMul), restMin, restMax),
                 stiffness: profile.stiffness,
                 damping: profile.damping,
@@ -225,13 +227,34 @@ const SceneMovementMixin = {
             factor *= 0.92;
         }
         factor *= lerp(1, 0.86, clamp(this.player.tempoBoost, 0, 1));
-        return interval * Math.max(0.74, factor);
+        const burstTempo = this.isBurstIntentDriveEnabled()
+            ? clamp(this.intent?.burstTempo ?? 0, 0, 1)
+            : 0;
+        return interval * Math.max(0.38, factor * lerp(1, 0.58, burstTempo));
     },
     computeNominalOffset(node) {
+        const volume = this.getClusterVolumeState();
         return {
-            x: node.localX || 0,
-            y: node.localY || 0
+            x: (node.localX || 0) * (volume.forwardScale || 1),
+            y: (node.localY || 0) * (volume.lateralScale || 1)
         };
+    },
+    refreshDynamicLinkRestState() {
+        const T = window.TUNING || {};
+        const volume = this.getClusterVolumeState();
+        const sameRestMul = T.samePolarityRestMul ?? 1.02;
+        const invRestMul = T.inversePolarityRestMul ?? 1.08;
+        const restMin = (T.linkRestMin ?? 84) * (1 - Math.min(0.35, volume.compression || 0));
+        const restMax = (T.linkRestMax ?? 206) * (1 + Math.max(0, (volume.expansion || 0) * (T.clusterVolumeRestClampBoost ?? 0.8)));
+
+        this.links.forEach((link) => {
+            const polarityMul = link.samePolarity ? sameRestMul : invRestMul;
+            const targetRest = Math.hypot(
+                (link.slotDx || 0) * (volume.forwardScale || 1),
+                (link.slotDy || 0) * (volume.lateralScale || 1)
+            ) * polarityMul * (volume.restScale || 1);
+            link.rest = clamp(targetRest, restMin, restMax);
+        });
     },
     isBlueOnlyDriveMode() {
         const T = window.TUNING || {};
@@ -253,6 +276,26 @@ const SceneMovementMixin = {
     isSplitPolarityIntentEnabled() {
         const T = window.TUNING || {};
         return this.isUpgradedIntentDriveEnabled() && !!(T.splitPolarityIntentDrive ?? false);
+    },
+    isBurstIntentDriveEnabled() {
+        const T = window.TUNING || {};
+        return !!(T.enableBurstIntentDrive ?? false);
+    },
+    isClusterVolumeControlEnabled() {
+        const T = window.TUNING || {};
+        return !!(T.enableClusterVolumeControl ?? false);
+    },
+    getClusterVolumeState() {
+        if (!this.clusterVolume) {
+            this.clusterVolume = this.createDefaultClusterVolumeState();
+        }
+        return this.clusterVolume;
+    },
+    getBurstDriveState() {
+        if (!this.burstDrive) {
+            this.burstDrive = this.createDefaultBurstDriveState();
+        }
+        return this.burstDrive;
     },
     getIntentDriveSpan() {
         const liveSpan = this.activeNodes && this.activeNodes.length > 0 ? this.getFormationSpan() : 0;
@@ -276,13 +319,17 @@ const SceneMovementMixin = {
         const aim = normalize(this.intent.aimX, this.intent.aimY, flow.x, flow.y);
         const move = normalize(this.intent.moveX, this.intent.moveY, flow.x, flow.y);
         const clusterAggro = clamp(this.intent.clusterAggro ?? 0, 0, 1);
+        const burstAggro = this.isBurstIntentDriveEnabled()
+            ? clamp(this.intent.burstAggro ?? 0, 0, 1)
+            : 0;
+        const burstActivity = 1 + burstAggro * 0.24;
 
         if (!this.isUpgradedIntentDriveEnabled()) {
             return {
                 flow,
                 focus: aim,
-                aggression: 0,
-                activity: 1
+                aggression: burstAggro * 0.72,
+                activity: burstActivity
             };
         }
 
@@ -290,8 +337,8 @@ const SceneMovementMixin = {
             return {
                 flow,
                 focus: aim,
-                aggression: clusterAggro,
-                activity: 1
+                aggression: clamp(clusterAggro + burstAggro * 0.82, 0, 1),
+                activity: burstActivity
             };
         }
 
@@ -300,8 +347,8 @@ const SceneMovementMixin = {
             return {
                 flow: baseFlow,
                 focus: normalize(this.intent.aimX, this.intent.aimY, baseFlow.x, baseFlow.y),
-                aggression: clamp(0.18 + clusterAggro * 0.92, 0, 1),
-                activity: 1
+                aggression: clamp(0.18 + clusterAggro * 0.92 + burstAggro * 0.78, 0, 1),
+                activity: burstActivity
             };
         }
 
@@ -312,8 +359,8 @@ const SceneMovementMixin = {
             focus: hasMoveInput
                 ? normalize(move.x, move.y, inverseFlow.x, inverseFlow.y)
                 : normalize(forward.x, forward.y, inverseFlow.x, inverseFlow.y),
-            aggression: clamp(clusterAggro * 0.8 + (hasMoveInput ? 0.2 : 0), 0, 1),
-            activity: hasMoveInput ? 1 : 0.4
+            aggression: clamp(clusterAggro * 0.8 + burstAggro * 0.6 + (hasMoveInput ? 0.2 : 0), 0, 1),
+            activity: (hasMoveInput ? 1 : 0.4) * burstActivity
         };
     },
     plantNode(node, profile) {
@@ -321,9 +368,14 @@ const SceneMovementMixin = {
         let leadX = driveIntent.flow.x * (profile.flowBias ?? 0.55) + driveIntent.focus.x * (profile.aimBias ?? 0.45);
         let leadY = driveIntent.flow.y * (profile.flowBias ?? 0.55) + driveIntent.focus.y * (profile.aimBias ?? 0.45);
         let lead = normalize(leadX, leadY, driveIntent.focus.x, driveIntent.focus.y);
-        
+
         const T = window.TUNING || {};
-        const chaos = T.intentChaosDegree ?? 0.0;
+        const volume = this.getClusterVolumeState();
+        const burstReachBoost = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstReachBoost ?? 0, 0, 2) : 0;
+        const burstStrengthBoost = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstStrengthBoost ?? 0, 0, 2) : 0;
+        const burstSpreadBoost = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstSpreadBoost ?? 0, 0, 1.5) : 0;
+        const burstTempo = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstTempo ?? 0, 0, 1) : 0;
+        const chaos = (T.intentChaosDegree ?? 0.0) + (this.intent.burstChaos ?? 0);
         if (chaos > 0 && driveIntent.activity > 0) {
             const rot = (Math.random() - 0.5) * Math.PI * chaos;
             const cosR = Math.cos(rot);
@@ -342,18 +394,31 @@ const SceneMovementMixin = {
         const scaleBoost = driveIntent.aggression * span * 0.32;
         const frontBoost = Math.max(0, frontRatio) * span * (0.18 + driveIntent.aggression * 0.44);
         const rearDrag = Math.max(0, -frontRatio) * span * (0.06 + driveIntent.aggression * 0.12);
-        
+
         const reachJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.8 : 1.0;
-        const forwardReach = (profile.forwardBase + span * spanFactor + scaleBoost + frontBoost - rearDrag) * profile.reachScale * reachJitter;
-        const sideReach = (profile.sideBase ?? 0) * sideSign * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias))) * (1 + driveIntent.aggression * 0.1) * reachJitter;
-        
+        const forwardReach = (profile.forwardBase + span * spanFactor + scaleBoost + frontBoost - rearDrag)
+            * profile.reachScale
+            * reachJitter
+            * (1 + (volume.expansion || 0) * (T.clusterVolumePulseReach ?? 0.18))
+            * (1 + burstReachBoost * (T.burstReachBoost ?? 0.58));
+        const sideReach = (profile.sideBase ?? 0)
+            * sideSign
+            * (profile.sideScale ?? Math.max(0.35, Math.abs(lateralBias)))
+            * (1 + driveIntent.aggression * 0.1 + (volume.expansion || 0) * (T.clusterVolumeSideReach ?? 0.34) + burstSpreadBoost)
+            * reachJitter;
+
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
         node.pulseGlow = 1;
         if (this.nodeHasMoveAbility(node)) {
             const stanceJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.5 : 1.0;
-            node.anchorStrength = profile.strength * (1 + driveIntent.aggression * 0.52) * driveIntent.activity;
-            node.stanceTimer = profile.stance * lerp(1, 0.84, driveIntent.aggression) * stanceJitter;
+            node.anchorStrength = profile.strength
+                * (1 + driveIntent.aggression * 0.52 + burstStrengthBoost * (T.burstStrengthBoost ?? 0.78))
+                * driveIntent.activity;
+            node.stanceTimer = profile.stance
+                * lerp(1, 0.84, driveIntent.aggression)
+                * lerp(1, 0.72, burstTempo)
+                * stanceJitter;
             node.anchored = driveIntent.activity > 0.05;
             if (!node.anchored) {
                 node.anchorStrength = 0;
@@ -417,6 +482,8 @@ const SceneMovementMixin = {
     },
     updateFormation(simDt) {
         const T = window.TUNING || {};
+        const volume = this.getClusterVolumeState();
+        const burstDriftBoost = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstDriftBoost ?? 0, 0, 1.5) : 0;
         const draggedTarget = this.player.edit.active && this.player.edit.dragNode >= 0
             ? {
                 index: this.player.edit.dragNode,
@@ -427,6 +494,7 @@ const SceneMovementMixin = {
 
         this.computeCentroid();
         const driveSpan = this.getIntentDriveSpan();
+        this.refreshDynamicLinkRestState();
 
         this.activeNodes.forEach((node) => {
             node.fx = 0;
@@ -456,6 +524,15 @@ const SceneMovementMixin = {
         this.activeNodes.forEach((node) => {
             const canDrive = this.nodeHasMoveAbility(node);
             const driveIntent = this.resolveNodeDriveIntent(node);
+            if ((this.isClusterVolumeControlEnabled() || volume.latticePull > 0.01) && !(draggedTarget && node.index === draggedTarget.index)) {
+                const nominal = this.computeNominalOffset(node);
+                const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
+                const targetX = this.player.centroidX + rotated.x;
+                const targetY = this.player.centroidY + rotated.y;
+                node.fx += (targetX - node.x) * volume.latticePull;
+                node.fy += (targetY - node.y) * volume.latticePull;
+            }
+
             // ── 编队拉力 ──
             if ((T.enableFormationPull ?? true) && canDrive) {
                 const nominal = this.computeNominalOffset(node);
@@ -481,7 +558,8 @@ const SceneMovementMixin = {
                 const frontRatio = this.getNodeDriveFrontRatio(node, driveIntent.flow, driveSpan);
                 const driftScale = (1 + driveIntent.aggression * 0.85)
                     * lerp(0.92, 1.42, clamp((frontRatio + 1) * 0.5, 0, 1))
-                    * driveIntent.activity;
+                    * driveIntent.activity
+                    * (1 + burstDriftBoost);
                 node.fx += driveIntent.flow.x * drive * driftScale;
                 node.fy += driveIntent.flow.y * drive * driftScale;
             }
@@ -490,7 +568,7 @@ const SceneMovementMixin = {
             if ((T.enableCorePull ?? true) && canDrive && (node.role === 'source' || node.role === 'compressor')) {
                 const pullToCoreX = this.player.centroidX - node.x;
                 const pullToCoreY = this.player.centroidY - node.y;
-                const coreStr = T.corePullStrength ?? 24;
+                const coreStr = (T.corePullStrength ?? 24) * (volume.corePullScale || 1);
                 node.fx += pullToCoreX * coreStr;
                 node.fy += pullToCoreY * coreStr;
             }
@@ -537,7 +615,7 @@ const SceneMovementMixin = {
             const repMinDist = T.repulsionMinDist ?? 72;
             const repDegMax = T.repulsionDegreeMax ?? 18;
             const repDegScale = T.repulsionDegreeScale ?? 1.6;
-            const repK = T.repulsionStiffness ?? 16;
+            const repK = (T.repulsionStiffness ?? 16) * lerp(1, 1.18, clamp(this.intent.burstSpreadBoost ?? 0, 0, 1));
             for (let i = 0; i < this.activeNodes.length; i += 1) {
                 for (let j = i + 1; j < this.activeNodes.length; j += 1) {
                     const first = this.activeNodes[i];
@@ -545,7 +623,8 @@ const SceneMovementMixin = {
                     const dx = second.x - first.x;
                     const dy = second.y - first.y;
                     const distance = Math.hypot(dx, dy) || 0.0001;
-                    const minDistance = repMinDist + Math.min(repDegMax, (first.degree || 0) + (second.degree || 0)) * repDegScale;
+                    const minDistance = (repMinDist + Math.min(repDegMax, (first.degree || 0) + (second.degree || 0)) * repDegScale)
+                        * (volume.repulsionScale || 1);
                     if (distance >= minDistance) {
                         continue;
                     }
@@ -611,7 +690,9 @@ const SceneMovementMixin = {
         const T = window.TUNING || {};
         const desiredHeading = Math.atan2(this.intent.flowY, this.intent.flowX);
         const clusterAggro = this.isUpgradedIntentDriveEnabled() ? clamp(this.intent.clusterAggro ?? 0, 0, 1) : 0;
-        const turnRate = ((T.baseTurnRate ?? 3.1) + this.player.turnAssist * (T.turnAssistBonus ?? 2.1)) * (1 + clusterAggro * 0.28);
+        const burstAggro = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstAggro ?? 0, 0, 1) : 0;
+        const turnRate = ((T.baseTurnRate ?? 3.1) + this.player.turnAssist * (T.turnAssistBonus ?? 2.1))
+            * (1 + clusterAggro * 0.28 + burstAggro * 0.42);
         this.player.heading = Phaser.Math.Angle.RotateTo(this.player.heading, desiredHeading, turnRate * simDt);
         this.player.shieldTimer = Math.max(0, this.player.shieldTimer - simDt);
         this.player.tempoBoost = Math.max(0, this.player.tempoBoost - simDt * (T.tempoBoostDecay ?? 1.5));

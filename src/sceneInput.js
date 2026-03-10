@@ -350,7 +350,172 @@ const SceneInputMixin = {
         const local = rotateLocal(worldX - this.player.centroidX, worldY - this.player.centroidY, -this.player.heading);
         this.player.topology.slots[index] = { x: local.x, y: local.y };
     },
-    readIntent() {
+    nudgeClusterVolume(deltaY) {
+        const state = this.getClusterVolumeState();
+        const T = window.TUNING || {};
+        const step = T.clusterVolumeWheelStep ?? 0.08;
+        const wheelNotch = clamp(deltaY / 120, -4, 4);
+        state.target = clamp(state.target - wheelNotch * step, 0, 1);
+    },
+    updateBurstIntentDrive(worldPointer, aim, frameDt) {
+        const state = this.getBurstDriveState();
+        const T = window.TUNING || {};
+        const span = this.getIntentDriveSpan();
+        const centerRadius = Math.max(T.burstCenterRadiusMin ?? 76, span * (T.burstCenterRadiusFactor ?? 0.26));
+        const chaseRadius = Math.max(centerRadius + 1, Math.max(T.burstChaseRadiusMin ?? 170, span * (T.burstChaseRadiusFactor ?? 0.72)));
+        const breakRadius = Math.max(chaseRadius + 1, Math.max(T.burstBreakRadiusMin ?? 280, span * (T.burstBreakRadiusFactor ?? 1.18)));
+        const distance = aim.length;
+        const pointerSpeed = state.initialized && frameDt > 0
+            ? Math.hypot(worldPointer.x - state.lastPointerX, worldPointer.y - state.lastPointerY) / frameDt
+            : 0;
+        const outwardSpeed = state.initialized && frameDt > 0 ? (distance - state.lastDistance) / frameDt : 0;
+
+        state.lastPointerX = worldPointer.x;
+        state.lastPointerY = worldPointer.y;
+        state.lastDistance = distance;
+        state.initialized = true;
+        state.distance = distance;
+        state.pointerSpeed = pointerSpeed;
+        state.outwardSpeed = outwardSpeed;
+        state.centerRadius = centerRadius;
+        state.chaseRadius = chaseRadius;
+        state.breakRadius = breakRadius;
+        state.distanceNorm = clamp((distance - centerRadius) / Math.max(1, breakRadius - centerRadius), 0, 1);
+
+        if (!this.isBurstIntentDriveEnabled()) {
+            state.phase = 'cruise';
+            state.pressure = Math.max(0, state.pressure - frameDt * 2.4);
+            state.releaseTimer = 0;
+            state.breakthrough = 0;
+            state.output = damp(state.output, 0, 8.5, frameDt);
+            state.aggro = 0;
+            state.chaosBoost = 0;
+            state.reachBoost = 0;
+            state.strengthBoost = 0;
+            state.driftBoost = 0;
+            state.tempoBoost = 0;
+            state.spreadBoost = 0;
+            state.forwardBias = 0;
+            state.lookAhead = 0;
+            state.centerCompression = 0;
+            return state;
+        }
+
+        const centerCompression = clamp(1 - distance / Math.max(centerRadius, 1), 0, 1);
+        const chaseNorm = clamp((distance - centerRadius) / Math.max(1, chaseRadius - centerRadius), 0, 1);
+        const breakNorm = clamp((distance - chaseRadius) / Math.max(1, breakRadius - chaseRadius), 0, 1);
+        const outwardNorm = clamp(Math.max(0, outwardSpeed) / (T.burstOutwardSpeedThreshold ?? 240), 0, 2);
+        const pointerNorm = clamp(pointerSpeed / (T.burstPointerSpeedThreshold ?? 360), 0, 2);
+        const pressureGain = Math.pow(breakNorm, 1.65) * (T.burstPressureGain ?? 1.6)
+            + Math.pow(outwardNorm, 2.1) * (T.burstOutwardGain ?? 1.35)
+            + Math.pow(Math.max(0, pointerNorm - 0.2), 1.6) * (T.burstPointerSpeedGain ?? 0.72);
+        const pressureLoss = (T.burstPressureDecay ?? 1.15) * (centerCompression > 0 ? 1.55 : 0.72);
+
+        state.pressure = clamp(
+            state.pressure + (pressureGain - pressureLoss - centerCompression * 1.15) * frameDt,
+            0,
+            1.8
+        );
+        state.releaseTimer = Math.max(0, state.releaseTimer - frameDt);
+        state.breakthrough = Math.max(0, state.breakthrough - frameDt * 1.8);
+
+        const releaseThreshold = T.burstReleaseThreshold ?? 1.0;
+        const canBreak = distance > chaseRadius * 1.02
+            && breakNorm > 0.12
+            && (outwardNorm > 0.35 || pointerNorm > 0.45);
+        if (state.releaseTimer <= 0 && state.pressure >= releaseThreshold && canBreak) {
+            state.releaseTimer = T.burstReleaseDuration ?? 0.42;
+            state.breakthrough = 1;
+            state.pressure = Math.max(0.35, state.pressure * 0.45);
+        }
+
+        const releaseNorm = state.releaseTimer > 0
+            ? clamp(state.releaseTimer / Math.max(0.0001, T.burstReleaseDuration ?? 0.42), 0, 1)
+            : 0;
+        const pursuitAggro = Math.pow(chaseNorm, 1.15) * 0.52
+            + Math.pow(breakNorm, 0.9) * 0.46
+            + Math.min(0.35, state.pressure * 0.22);
+        const burstAggro = releaseNorm > 0
+            ? Math.pow(releaseNorm, 0.42) * (0.75 + state.breakthrough * 0.25)
+            : 0;
+        const targetOutput = clamp(Math.max(pursuitAggro, burstAggro) - centerCompression * 0.24, 0, 1);
+
+        state.output = damp(state.output, targetOutput, releaseNorm > 0 ? 12 : 6.5, frameDt);
+        state.phase = releaseNorm > 0.02
+            ? 'burst'
+            : centerCompression > 0.24
+                ? 'coil'
+                : (distance > chaseRadius || state.pressure > 0.22)
+                    ? 'pursuit'
+                    : 'cruise';
+        state.aggro = clamp(state.output * (T.burstAggroBoost ?? 0.72), 0, 1);
+        state.chaosBoost = state.output * (T.burstChaosBoost ?? 0.42);
+        state.reachBoost = clamp(state.output * (T.burstReachBoost ?? 0.58) + burstAggro * 0.35, 0, 2);
+        state.strengthBoost = clamp(state.output * (T.burstStrengthBoost ?? 0.78) + burstAggro * 0.28, 0, 2);
+        state.driftBoost = state.output * (T.burstDriftBoost ?? 0.48);
+        state.tempoBoost = clamp(state.output * (T.burstTempoBoost ?? 0.34) + burstAggro * 0.32, 0, 1);
+        state.spreadBoost = clamp(state.output * (T.burstSpreadBoost ?? 0.28) + burstAggro * 0.22, 0, 1.4);
+        state.forwardBias = clamp(pursuitAggro * 0.55 + burstAggro * 0.65, 0, 1.2);
+        state.lookAhead = clamp(state.output * (T.burstLookAhead ?? 0.22) + burstAggro * 0.18, 0, 1);
+        state.centerCompression = centerCompression;
+        return state;
+    },
+    updateClusterVolumeDrive(frameDt, burstState) {
+        const state = this.getClusterVolumeState();
+        const T = window.TUNING || {};
+        const neutral = clamp(T.clusterVolumeNeutral ?? 0.36, 0.05, 0.95);
+        const response = T.clusterVolumeResponse ?? 6.5;
+        state.manual = damp(state.manual, clamp(state.target, 0, 1), response, frameDt);
+
+        if (!this.isClusterVolumeControlEnabled()) {
+            state.auto = damp(state.auto, 0, response, frameDt);
+            state.effective = state.manual;
+            state.normalized = 0;
+            state.expansion = 0;
+            state.compression = 0;
+            state.radialScale = 1;
+            state.forwardScale = 1;
+            state.lateralScale = 1;
+            state.restScale = 1;
+            state.repulsionScale = 1;
+            state.latticePull = 0;
+            state.corePullScale = 1;
+            state.cameraPadding = 0;
+            return state;
+        }
+
+        const burstSpread = clamp(burstState?.spreadBoost ?? 0, 0, 1.4);
+        const centerCompression = clamp(burstState?.centerCompression ?? 0, 0, 1);
+        state.auto = damp(
+            state.auto,
+            burstSpread * (T.clusterVolumeBurstAssist ?? 0.28) - centerCompression * (T.clusterVolumeCenterContract ?? 0.12),
+            response * 0.82,
+            frameDt
+        );
+
+        const effective = clamp(state.manual + state.auto, 0, 1);
+        const normalized = effective >= neutral
+            ? (effective - neutral) / Math.max(0.0001, 1 - neutral)
+            : (effective - neutral) / Math.max(0.0001, neutral);
+        const expansion = Math.max(0, normalized);
+        const compression = Math.max(0, -normalized);
+        const radialScale = Math.max(0.35, 1 + expansion * (T.clusterVolumeExpandScale ?? 0.72) - compression * (T.clusterVolumeCompressScale ?? 0.32));
+
+        state.effective = effective;
+        state.normalized = normalized;
+        state.expansion = expansion;
+        state.compression = compression;
+        state.radialScale = radialScale;
+        state.forwardScale = radialScale * (1 + expansion * (T.clusterVolumeForwardStretch ?? 0.22) + clamp(burstState?.forwardBias ?? 0, 0, 1.2) * 0.18);
+        state.lateralScale = radialScale * (1 + expansion * (T.clusterVolumeLateralBloom ?? 0.38) + burstSpread * 0.12);
+        state.restScale = 1 + expansion * (T.clusterVolumeRestScale ?? 0.16) - compression * Math.min(0.25, (T.clusterVolumeCompressScale ?? 0.32) * 0.5);
+        state.repulsionScale = Math.max(0.55, 1 + expansion * (T.clusterVolumeRepulsionBoost ?? 0.45) - compression * (T.clusterVolumeRepulsionCompress ?? 0.2));
+        state.latticePull = (T.clusterVolumeLatticePull ?? 18) * (expansion * 0.9 + compression * 0.55 + burstSpread * 0.4);
+        state.corePullScale = clamp(1 - expansion * (T.clusterVolumeCorePullRelax ?? 0.55), 0.2, 1.6);
+        state.cameraPadding = expansion * (T.clusterVolumeCameraPaddingBoost ?? 160) + clamp(burstState?.lookAhead ?? 0, 0, 1) * 60;
+        return state;
+    },
+    readIntent(frameDt = 1 / 60) {
         const moveX = this.player.edit.active ? 0 : (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
         const moveY = this.player.edit.active ? 0 : (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0);
         const move = normalize(moveX, moveY);
@@ -358,27 +523,31 @@ const SceneInputMixin = {
         const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
         const aim = normalize(worldPointer.x - this.player.centroidX, worldPointer.y - this.player.centroidY, Math.cos(this.player.heading), Math.sin(this.player.heading));
         const T = window.TUNING || {};
+        const heading = vectorFromAngle(this.player.heading);
+        const burstState = this.updateBurstIntentDrive(worldPointer, aim, Math.max(frameDt, 0.0001));
+        const volumeState = this.updateClusterVolumeDrive(Math.max(frameDt, 0.0001), burstState);
         const moveWeight = this.keys.shift.isDown ? (T.shiftMoveWeight ?? 0.32) : (T.normalMoveWeight ?? 0.58);
         const aimWeight = 1 - moveWeight;
         const legacyFlow = normalize(move.x * moveWeight + aim.x * aimWeight, move.y * moveWeight + aim.y * aimWeight, aim.x, aim.y);
         const upgradedIntentEnabled = this.isUpgradedIntentDriveEnabled();
         const clusterAggro = upgradedIntentEnabled ? this.getIntentClusterAggression() : 0;
-        const aggressiveAimWeight = lerp(aimWeight, 0.78, clusterAggro);
+        const totalAggro = clamp(clusterAggro + burstState.aggro, 0, 1);
+        const aggressiveAimWeight = clamp(lerp(aimWeight, 0.78, totalAggro) - burstState.centerCompression * 0.16, 0.08, 0.95);
         const aggressiveMoveWeight = 1 - aggressiveAimWeight;
-        const aggressiveFlow = upgradedIntentEnabled
+        const adaptiveFlowEnabled = upgradedIntentEnabled || this.isBurstIntentDriveEnabled();
+        const aggressiveFlow = adaptiveFlowEnabled
             ? normalize(
-                move.x * aggressiveMoveWeight + aim.x * aggressiveAimWeight,
-                move.y * aggressiveMoveWeight + aim.y * aggressiveAimWeight,
+                move.x * aggressiveMoveWeight + aim.x * aggressiveAimWeight + heading.x * burstState.centerCompression * 0.18,
+                move.y * aggressiveMoveWeight + aim.y * aggressiveAimWeight + heading.y * burstState.centerCompression * 0.18,
                 legacyFlow.x,
                 legacyFlow.y
             )
             : legacyFlow;
         const splitPolarityIntent = this.isSplitPolarityIntentEnabled();
-        const heading = vectorFromAngle(this.player.heading);
         const baseFlow = splitPolarityIntent
             ? normalize(
-                aim.x * 0.92 + aggressiveFlow.x * 0.28,
-                aim.y * 0.92 + aggressiveFlow.y * 0.28,
+                aim.x * (0.92 + burstState.aggro * 0.12) + aggressiveFlow.x * 0.28,
+                aim.y * (0.92 + burstState.aggro * 0.12) + aggressiveFlow.y * 0.28,
                 aggressiveFlow.x,
                 aggressiveFlow.y
             )
@@ -398,7 +567,7 @@ const SceneInputMixin = {
                     aggressiveFlow.y
                 )
             : aggressiveFlow;
-        const flow = upgradedIntentEnabled ? aggressiveFlow : legacyFlow;
+        const flow = adaptiveFlowEnabled ? aggressiveFlow : legacyFlow;
 
         this.intent.moveX = move.x;
         this.intent.moveY = move.y;
@@ -417,6 +586,30 @@ const SceneInputMixin = {
         this.intent.inverseFlowX = inverseFlow.x;
         this.intent.inverseFlowY = inverseFlow.y;
         this.intent.clusterAggro = clusterAggro;
+        this.intent.pointerX = worldPointer.x;
+        this.intent.pointerY = worldPointer.y;
+        this.intent.pointerDistance = aim.length;
+        this.intent.burstPhase = burstState.phase;
+        this.intent.burstAggro = burstState.aggro;
+        this.intent.burstChaos = burstState.chaosBoost;
+        this.intent.burstReachBoost = burstState.reachBoost;
+        this.intent.burstStrengthBoost = burstState.strengthBoost;
+        this.intent.burstDriftBoost = burstState.driftBoost;
+        this.intent.burstTempo = burstState.tempoBoost;
+        this.intent.burstSpreadBoost = burstState.spreadBoost;
+        this.intent.burstForwardBias = burstState.forwardBias;
+        this.intent.burstLookAhead = burstState.lookAhead;
+        this.intent.burstPressure = burstState.pressure;
+        this.intent.burstPointerSpeed = burstState.pointerSpeed;
+        this.intent.burstOutwardSpeed = burstState.outwardSpeed;
+        this.intent.burstCenterRadius = burstState.centerRadius;
+        this.intent.burstChaseRadius = burstState.chaseRadius;
+        this.intent.burstBreakRadius = burstState.breakRadius;
+        this.intent.centerCompression = burstState.centerCompression;
+        this.intent.clusterVolume = volumeState.normalized;
+        this.intent.clusterVolumeScale = volumeState.radialScale;
+        this.intent.clusterVolumeForwardScale = volumeState.forwardScale;
+        this.intent.clusterVolumeLateralScale = volumeState.lateralScale;
     },
     handleModeInputs() {
         if (!this.player.edit.active) {
