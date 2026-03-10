@@ -270,6 +270,10 @@ const SceneInitMixin = {
             y: 0,
             zoom: 0.92,
             targetZoom: 0.92,
+            targetX: 0,
+            targetY: 0,
+            urgency: 0,
+            subjectBounds: null,
             viewportWidth: this.scale.width,
             viewportHeight: this.scale.height
         };
@@ -410,9 +414,72 @@ const SceneInitMixin = {
             y: (y - this.cameraRig.viewportHeight * 0.5) / this.cameraRig.zoom + this.cameraRig.y
         };
     },
-    clampCameraFocusToBounds(bounds, zoom, targetX, targetY) {
-        const halfW = this.cameraRig.viewportWidth * 0.5 / Math.max(zoom, 0.0001);
-        const halfH = this.cameraRig.viewportHeight * 0.5 / Math.max(zoom, 0.0001);
+    createCameraBoundsTracker() {
+        return {
+            minX: Infinity,
+            maxX: -Infinity,
+            minY: Infinity,
+            maxY: -Infinity
+        };
+    },
+    includeCameraBoundsPoint(bounds, x, y, padding = 0) {
+        bounds.minX = Math.min(bounds.minX, x - padding);
+        bounds.maxX = Math.max(bounds.maxX, x + padding);
+        bounds.minY = Math.min(bounds.minY, y - padding);
+        bounds.maxY = Math.max(bounds.maxY, y + padding);
+    },
+    finalizeCameraBounds(bounds, fallbackX, fallbackY, padding = 0) {
+        if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.minY)) {
+            bounds.minX = fallbackX - padding;
+            bounds.maxX = fallbackX + padding;
+            bounds.minY = fallbackY - padding;
+            bounds.maxY = fallbackY + padding;
+        } else {
+            bounds.minX -= padding;
+            bounds.maxX += padding;
+            bounds.minY -= padding;
+            bounds.maxY += padding;
+        }
+
+        bounds.width = Math.max(1, bounds.maxX - bounds.minX);
+        bounds.height = Math.max(1, bounds.maxY - bounds.minY);
+        bounds.centerX = (bounds.minX + bounds.maxX) * 0.5;
+        bounds.centerY = (bounds.minY + bounds.maxY) * 0.5;
+        return bounds;
+    },
+    getCameraSubjectBounds() {
+        const T = window.TUNING || {};
+        const bounds = this.createCameraBoundsTracker();
+        const fallbackX = this.player?.centroidX ?? 0;
+        const fallbackY = this.player?.centroidY ?? 0;
+
+        this.activeNodes.forEach((node) => {
+            this.includeCameraBoundsPoint(bounds, node.x, node.y);
+            if (node.anchored) {
+                this.includeCameraBoundsPoint(bounds, node.anchorX, node.anchorY);
+            }
+        });
+
+        if (this.player?.edit?.boxSelecting) {
+            this.includeCameraBoundsPoint(bounds, this.player.edit.boxStartX, this.player.edit.boxStartY);
+            this.includeCameraBoundsPoint(bounds, this.player.edit.boxEndX, this.player.edit.boxEndY);
+        }
+
+        const volumePadding = this.clusterVolume?.cameraPadding || 0;
+        const padding = (T.cameraSpanPadding ?? 140) + volumePadding;
+        return this.finalizeCameraBounds(bounds, fallbackX, fallbackY, padding);
+    },
+    getCameraFitZoom(bounds, edgePaddingPx = 0) {
+        const usableWidth = Math.max(120, this.cameraRig.viewportWidth - edgePaddingPx * 2);
+        const usableHeight = Math.max(120, this.cameraRig.viewportHeight - edgePaddingPx * 2);
+        return Math.min(
+            usableWidth / Math.max(bounds.width, 1),
+            usableHeight / Math.max(bounds.height, 1)
+        );
+    },
+    clampCameraFocusToBounds(bounds, zoom, targetX, targetY, edgePaddingPx = 0) {
+        const halfW = Math.max(1, (this.cameraRig.viewportWidth * 0.5 - edgePaddingPx) / Math.max(zoom, 0.0001));
+        const halfH = Math.max(1, (this.cameraRig.viewportHeight * 0.5 - edgePaddingPx) / Math.max(zoom, 0.0001));
         const minFocusX = bounds.maxX - halfW;
         const maxFocusX = bounds.minX + halfW;
         const minFocusY = bounds.maxY - halfH;
@@ -423,9 +490,9 @@ const SceneInitMixin = {
             y: minFocusY <= maxFocusY ? clamp(targetY, minFocusY, maxFocusY) : bounds.centerY
         };
     },
-    getCameraContainmentRatio(bounds, focusX, focusY, zoom, safeMargin = 0) {
-        const usableHalfW = this.cameraRig.viewportWidth * 0.5 / Math.max(zoom, 0.0001) * (1 - safeMargin);
-        const usableHalfH = this.cameraRig.viewportHeight * 0.5 / Math.max(zoom, 0.0001) * (1 - safeMargin);
+    getCameraContainmentRatio(bounds, focusX, focusY, zoom, edgePaddingPx = 0, safeMargin = 0) {
+        const usableHalfW = Math.max(1, (this.cameraRig.viewportWidth * 0.5 - edgePaddingPx) / Math.max(zoom, 0.0001)) * (1 - safeMargin);
+        const usableHalfH = Math.max(1, (this.cameraRig.viewportHeight * 0.5 - edgePaddingPx) / Math.max(zoom, 0.0001)) * (1 - safeMargin);
         const overflowX = Math.max(0, bounds.maxX - (focusX + usableHalfW), (focusX - usableHalfW) - bounds.minX);
         const overflowY = Math.max(0, bounds.maxY - (focusY + usableHalfH), (focusY - usableHalfH) - bounds.minY);
         return Math.max(
@@ -433,57 +500,106 @@ const SceneInitMixin = {
             overflowY / Math.max(usableHalfH, 1)
         );
     },
-    resolveCameraFocus(bounds, containZoom, span) {
+    resolveCameraFocus(bounds, containZoom, span, edgePaddingPx = 0) {
         const T = window.TUNING || {};
+        const baseFocusX = lerp(bounds.centerX, this.player.centroidX, 0.22);
+        const baseFocusY = lerp(bounds.centerY, this.player.centroidY, 0.22);
         const pointerWorld = this.input?.activePointer
             ? this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y)
-            : { x: this.player.centroidX, y: this.player.centroidY };
-        const toPointerX = pointerWorld.x - this.player.centroidX;
-        const toPointerY = pointerWorld.y - this.player.centroidY;
+            : { x: baseFocusX, y: baseFocusY };
+        const toPointerX = pointerWorld.x - baseFocusX;
+        const toPointerY = pointerWorld.y - baseFocusY;
         const pointerDistance = Math.hypot(toPointerX, toPointerY);
-        const mouseDeadZone = T.cameraMouseDeadZone ?? 80;
-        const mouseLeadMax = (T.cameraMouseLeadMax ?? 180) + span * 0.12;
-        const mouseInfluence = T.cameraMouseInfluence ?? 0.32;
-        const mouseAlpha = clamp((pointerDistance - mouseDeadZone) / Math.max(mouseDeadZone, span * 0.6, 1), 0, 1) * mouseInfluence;
+        const mouseDeadZone = T.cameraMouseDeadZone ?? 96;
+        const mouseLeadMax = (T.cameraMouseLeadMax ?? 220) + span * 0.1;
+        const mouseInfluence = T.cameraMouseInfluence ?? 0.28;
+        const mouseAlpha = clamp((pointerDistance - mouseDeadZone) / Math.max(mouseDeadZone + span * 0.35, 1), 0, 1) * mouseInfluence;
         const mouseLeadDistance = pointerDistance > 0.0001
             ? Math.min(mouseLeadMax, pointerDistance * mouseAlpha)
             : 0;
-        const heading = vectorFromAngle(this.player.heading);
-        const burstLeadDistance = span * clamp(this.intent?.burstLookAhead ?? 0, 0, 1.5);
-        const targetX = this.player.centroidX
+        const intentHeading = normalize(
+            this.intent?.flowX ?? Math.cos(this.player.heading),
+            this.intent?.flowY ?? Math.sin(this.player.heading),
+            Math.cos(this.player.heading),
+            Math.sin(this.player.heading)
+        );
+        const forwardLeadDistance = span * clamp(T.cameraForwardInfluence ?? 0.14, 0, 0.6)
+            + span * clamp(this.intent?.burstLookAhead ?? 0, 0, 1.2) * 0.5;
+        const leadX = baseFocusX
             + (pointerDistance > 0.0001 ? (toPointerX / pointerDistance) * mouseLeadDistance : 0)
-            + heading.x * burstLeadDistance;
-        const targetY = this.player.centroidY
+            + intentHeading.x * forwardLeadDistance;
+        const leadY = baseFocusY
             + (pointerDistance > 0.0001 ? (toPointerY / pointerDistance) * mouseLeadDistance : 0)
-            + heading.y * burstLeadDistance;
-        return this.clampCameraFocusToBounds(bounds, containZoom, targetX, targetY);
+            + intentHeading.y * forwardLeadDistance;
+        const clampedLead = this.clampCameraFocusToBounds(bounds, containZoom, leadX, leadY, edgePaddingPx);
+        const leadOverflow = this.getCameraContainmentRatio(
+            bounds,
+            leadX,
+            leadY,
+            containZoom,
+            edgePaddingPx,
+            0
+        );
+        const leadFreedom = clamp(T.cameraLeadRelaxation ?? 0.42, 0, 1)
+            * clamp(1 - leadOverflow / Math.max(0.001, T.cameraContainSafeMargin ?? 0.08), 0, 1);
+        return {
+            x: lerp(clampedLead.x, leadX, leadFreedom),
+            y: lerp(clampedLead.y, leadY, leadFreedom)
+        };
     },
     updateCamera(frameDt) {
         const T = window.TUNING || {};
-        const volumePadding = this.clusterVolume?.cameraPadding || 0;
-        const padding = (T.cameraSpanPadding ?? 180) + volumePadding;
-        const bounds = this.getFormationBounds(padding);
+        const edgePaddingPx = T.cameraEdgePadding ?? 72;
+        const bounds = this.getCameraSubjectBounds();
         const span = Math.max(bounds.width, bounds.height);
-        const widthFit = this.cameraRig.viewportWidth / Math.max(bounds.width, 1);
-        const heightFit = this.cameraRig.viewportHeight / Math.max(bounds.height, 1);
-        let targetZ = clamp(Math.min(widthFit, heightFit), T.cameraMinZoom ?? 0.36, T.cameraMaxZoom ?? 1.08);
-        targetZ *= lerp(1, 1.12, this.player.edit.ambience || 0);
-
-        const focus = this.resolveCameraFocus(bounds, targetZ, span);
+        const maxZoom = T.cameraMaxZoom ?? 1.08;
+        const fitZoom = this.getCameraFitZoom(bounds, edgePaddingPx) * lerp(1, 1.1, this.player.edit.ambience || 0);
+        const comfortZoom = clamp(fitZoom, T.cameraMinZoom ?? 0.22, maxZoom);
+        const captureZoom = clamp(fitZoom, T.cameraEmergencyMinZoom ?? 0.03, maxZoom);
+        const comfortFocus = this.resolveCameraFocus(bounds, comfortZoom, span, edgePaddingPx);
+        const safeMargin = clamp(T.cameraContainSafeMargin ?? 0.08, 0, 0.45);
+        const comfortOverflow = this.getCameraContainmentRatio(
+            bounds,
+            comfortFocus.x,
+            comfortFocus.y,
+            comfortZoom,
+            edgePaddingPx,
+            safeMargin
+        );
+        const currentOverflow = this.getCameraContainmentRatio(
+            bounds,
+            this.cameraRig.x,
+            this.cameraRig.y,
+            this.cameraRig.zoom,
+            edgePaddingPx,
+            safeMargin
+        );
+        const containPressure = clamp(
+            Math.max(comfortOverflow, currentOverflow) * (T.cameraContainUrgency ?? 1.6),
+            0,
+            1
+        );
+        const targetZ = lerp(comfortZoom, captureZoom, containPressure);
+        const focus = this.resolveCameraFocus(bounds, targetZ, span, edgePaddingPx);
         const containRatio = this.getCameraContainmentRatio(
             bounds,
             focus.x,
             focus.y,
-            this.cameraRig.zoom,
-            clamp(T.cameraContainSafeMargin ?? 0.1, 0, 0.4)
+            targetZ,
+            edgePaddingPx,
+            safeMargin
         );
-        const containBoost = clamp(containRatio * (T.cameraContainUrgency ?? 1.6), 0, 6);
+        const containBoost = clamp(Math.max(containRatio, currentOverflow) * (T.cameraContainUrgency ?? 1.6), 0, 6);
         const zoomRate = targetZ < this.cameraRig.zoom
             ? (T.cameraZoomOutDamp ?? 8.4) + containBoost * 1.2
             : (T.cameraZoomDamp ?? 3.2);
         const posRate = (T.cameraPosDamp ?? 3.4) + containBoost;
 
         this.cameraRig.targetZoom = targetZ;
+        this.cameraRig.targetX = focus.x;
+        this.cameraRig.targetY = focus.y;
+        this.cameraRig.urgency = containPressure;
+        this.cameraRig.subjectBounds = bounds;
         this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, zoomRate, frameDt);
         this.cameraRig.x = damp(this.cameraRig.x, focus.x, posRate, frameDt);
         this.cameraRig.y = damp(this.cameraRig.y, focus.y, posRate, frameDt);
