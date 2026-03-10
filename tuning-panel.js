@@ -3,7 +3,9 @@
  *  在游戏画面上叠加一个可折叠的侧栏，暴露玩家能力与结构驱动参数
  * ═══════════════════════════════════════════════════════════════ */
 
-window.TUNING = {
+const TUNING_PROFILE_PATH = 'tuning-profile.json';
+
+const TUNING_FALLBACKS = {
     // ─── 移动能力对比 ─────────────────────────────
     legacyAllNodesMove: true,
     enableUpgradedIntentDrive: false,
@@ -168,44 +170,48 @@ window.TUNING = {
     maxNodeCount: 2000,
 };
 
-const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
+function cloneTuningProfile(profile) {
+    return JSON.parse(JSON.stringify(profile));
+}
 
-function loadPersistedTuning() {
+function sanitizeTuningProfile(profile) {
+    const sanitized = cloneTuningProfile(TUNING_FALLBACKS);
+    if (!profile || typeof profile !== 'object') {
+        return sanitized;
+    }
+
+    Object.keys(sanitized).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(profile, key)) {
+            sanitized[key] = profile[key];
+        }
+    });
+    return sanitized;
+}
+
+function loadRepoTuningProfile() {
     try {
-        const raw = window.localStorage.getItem(TUNING_STORAGE_KEY);
-        if (!raw) {
-            return false;
+        const request = new XMLHttpRequest();
+        request.open('GET', TUNING_PROFILE_PATH, false);
+        request.send(null);
+
+        const readable = request.status === 200 || (request.status === 0 && !!request.responseText);
+        if (!readable) {
+            console.warn(`读取仓库调参配置失败，将回退到内置默认值: ${TUNING_PROFILE_PATH}`);
+            return cloneTuningProfile(TUNING_FALLBACKS);
         }
 
-        const saved = JSON.parse(raw);
-        if (!saved || typeof saved !== 'object') {
-            return false;
-        }
-
-        Object.keys(window.TUNING).forEach((key) => {
-            if (Object.prototype.hasOwnProperty.call(saved, key)) {
-                if (key !== 'pulseOrbCount' && key !== 'autoPulseOrbCount') { window.TUNING[key] = saved[key]; }
-            }
-        });
-        return true;
+        return sanitizeTuningProfile(JSON.parse(request.responseText));
     } catch (error) {
-        console.warn('加载本地调参配置失败:', error);
-        return false;
+        console.warn(`加载仓库调参配置失败，将回退到内置默认值: ${TUNING_PROFILE_PATH}`, error);
+        return cloneTuningProfile(TUNING_FALLBACKS);
     }
 }
 
-function savePersistedTuning() {
-    try {
-        const toSave = { ...window.TUNING };
-        delete toSave.pulseOrbCount;
-        delete toSave.autoPulseOrbCount;
-        window.localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(toSave));
-        return true;
-    } catch (error) {
-        console.warn('保存本地调参配置失败:', error);
-        return false;
-    }
+function serializeTuningProfile(profile = window.TUNING) {
+    return JSON.stringify(sanitizeTuningProfile(profile), null, 2);
 }
+
+window.TUNING = loadRepoTuningProfile();
 
 // ═══════════════════════════════════════════════════════════════
 //  参数定义表：key → { label, desc, min, max, step, section }
@@ -388,10 +394,9 @@ const TUNING_DEFS = [
 
 
 // ═══════════════════════════════════════════════════════════════
-//  保存默认值以供重置
+//  仓库默认值：来自 tuning-profile.json，用于重置和差异导出
 // ═══════════════════════════════════════════════════════════════
-loadPersistedTuning();
-const TUNING_DEFAULTS = JSON.parse(JSON.stringify(window.TUNING));
+const TUNING_DEFAULTS = cloneTuningProfile(window.TUNING);
 
 // ═══════════════════════════════════════════════════════════════
 //  构建面板 UI
@@ -824,8 +829,8 @@ function buildTuningPanel() {
         <h2>调试面板</h2>
         <div class="header-btns">
             <button id="tuning-add-node" style="background: rgba(54, 214, 255, 0.12); border-color: rgba(54, 214, 255, 0.35); color: #36d6ff; padding: 4px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s;">➕ 新增节点 (E)</button>
-            <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
-            <button class="export-btn" id="tuning-export">📋 导出</button>
+            <button class="apply-btn" id="tuning-apply-local">📋 复制 JSON</button>
+            <button class="export-btn" id="tuning-export">📋 复制差异</button>
             <button id="tuning-reset-all">🔄 全部重置</button>
         </div>
     `;
@@ -1001,25 +1006,19 @@ function buildTuningPanel() {
     });
 
     document.getElementById('tuning-apply-local').addEventListener('click', () => {
-        const ok = savePersistedTuning();
-        if (!ok) {
-            const btn = document.getElementById('tuning-apply-local');
-            btn.textContent = '保存失败';
-            setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
-            return;
-        }
-
-        Object.keys(window.TUNING).forEach((key) => {
-            TUNING_DEFAULTS[key] = window.TUNING[key];
-        });
-        allRows.forEach((row) => row.sync());
-
         const btn = document.getElementById('tuning-apply-local');
-        btn.textContent = '✅ 已应用';
-        setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
+        const text = serializeTuningProfile();
+        navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = '✅ 已复制';
+            setTimeout(() => { btn.textContent = '📋 复制 JSON'; }, 1500);
+        }).catch(() => {
+            console.log('完整调参配置 JSON:\n', text);
+            btn.textContent = '见控制台';
+            setTimeout(() => { btn.textContent = '📋 复制 JSON'; }, 1500);
+        });
     });
 
-    // ─── 导出 ──────────────────────────────────────
+    // ─── 导出差异 ───────────────────────────────────
     document.getElementById('tuning-export').addEventListener('click', () => {
         const diff = {};
         Object.keys(window.TUNING).forEach((key) => {
@@ -1031,9 +1030,12 @@ function buildTuningPanel() {
         navigator.clipboard.writeText(text).then(() => {
             const btn = document.getElementById('tuning-export');
             btn.textContent = '✅ 已复制';
-            setTimeout(() => { btn.textContent = '📋 导出'; }, 1500);
+            setTimeout(() => { btn.textContent = '📋 复制差异'; }, 1500);
         }).catch(() => {
             console.log('调参差异导出:\n', text);
+            const btn = document.getElementById('tuning-export');
+            btn.textContent = '见控制台';
+            setTimeout(() => { btn.textContent = '📋 复制差异'; }, 1500);
         });
     });
 

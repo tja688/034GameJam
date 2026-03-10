@@ -10,6 +10,7 @@
 ```text
 /
 ├── index.html            # 游戏入口，定义脚本加载顺序
+├── tuning-profile.json   # 仓库内调参基线，随 Git 同步
 ├── tuning-panel.js       # 独立运行的调参UI，往全局注入 TUNING 配置
 ├── README.md             # 本架构设计文档
 └── src/                  # 游戏核心逻辑模块（解构自 app.js）
