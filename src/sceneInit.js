@@ -473,24 +473,36 @@ const SceneInitMixin = {
         const padding = (T.cameraSpanPadding ?? 110) + volumePadding;
         return this.finalizeCameraBounds(bounds, fallbackX, fallbackY, padding);
     },
-    getCameraFitZoom(bounds, edgePaddingPx = 0) {
-        const usableWidth = Math.max(120, this.cameraRig.viewportWidth - edgePaddingPx * 2);
-        const usableHeight = Math.max(120, this.cameraRig.viewportHeight - edgePaddingPx * 2);
+    getCameraFitZoom(bounds, edgePaddingPx = 0, compositionShift = null) {
+        if (!compositionShift) {
+            const usableWidth = Math.max(120, this.cameraRig.viewportWidth - edgePaddingPx * 2);
+            const usableHeight = Math.max(120, this.cameraRig.viewportHeight - edgePaddingPx * 2);
+            return Math.min(
+                usableWidth / Math.max(bounds.width, 1),
+                usableHeight / Math.max(bounds.height, 1)
+            );
+        }
+
+        const viewportCenterX = this.cameraRig.viewportWidth * 0.5;
+        const viewportCenterY = this.cameraRig.viewportHeight * 0.5;
+        const subjectCenterX = viewportCenterX - compositionShift.x;
+        const subjectCenterY = viewportCenterY - compositionShift.y;
+        const leftSpace = Math.max(120, subjectCenterX - edgePaddingPx);
+        const rightSpace = Math.max(120, this.cameraRig.viewportWidth - edgePaddingPx - subjectCenterX);
+        const topSpace = Math.max(120, subjectCenterY - edgePaddingPx);
+        const bottomSpace = Math.max(120, this.cameraRig.viewportHeight - edgePaddingPx - subjectCenterY);
+        const leftExtent = Math.max(bounds.centerX - bounds.minX, 1);
+        const rightExtent = Math.max(bounds.maxX - bounds.centerX, 1);
+        const topExtent = Math.max(bounds.centerY - bounds.minY, 1);
+        const bottomExtent = Math.max(bounds.maxY - bounds.centerY, 1);
         return Math.min(
-            usableWidth / Math.max(bounds.width, 1),
-            usableHeight / Math.max(bounds.height, 1)
+            leftSpace / leftExtent,
+            rightSpace / rightExtent,
+            topSpace / topExtent,
+            bottomSpace / bottomExtent
         );
     },
-    getCameraBaseFocus(bounds, span) {
-        const T = window.TUNING || {};
-        const tether = clamp(T.cameraClusterTether ?? 0.12, 0, 0.45);
-        const clusterWeight = clamp((span - 320) / 2200, 0, 1) * tether;
-        return {
-            x: lerp(this.player.centroidX, bounds.centerX, clusterWeight),
-            y: lerp(this.player.centroidY, bounds.centerY, clusterWeight)
-        };
-    },
-    getCameraDesiredLead(span) {
+    getCameraAimState() {
         const T = window.TUNING || {};
         const viewportCenterX = this.cameraRig.viewportWidth * 0.5;
         const viewportCenterY = this.cameraRig.viewportHeight * 0.5;
@@ -507,16 +519,47 @@ const SceneInitMixin = {
         const aim = normalize(screenDx, screenDy, flow.x, flow.y);
         const deadZone = T.cameraMouseDeadZone ?? 110;
         const responseRange = Math.max(80, Math.min(this.cameraRig.viewportWidth, this.cameraRig.viewportHeight) * 0.42 - deadZone);
-        const aimAlpha = clamp((screenDistance - deadZone) / responseRange, 0, 1);
-        const aimLeadMax = (T.cameraMouseLeadMax ?? 260) + Math.min(160, span * 0.012);
-        const aimLeadDistance = aimLeadMax * Math.pow(aimAlpha, 0.82) * (T.cameraMouseInfluence ?? 0.46);
-        const forwardBaseDistance = Math.min(280, span * clamp(T.cameraForwardInfluence ?? 0.16, 0, 0.5) * 0.18);
-        const forwardLeadDistance = forwardBaseDistance * (0.15 + aimAlpha * 0.85)
-            + clamp(this.intent?.burstLookAhead ?? 0, 0, 1.2) * 110;
         return {
-            x: aim.x * aimLeadDistance + flow.x * forwardLeadDistance,
-            y: aim.y * aimLeadDistance + flow.y * forwardLeadDistance,
-            intensity: aimAlpha
+            aim,
+            alpha: clamp((screenDistance - deadZone) / responseRange, 0, 1),
+            viewportCenterX,
+            viewportCenterY
+        };
+    },
+    getCameraBaseFocus(bounds, span, intensity = 0) {
+        const T = window.TUNING || {};
+        const tether = clamp(T.cameraClusterTether ?? 0.18, 0, 0.45);
+        const centroidWeight = clamp((span - 320) / 2200, 0, 1) * tether * (1 - intensity);
+        return {
+            x: lerp(bounds.centerX, this.player.centroidX, centroidWeight),
+            y: lerp(bounds.centerY, this.player.centroidY, centroidWeight)
+        };
+    },
+    getCameraDesiredLead(bounds, zoom, edgePaddingPx = 0) {
+        const T = window.TUNING || {};
+        const aimState = this.getCameraAimState();
+        const influence = clamp(T.cameraMouseInfluence ?? 0.68, 0, 2.4);
+        const response = clamp(Math.pow(aimState.alpha, 0.74) * (0.42 + influence * 0.78), 0, 1.6);
+        const forward = clamp(T.cameraForwardInfluence ?? 0.32, 0, 1.2) / 1.2;
+        const halfScreenWidth = bounds.width * zoom * 0.5;
+        const halfScreenHeight = bounds.height * zoom * 0.5;
+        const frontAllowanceX = lerp(56, 232, forward);
+        const frontAllowanceY = lerp(42, 176, forward);
+        const baseLeadMax = T.cameraMouseLeadMax ?? 420;
+        const compositionDemandX = Math.max(0, halfScreenWidth - frontAllowanceX);
+        const compositionDemandY = Math.max(0, halfScreenHeight - frontAllowanceY);
+        const smallLeadX = Math.min(baseLeadMax * 0.35, halfScreenWidth * 0.9 + 40);
+        const smallLeadY = Math.min(baseLeadMax * 0.25, halfScreenHeight * 0.75 + 28);
+        const desiredShiftX = Math.max(compositionDemandX, smallLeadX) * response;
+        const desiredShiftY = Math.max(compositionDemandY, smallLeadY) * response;
+        const clampedShiftX = Math.max(0, Math.min(aimState.viewportCenterX - edgePaddingPx - 32, desiredShiftX));
+        const clampedShiftY = Math.max(0, Math.min(aimState.viewportCenterY - edgePaddingPx - 32, desiredShiftY));
+        return {
+            x: aimState.aim.x * clampedShiftX / Math.max(zoom, 0.0001),
+            y: aimState.aim.y * clampedShiftY / Math.max(zoom, 0.0001),
+            screenX: aimState.aim.x * clampedShiftX,
+            screenY: aimState.aim.y * clampedShiftY,
+            intensity: aimState.alpha
         };
     },
     updateCamera(frameDt) {
@@ -527,13 +570,22 @@ const SceneInitMixin = {
         const previousSpan = Math.max(this.cameraRig.subjectSpan || span, 1);
         const spanChange = Math.abs(span - previousSpan) / previousSpan;
         const maxZoom = T.cameraMaxZoom ?? 1.12;
-        const desiredZoom = clamp(
-            this.getCameraFitZoom(bounds, edgePaddingPx) * lerp(1, 1.08, this.player.edit.ambience || 0),
+        const ambienceScale = lerp(1, 1.08, this.player.edit.ambience || 0);
+        const initialZoom = this.getCameraFitZoom(bounds, edgePaddingPx);
+        const seedLead = this.getCameraDesiredLead(bounds, initialZoom, edgePaddingPx);
+        let desiredZoom = clamp(
+            this.getCameraFitZoom(bounds, edgePaddingPx, { x: seedLead.screenX, y: seedLead.screenY }) * ambienceScale,
             T.cameraMinZoom ?? 0.03,
             maxZoom
         );
-        const baseFocus = this.getCameraBaseFocus(bounds, span);
-        const desiredLead = this.getCameraDesiredLead(span);
+        let desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
+        desiredZoom = clamp(
+            this.getCameraFitZoom(bounds, edgePaddingPx, { x: desiredLead.screenX, y: desiredLead.screenY }) * ambienceScale,
+            T.cameraMinZoom ?? 0.03,
+            maxZoom
+        );
+        desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
+        const baseFocus = this.getCameraBaseFocus(bounds, span, desiredLead.intensity);
 
         if (!this.cameraRig.initialized) {
             this.cameraRig.x = baseFocus.x;
