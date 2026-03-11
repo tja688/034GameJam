@@ -280,6 +280,10 @@ const TUNING_FALLBACKS = {
     gameplayPreyFragmentCountMul: 1.7,
     gameplayPreyFragmentSpeedMul: 1.2,
     gameplayPreyFragmentSizeMul: 1.28,
+    gameplayPreyFragmentsEnabled: true,
+    gameplayPreyFragmentBurstCap: 36,
+    gameplayPreyFragmentActiveCap: 160,
+    gameplayPreyFragmentCollectPerFrameCap: 8,
 
     // ─── Gameplay：代谢压力 ─────────────────────
     gameplayMetabolismFloor: 0.8,
@@ -738,9 +742,13 @@ const TUNING_DEFS = [
     { key: 'gameplayPreyEnergyYieldMul', label: '猎物回能倍率', desc: '所有 prey 被吞后直接回多少能量。', min: 0.25, max: 3, step: 0.02 },
     { key: 'gameplayPreyBiomassYieldMul', label: '猎物成长倍率', desc: '所有 prey 推进 growthBuffer 的倍率。', min: 0.25, max: 3, step: 0.02 },
     { key: 'gameplayPreyProgressYieldMul', label: '猎物进度倍率', desc: '所有 prey 推进关卡进度的倍率。', min: 0.25, max: 3, step: 0.02 },
+    { key: 'gameplayPreyFragmentsEnabled', label: '碎块总开关', desc: '一键关闭碎块生成、回收和渲染，用来隔离猎杀后的卡顿来源。', type: 'toggle' },
     { key: 'gameplayPreyFragmentCountMul', label: '碎块数量倍率', desc: '被撕裂时喷多少碎片。', min: 0.5, max: 4, step: 0.05 },
     { key: 'gameplayPreyFragmentSpeedMul', label: '碎块喷射倍率', desc: '碎片飞出去有多猛。', min: 0.5, max: 3, step: 0.05 },
     { key: 'gameplayPreyFragmentSizeMul', label: '碎块体积倍率', desc: '喷出来的血肉和能量块有多大。', min: 0.5, max: 3, step: 0.05 },
+    { key: 'gameplayPreyFragmentBurstCap', label: '单次碎块上限', desc: '一次撕裂/吞噬最多生成多少碎块，防止爆发式卡顿。', min: 4, max: 80, step: 1 },
+    { key: 'gameplayPreyFragmentActiveCap', label: '场上碎块上限', desc: '同时存在的碎块总数上限，超过后新碎块不会继续生成。', min: 16, max: 240, step: 1 },
+    { key: 'gameplayPreyFragmentCollectPerFrameCap', label: '单帧回收上限', desc: '一帧里最多吸收多少碎块，避免猎杀后回收洪峰把模拟拖卡。', min: 1, max: 24, step: 1 },
 
     { section: '现有猎物尺寸清单', sectionDesc: '当前 demo 里所有可被狩猎对象都在这里，方便你逐个微调。', defaultOpen: false },
     { key: 'gameplayPreySize__forage-runner', label: '觅食·跑者', desc: '第一关小三角跑者。', min: 0.4, max: 4, step: 0.02 },

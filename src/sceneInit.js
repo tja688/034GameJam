@@ -463,8 +463,9 @@ const SceneInitMixin = {
     },
     screenToWorld(x, y) {
         return {
-            x: (x - this.cameraRig.viewportWidth * 0.5 - (this.cameraRig.renderOffsetX || 0)) / this.cameraRig.zoom + this.cameraRig.x,
-            y: (y - this.cameraRig.viewportHeight * 0.5 - (this.cameraRig.renderOffsetY || 0)) / this.cameraRig.zoom + this.cameraRig.y
+            // Keep gameplay input stable even while combat feedback shakes the rendered camera.
+            x: (x - this.cameraRig.viewportWidth * 0.5) / this.cameraRig.zoom + this.cameraRig.x,
+            y: (y - this.cameraRig.viewportHeight * 0.5) / this.cameraRig.zoom + this.cameraRig.y
         };
     },
     createCameraBoundsTracker() {

@@ -550,7 +550,22 @@ const SceneCombatMixin = {
             this.onPreyDevoured(prey, node, attachment);
         }
     },
+    removeFragmentAt(index) {
+        const lastIndex = this.fragments.length - 1;
+        if (index < 0 || index > lastIndex) {
+            return null;
+        }
+        const removed = this.fragments[index];
+        if (index !== lastIndex) {
+            this.fragments[index] = this.fragments[lastIndex];
+        }
+        this.fragments.pop();
+        return removed;
+    },
     spawnFragmentBurst(x, y, options = {}) {
+        if (this.getRunTuningValue && !this.getRunTuningValue('gameplayPreyFragmentsEnabled', true)) {
+            return;
+        }
         const {
             count = 4,
             speed = 80,
@@ -562,8 +577,16 @@ const SceneCombatMixin = {
             directionY = 0
         } = options;
         const aim = normalize(directionX, directionY, 1, 0);
+        const burstCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentBurstCap', 36) ?? 36));
+        const activeCap = Math.max(burstCap, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentActiveCap', 160) ?? 160));
+        const available = Math.max(0, activeCap - this.fragments.length);
+        const spawnCount = Math.min(Math.max(0, Math.round(count)), burstCap, available);
 
-        for (let i = 0; i < count; i += 1) {
+        if (spawnCount <= 0) {
+            return;
+        }
+
+        for (let i = 0; i < spawnCount; i += 1) {
             const spread = Phaser.Math.FloatBetween(-1.8, 1.8);
             const angle = Math.atan2(aim.y, aim.x) + spread;
             const speedMul = Phaser.Math.FloatBetween(0.35, 1.08);
@@ -589,12 +612,20 @@ const SceneCombatMixin = {
         }
     },
     updateFragments(simDt) {
+        if (this.getRunTuningValue && !this.getRunTuningValue('gameplayPreyFragmentsEnabled', true)) {
+            if (this.fragments.length > 0) {
+                this.fragments.length = 0;
+            }
+            return;
+        }
         const feeders = this.activeNodes.filter((node) => node.shape === 'circle');
+        const collectPerFrameCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentCollectPerFrameCap', 8) ?? 8));
+        let collectedThisFrame = 0;
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
             const fragment = this.fragments[i];
             fragment.life -= simDt;
             if (fragment.life <= 0) {
-                this.fragments.splice(i, 1);
+                this.removeFragmentAt(i);
                 continue;
             }
 
@@ -625,9 +656,10 @@ const SceneCombatMixin = {
                     fragment.vx += dirX * suction * simDt;
                     fragment.vy += dirY * suction * simDt;
                     targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 1.02);
-                    if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10) {
+                    if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10 && collectedThisFrame < collectPerFrameCap) {
+                        collectedThisFrame += 1;
                         this.consumeFragment(fragment, targetNode);
-                        this.fragments.splice(i, 1);
+                        this.removeFragmentAt(i);
                         continue;
                     }
                 }

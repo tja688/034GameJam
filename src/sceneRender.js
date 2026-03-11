@@ -120,6 +120,9 @@ const SceneRenderMixin = {
         });
     },
     drawFragments(g) {
+        if (this.getRunTuningValue && !this.getRunTuningValue('gameplayPreyFragmentsEnabled', true)) {
+            return;
+        }
         this.fragments.forEach((fragment) => {
             const position = this.worldToScreen(fragment.x, fragment.y);
             const alpha = clamp(fragment.life / fragment.total, 0, 1) * (fragment.collectible ? 0.96 : 0.8);
