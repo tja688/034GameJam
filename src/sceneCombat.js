@@ -532,9 +532,11 @@ const SceneCombatMixin = {
             this.prey.splice(index, 1);
         }
         this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
-        this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4);
-        this.createRing(prey.x, prey.y, prey.radius + 16, COLORS.core, 0.22, 3);
-        this.createRing(prey.x, prey.y, prey.radius * 0.82, COLORS.gore, 0.18, 2);
+        if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPreyDeathRingsEnabled', true)) {
+            this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4);
+            this.createRing(prey.x, prey.y, prey.radius + 16, COLORS.core, 0.22, 3);
+            this.createRing(prey.x, prey.y, prey.radius * 0.82, COLORS.gore, 0.18, 2);
+        }
         this.bumpFeastMeter(0.18 + prey.yield * 0.09);
         this.addScreenShake?.(
             prey.sizeKey === 'large' ? 0.8 : prey.sizeKey === 'medium' ? 0.46 : 0.24,
@@ -563,7 +565,7 @@ const SceneCombatMixin = {
         return removed;
     },
     spawnFragmentBurst(x, y, options = {}) {
-        if (this.getRunTuningValue && !this.getRunTuningValue('gameplayPreyFragmentsEnabled', true)) {
+        if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             return;
         }
         const {
@@ -612,7 +614,7 @@ const SceneCombatMixin = {
         }
     },
     updateFragments(simDt) {
-        if (this.getRunTuningValue && !this.getRunTuningValue('gameplayPreyFragmentsEnabled', true)) {
+        if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             if (this.fragments.length > 0) {
                 this.fragments.length = 0;
             }

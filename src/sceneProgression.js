@@ -45,6 +45,10 @@ const SceneProgressionMixin = {
     getRunTuningValue(key, fallback) {
         return getFiniteNumber(window.TUNING?.[key], fallback);
     },
+    getRunTuningToggle(key, fallback = false) {
+        const value = window.TUNING?.[key];
+        return typeof value === 'boolean' ? value : fallback;
+    },
     getStageCount() {
         return DEMO_STAGE_DEFS.length;
     },

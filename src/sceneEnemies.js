@@ -58,7 +58,7 @@ const SceneEnemiesMixin = {
             return;
         }
 
-        if (!this.getRunTuningValue('gameplayPreyRespawnEnabled', false)) {
+        if (!this.getRunTuningToggle?.('gameplayPreyRespawnEnabled', false)) {
             return;
         }
 

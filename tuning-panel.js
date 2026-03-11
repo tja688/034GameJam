@@ -187,6 +187,7 @@ const TUNING_FALLBACKS = {
 
     // ─── 脉冲循环 ────────────────────────────────
     autoPulseOrbCount: true,
+    gameplayPulseOrbsVisible: true,
     pulseOrbCount: 2,
 
     // ─── 相机 ────────────────────────────────────
@@ -281,6 +282,7 @@ const TUNING_FALLBACKS = {
     gameplayPreyFragmentSpeedMul: 1.2,
     gameplayPreyFragmentSizeMul: 1.28,
     gameplayPreyFragmentsEnabled: true,
+    gameplayPreyDeathRingsEnabled: true,
     gameplayPreyFragmentBurstCap: 36,
     gameplayPreyFragmentActiveCap: 160,
     gameplayPreyFragmentCollectPerFrameCap: 8,
@@ -522,6 +524,7 @@ const TUNING_DEFS = [
     { section: '脉冲循环与触发', sectionDesc: '决定了组织体的“心跳”与驱动节奏' },
     { key: 'enablePulse', label: '脉冲全局开关', desc: '整个脉冲循环系统；关掉后不会有节点触发', type: 'toggle' },
     { key: 'autoPulseOrbCount', label: '自动脉冲球数量', desc: '根据节点数(每多10节点+1)自动计算并限制系统内的球数并维持默认基础。', type: 'toggle' },
+    { key: 'gameplayPulseOrbsVisible', label: '脉冲球显示', desc: '控制沿节点链巡游的那颗小白脉冲球是否显示。只影响渲染，不影响驱动。', type: 'toggle' },
     { key: 'pulseOrbCount', label: '手动脉冲球数', desc: '强制覆盖当前系统的球数。一旦手动改动会立刻关闭自动数量控制。', min: 1, max: 20, step: 1 },
 
     { section: '操作方向与手感', sectionDesc: 'WASD 移动权重与鼠标朝向跟随' },
@@ -743,6 +746,7 @@ const TUNING_DEFS = [
     { key: 'gameplayPreyBiomassYieldMul', label: '猎物成长倍率', desc: '所有 prey 推进 growthBuffer 的倍率。', min: 0.25, max: 3, step: 0.02 },
     { key: 'gameplayPreyProgressYieldMul', label: '猎物进度倍率', desc: '所有 prey 推进关卡进度的倍率。', min: 0.25, max: 3, step: 0.02 },
     { key: 'gameplayPreyFragmentsEnabled', label: '碎块总开关', desc: '一键关闭碎块生成、回收和渲染，用来隔离猎杀后的卡顿来源。', type: 'toggle' },
+    { key: 'gameplayPreyDeathRingsEnabled', label: '死亡光环开关', desc: '控制猎物破碎时那几圈残留的死亡光环。', type: 'toggle' },
     { key: 'gameplayPreyFragmentCountMul', label: '碎块数量倍率', desc: '被撕裂时喷多少碎片。', min: 0.5, max: 4, step: 0.05 },
     { key: 'gameplayPreyFragmentSpeedMul', label: '碎块喷射倍率', desc: '碎片飞出去有多猛。', min: 0.5, max: 3, step: 0.05 },
     { key: 'gameplayPreyFragmentSizeMul', label: '碎块体积倍率', desc: '喷出来的血肉和能量块有多大。', min: 0.5, max: 3, step: 0.05 },

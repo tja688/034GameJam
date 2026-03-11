@@ -120,7 +120,7 @@ const SceneRenderMixin = {
         });
     },
     drawFragments(g) {
-        if (this.getRunTuningValue && !this.getRunTuningValue('gameplayPreyFragmentsEnabled', true)) {
+        if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             return;
         }
         this.fragments.forEach((fragment) => {
@@ -295,17 +295,19 @@ const SceneRenderMixin = {
             g.lineBetween(from.x, from.y, to.x, to.y);
         });
 
-        (this.player.pulseRunners || []).forEach((runner, index) => {
-            const pulseState = this.getPulseVisualState(runner);
-            if (!pulseState) {
-                return;
-            }
-            const pulse = this.worldToScreen(pulseState.x, pulseState.y);
-            const radius = clamp((8 - Math.min(index, 3) * 0.6) * this.cameraRig.zoom, 3.5, 8);
-            const alpha = clamp(0.94 - index * 0.06, 0.55, 0.94);
-            g.fillStyle(COLORS.pulse, alpha);
-            g.fillCircle(pulse.x, pulse.y, radius);
-        });
+        if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPulseOrbsVisible', true)) {
+            (this.player.pulseRunners || []).forEach((runner, index) => {
+                const pulseState = this.getPulseVisualState(runner);
+                if (!pulseState) {
+                    return;
+                }
+                const pulse = this.worldToScreen(pulseState.x, pulseState.y);
+                const radius = clamp((8 - Math.min(index, 3) * 0.6) * this.cameraRig.zoom, 3.5, 8);
+                const alpha = clamp(0.94 - index * 0.06, 0.55, 0.94);
+                g.fillStyle(COLORS.pulse, alpha);
+                g.fillCircle(pulse.x, pulse.y, radius);
+            });
+        }
 
         this.activeNodes.forEach((node) => {
             const nodePos = this.worldToScreen(node.displayX, node.displayY);
