@@ -24,11 +24,39 @@ class CoreDemoScene extends Phaser.Scene {
             deleteAction: Phaser.Input.Keyboard.KeyCodes.DELETE,
             restart: Phaser.Input.Keyboard.KeyCodes.R
         });
-        this.input.on('pointerdown', this.handlePointerDown, this);
-        this.input.on('pointerup', this.handlePointerUp, this);
+        this.input.on('pointerdown', (pointer) => {
+            if (typeof this.markPerformanceInput === 'function') {
+                this.markPerformanceInput('pointer');
+            }
+            this.handlePointerDown(pointer);
+        });
+        this.input.on('pointerup', (pointer) => {
+            if (typeof this.markPerformanceInput === 'function') {
+                this.markPerformanceInput('pointer');
+            }
+            this.handlePointerUp(pointer);
+        });
+        this.input.on('pointermove', () => {
+            if (typeof this.markPerformanceInput === 'function') {
+                this.markPerformanceInput('pointer');
+            }
+        });
         this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+            if (typeof this.markPerformanceInput === 'function') {
+                this.markPerformanceInput('wheel');
+            }
             if (typeof this.nudgeCameraZoom === 'function') {
                 this.nudgeCameraZoom(deltaY);
+            }
+        });
+        this.input.keyboard?.on('keydown', () => {
+            if (typeof this.markPerformanceInput === 'function') {
+                this.markPerformanceInput('keyboard');
+            }
+        });
+        this.input.keyboard?.on('keyup', () => {
+            if (typeof this.markPerformanceInput === 'function') {
+                this.markPerformanceInput('keyboard');
             }
         });
         this.menuMode = null;

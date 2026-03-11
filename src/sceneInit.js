@@ -92,6 +92,20 @@ const SceneInitMixin = {
             lastDistance: 0
         };
     },
+    createDefaultPerformanceStats() {
+        const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now();
+        return {
+            samples: [],
+            latencySamples: [],
+            frameMs: 16.7,
+            fps: 60,
+            latencyMs: null,
+            pendingInputAt: 0,
+            lastFrameAt: now
+        };
+    },
     createDefaultPlayer(chain = this.baseChain) {
         return {
             chain: [...chain],
@@ -340,6 +354,7 @@ const SceneInitMixin = {
         this.cameraRig = this.createDefaultCameraRig();
         this.clusterVolume = this.createDefaultClusterVolumeState();
         this.burstDrive = this.createDefaultBurstDriveState();
+        this.performanceStats = this.createDefaultPerformanceStats();
         this.poolNodes = this.createPoolNodesFromLibrary();
         this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
         this.player.topology = this.rebuildTopologyFromCurrentChain();
@@ -353,6 +368,57 @@ const SceneInitMixin = {
         this.expandAddCount = 0;
         this.nextExpandThreshold = 0;
         this.refreshMenuState();
+    },
+    markPerformanceInput() {
+        if (!this.performanceStats) {
+            this.performanceStats = this.createDefaultPerformanceStats();
+        }
+        this.performanceStats.pendingInputAt = typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now();
+    },
+    recordPerformanceFrame(deltaMs) {
+        if (!this.performanceStats) {
+            this.performanceStats = this.createDefaultPerformanceStats();
+        }
+
+        const stats = this.performanceStats;
+        const T = window.TUNING || {};
+        const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now();
+        const frameMs = Math.max(0.0001, deltaMs || 0);
+        const fps = 1000 / frameMs;
+        const windowSeconds = clamp(T.performanceHistorySeconds ?? 8, 2, 20);
+        const cutoff = now - windowSeconds * 1000;
+
+        stats.frameMs = frameMs;
+        stats.fps = fps;
+        stats.lastFrameAt = now;
+        stats.samples.push({
+            time: now,
+            fps,
+            frameMs
+        });
+        while (stats.samples.length > 0 && stats.samples[0].time < cutoff) {
+            stats.samples.shift();
+        }
+
+        if (stats.pendingInputAt > 0) {
+            stats.latencyMs = Math.max(0, now - stats.pendingInputAt);
+            stats.latencySamples.push({
+                time: now,
+                latencyMs: stats.latencyMs
+            });
+            stats.pendingInputAt = 0;
+        }
+        while (stats.latencySamples.length > 0 && stats.latencySamples[0].time < cutoff) {
+            stats.latencySamples.shift();
+        }
+
+        if (typeof this.updatePerformanceDebugPanel === 'function') {
+            this.updatePerformanceDebugPanel();
+        }
     },
     update(_, deltaMs) {
         const frameDt = Math.min(deltaMs, 33) / 1000;
@@ -377,6 +443,7 @@ const SceneInitMixin = {
             this.updateCamera(frameDt);
             this.updateDisplay(frameDt);
             this.render();
+            this.recordPerformanceFrame(deltaMs);
             return;
         }
 
@@ -393,6 +460,7 @@ const SceneInitMixin = {
             this.updateCamera(frameDt);
             this.updateDisplay(frameDt);
             this.render();
+            this.recordPerformanceFrame(deltaMs);
             return;
         }
 
@@ -446,6 +514,7 @@ const SceneInitMixin = {
         this.updateCamera(frameDt);
         this.updateDisplay(frameDt);
         this.render();
+        this.recordPerformanceFrame(deltaMs);
     },
     worldToScreen(x, y) {
         return {

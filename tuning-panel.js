@@ -212,6 +212,8 @@ const TUNING_FALLBACKS = {
     displayDamping: 18,
     pulseGlowDecay: 3.2,
     showDebugVisuals: false,
+    showPerformanceDebug: false,
+    performanceHistorySeconds: 8,
     showDriveRingsDebug: false,
     showDriveVectorsDebug: false,
     showCameraRigDebug: false,
@@ -739,6 +741,8 @@ const TUNING_DEFS = [
 
     { section: '大调试栏目', sectionDesc: '统一查看鼠标距离圈层、移动趋势和镜头前探。总开关关掉后，下面所有可视化都会停用。', defaultOpen: true },
     { key: 'showDebugVisuals', label: '启用调试可视化', desc: '统一开启下方所有调试图层的渲染能力', type: 'toggle' },
+    { key: 'showPerformanceDebug', label: '显示性能面板', desc: '显示最近一段时间的 FPS、帧耗时和输入到当前帧延迟曲线', type: 'toggle' },
+    { key: 'performanceHistorySeconds', label: '性能统计窗口', desc: '性能图表显示最近多少秒的数据。', min: 2, max: 20, step: 0.5 },
     { key: 'showDriveRingsDebug', label: '显示三圈与指针', desc: '显示内圈/中圈/外圈、指针位置与当前圈层状态', type: 'toggle' },
     { key: 'showDriveVectorsDebug', label: '显示移动趋势', desc: '显示 WASD、鼠标瞄准和综合 Flow 的运动趋势向量', type: 'toggle' },
     { key: 'showCameraRigDebug', label: '显示镜头连线', desc: '显示当前镜头中心、镜头目标焦点、基准焦点与集群质心的连线关系', type: 'toggle' }

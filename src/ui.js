@@ -130,6 +130,103 @@ function ensureGameUiStyles() {
             border-color: rgba(255, 93, 73, 0.38);
             color: #ffd4ce;
         }
+        #game-perf-panel {
+            position: fixed;
+            left: 22px;
+            bottom: 22px;
+            z-index: 19050;
+            width: min(330px, calc(100vw - 44px));
+            padding: 12px 12px 10px;
+            border-radius: 16px;
+            border: 1px solid rgba(79, 169, 198, 0.28);
+            background:
+                linear-gradient(180deg, rgba(10, 22, 31, 0.92), rgba(5, 12, 18, 0.94));
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+            backdrop-filter: blur(10px);
+            color: #d7e6eb;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        #game-perf-panel.hidden {
+            display: none;
+        }
+        .game-perf-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .game-perf-title {
+            color: #f4f0d7;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+        }
+        .game-perf-window {
+            color: rgba(215, 230, 235, 0.56);
+            font-size: 11px;
+        }
+        .game-perf-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .game-perf-metric {
+            padding: 8px 8px 7px;
+            border-radius: 10px;
+            background: rgba(79, 169, 198, 0.08);
+            border: 1px solid rgba(79, 169, 198, 0.12);
+        }
+        .game-perf-label {
+            color: rgba(215, 230, 235, 0.54);
+            font-size: 10px;
+            line-height: 1;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .game-perf-value {
+            margin-top: 5px;
+            color: #f4f0d7;
+            font-size: 16px;
+            line-height: 1.1;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        .game-perf-subvalue {
+            margin-top: 3px;
+            color: rgba(215, 230, 235, 0.52);
+            font-size: 10px;
+            line-height: 1.2;
+        }
+        #game-perf-canvas {
+            display: block;
+            width: 100%;
+            height: 116px;
+        }
+        .game-perf-legend {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-top: 8px;
+            color: rgba(215, 230, 235, 0.58);
+            font-size: 11px;
+        }
+        .game-perf-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .game-perf-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+        }
+        .game-perf-swatch.fps {
+            background: #62e8c9;
+        }
+        .game-perf-swatch.latency {
+            background: #ffb86b;
+        }
         @media (max-width: 640px) {
             .game-menu-panel {
                 width: calc(100vw - 24px);
@@ -138,9 +235,26 @@ function ensureGameUiStyles() {
             .game-menu-title {
                 font-size: 30px;
             }
+            #game-perf-panel {
+                left: 12px;
+                bottom: 12px;
+                width: calc(100vw - 24px);
+            }
         }
     `;
     document.head.appendChild(style);
+}
+
+function getPerformancePanelWindowSeconds() {
+    const T = window.TUNING || {};
+    return clamp(T.performanceHistorySeconds ?? 8, 2, 20);
+}
+
+function formatPerfMetric(value, digits = 0, suffix = '') {
+    if (!Number.isFinite(value)) {
+        return '--';
+    }
+    return `${value.toFixed(digits)}${suffix}`;
 }
 
 const SceneUiMixin = {
@@ -172,16 +286,58 @@ const SceneUiMixin = {
         const toast = document.createElement('div');
         toast.id = 'game-toast';
 
+        const perfPanel = document.createElement('div');
+        perfPanel.id = 'game-perf-panel';
+        perfPanel.className = 'hidden';
+        perfPanel.innerHTML = `
+            <div class="game-perf-head">
+                <div class="game-perf-title">性能调试</div>
+                <div class="game-perf-window" id="game-perf-window"></div>
+            </div>
+            <div class="game-perf-metrics">
+                <div class="game-perf-metric">
+                    <div class="game-perf-label">FPS</div>
+                    <div class="game-perf-value" id="game-perf-fps">--</div>
+                    <div class="game-perf-subvalue" id="game-perf-fps-sub">--</div>
+                </div>
+                <div class="game-perf-metric">
+                    <div class="game-perf-label">Frame</div>
+                    <div class="game-perf-value" id="game-perf-frame">--</div>
+                    <div class="game-perf-subvalue" id="game-perf-frame-sub">--</div>
+                </div>
+                <div class="game-perf-metric">
+                    <div class="game-perf-label">Latency</div>
+                    <div class="game-perf-value" id="game-perf-latency">--</div>
+                    <div class="game-perf-subvalue" id="game-perf-latency-sub">等待输入</div>
+                </div>
+            </div>
+            <canvas id="game-perf-canvas" width="306" height="116"></canvas>
+            <div class="game-perf-legend">
+                <span class="game-perf-legend-item"><span class="game-perf-swatch fps"></span>FPS</span>
+                <span class="game-perf-legend-item"><span class="game-perf-swatch latency"></span>输入到当前帧延迟</span>
+            </div>
+        `;
+
         document.body.appendChild(overlay);
         document.body.appendChild(toast);
+        document.body.appendChild(perfPanel);
 
         this.ui = {
             overlay,
             toast,
+            perfPanel,
             title: overlay.querySelector('#game-menu-title'),
             subtitle: overlay.querySelector('#game-menu-subtitle'),
             slot: overlay.querySelector('#game-menu-slot'),
             hint: overlay.querySelector('#game-menu-hint'),
+            perfWindow: perfPanel.querySelector('#game-perf-window'),
+            perfFps: perfPanel.querySelector('#game-perf-fps'),
+            perfFpsSub: perfPanel.querySelector('#game-perf-fps-sub'),
+            perfFrame: perfPanel.querySelector('#game-perf-frame'),
+            perfFrameSub: perfPanel.querySelector('#game-perf-frame-sub'),
+            perfLatency: perfPanel.querySelector('#game-perf-latency'),
+            perfLatencySub: perfPanel.querySelector('#game-perf-latency-sub'),
+            perfCanvas: perfPanel.querySelector('#game-perf-canvas'),
             mainButtons: overlay.querySelector('#game-main-menu-buttons'),
             pauseButtons: overlay.querySelector('#game-pause-menu-buttons'),
             startButton: overlay.querySelector('#menu-start-btn'),
@@ -200,6 +356,144 @@ const SceneUiMixin = {
         this.ui.saveButton.addEventListener('click', () => this.saveGameToSlot());
         this.ui.loadButton.addEventListener('click', () => this.loadGameFromSlot());
         this.ui.mainMenuButton.addEventListener('click', () => this.showMainMenu());
+    },
+    updatePerformanceDebugPanel() {
+        if (!this.ui?.perfPanel) {
+            return;
+        }
+
+        const T = window.TUNING || {};
+        const visible = !!(T.showDebugVisuals && T.showPerformanceDebug);
+        this.ui.perfPanel.classList.toggle('hidden', !visible);
+        if (!visible || !this.performanceStats) {
+            return;
+        }
+
+        const windowSeconds = getPerformancePanelWindowSeconds();
+        const now = this.performanceStats.lastFrameAt || (typeof performance !== 'undefined' && typeof performance.now === 'function'
+            ? performance.now()
+            : Date.now());
+        const cutoff = now - windowSeconds * 1000;
+        const samples = this.performanceStats.samples.filter((sample) => sample.time >= cutoff);
+        const latencySamples = this.performanceStats.latencySamples.filter((sample) => sample.time >= cutoff);
+        const latestSample = samples[samples.length - 1] || null;
+        const latestLatency = latencySamples.length > 0 ? latencySamples[latencySamples.length - 1].latencyMs : null;
+        const avgFps = samples.length > 0
+            ? samples.reduce((sum, sample) => sum + sample.fps, 0) / samples.length
+            : NaN;
+        const minFps = samples.length > 0
+            ? samples.reduce((min, sample) => Math.min(min, sample.fps), Infinity)
+            : NaN;
+        const avgFrameMs = samples.length > 0
+            ? samples.reduce((sum, sample) => sum + sample.frameMs, 0) / samples.length
+            : NaN;
+        const maxFrameMs = samples.length > 0
+            ? samples.reduce((max, sample) => Math.max(max, sample.frameMs), 0)
+            : NaN;
+        const avgLatency = latencySamples.length > 0
+            ? latencySamples.reduce((sum, sample) => sum + sample.latencyMs, 0) / latencySamples.length
+            : NaN;
+        const maxLatency = latencySamples.length > 0
+            ? latencySamples.reduce((max, sample) => Math.max(max, sample.latencyMs), 0)
+            : NaN;
+
+        this.ui.perfWindow.textContent = `最近 ${windowSeconds.toFixed(windowSeconds >= 10 ? 0 : 1)} 秒`;
+        this.ui.perfFps.textContent = formatPerfMetric(latestSample?.fps ?? NaN, 1);
+        this.ui.perfFpsSub.textContent = Number.isFinite(avgFps) && Number.isFinite(minFps)
+            ? `均 ${avgFps.toFixed(1)} / 低 ${minFps.toFixed(1)}`
+            : '--';
+        this.ui.perfFrame.textContent = formatPerfMetric(latestSample?.frameMs ?? NaN, 1, ' ms');
+        this.ui.perfFrameSub.textContent = Number.isFinite(avgFrameMs) && Number.isFinite(maxFrameMs)
+            ? `均 ${avgFrameMs.toFixed(1)} / 峰 ${maxFrameMs.toFixed(1)}`
+            : '--';
+        this.ui.perfLatency.textContent = Number.isFinite(latestLatency)
+            ? formatPerfMetric(latestLatency, 1, ' ms')
+            : '--';
+        this.ui.perfLatencySub.textContent = Number.isFinite(avgLatency) && Number.isFinite(maxLatency)
+            ? `均 ${avgLatency.toFixed(1)} / 峰 ${maxLatency.toFixed(1)}`
+            : '等待输入';
+
+        const canvas = this.ui.perfCanvas;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+
+        const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        ctx.clearRect(0, 0, width, height);
+
+        const padLeft = 10 * dpr;
+        const padRight = 10 * dpr;
+        const padTop = 8 * dpr;
+        const padBottom = 14 * dpr;
+        const graphWidth = Math.max(1, width - padLeft - padRight);
+        const graphHeight = Math.max(1, height - padTop - padBottom);
+        const baselineY = padTop + graphHeight;
+        const fpsMax = Math.max(60, Math.ceil((samples.reduce((max, sample) => Math.max(max, sample.fps), 0) || 60) / 30) * 30);
+        const latencyMax = Math.max(16, Math.ceil((latencySamples.reduce((max, sample) => Math.max(max, sample.latencyMs), 0) || 16) / 8) * 8);
+
+        ctx.strokeStyle = 'rgba(125, 233, 119, 0.08)';
+        ctx.lineWidth = 1 * dpr;
+        for (let i = 0; i <= 3; i += 1) {
+            const y = padTop + (graphHeight * i) / 3;
+            ctx.beginPath();
+            ctx.moveTo(padLeft, y);
+            ctx.lineTo(width - padRight, y);
+            ctx.stroke();
+        }
+
+        ctx.strokeStyle = 'rgba(79, 169, 198, 0.18)';
+        ctx.beginPath();
+        ctx.moveTo(padLeft, baselineY);
+        ctx.lineTo(width - padRight, baselineY);
+        ctx.stroke();
+
+        if (samples.length > 0) {
+            ctx.strokeStyle = '#62e8c9';
+            ctx.lineWidth = 2 * dpr;
+            ctx.beginPath();
+            samples.forEach((sample, index) => {
+                const x = padLeft + ((sample.time - cutoff) / (windowSeconds * 1000)) * graphWidth;
+                const y = baselineY - clamp(sample.fps / fpsMax, 0, 1) * graphHeight;
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+        }
+
+        if (latencySamples.length > 0) {
+            ctx.strokeStyle = '#ffb86b';
+            ctx.lineWidth = 1.6 * dpr;
+            ctx.beginPath();
+            latencySamples.forEach((sample, index) => {
+                const x = padLeft + ((sample.time - cutoff) / (windowSeconds * 1000)) * graphWidth;
+                const y = baselineY - clamp(sample.latencyMs / latencyMax, 0, 1) * graphHeight;
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = 'rgba(215, 230, 235, 0.46)';
+        ctx.font = `${10 * dpr}px Segoe UI`;
+        ctx.textBaseline = 'top';
+        ctx.fillText(`${fpsMax} FPS`, padLeft, 0);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${latencyMax} ms`, width - padRight, 0);
+        ctx.textAlign = 'left';
     },
 
     refreshMenuState() {
