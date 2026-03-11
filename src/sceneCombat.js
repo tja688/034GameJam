@@ -104,7 +104,6 @@ const SceneCombatMixin = {
             pulse: isCompressor ? 1.46 : 1.18
         };
         this.primeNodePredation(node, profile, mouthDir);
-        this.createRing(node.anchorX, node.anchorY, isCompressor ? 34 : 28, COLORS.circle, 0.14, 2);
     },
     performGrind(node, edge, variant = 'shell') {
         const T = window.TUNING || {};
@@ -137,7 +136,6 @@ const SceneCombatMixin = {
             pulse: 0.8
         };
         this.primeNodePredation(node, profile, strikeDir);
-        this.createRing(node.anchorX, node.anchorY, 38, COLORS.square, 0.14, 2);
     },
     performHookStrike(node, edge, variant = 'dart') {
         const T = window.TUNING || {};
@@ -169,7 +167,6 @@ const SceneCombatMixin = {
             pulse: 0.68
         };
         this.primeNodePredation(node, profile, strikeDir);
-        this.createRing(node.anchorX, node.anchorY, 32, COLORS.triangle, 0.14, 2);
     },
     findPredationAttachment(prey, nodeIndex) {
         return (prey.attachments || []).find((attachment) => attachment.nodeIndex === nodeIndex) || null;
@@ -239,7 +236,6 @@ const SceneCombatMixin = {
         prey.shudder = clamp((prey.shudder || 0) + 0.44, 0, 1.8);
         prey.carve = clamp((prey.carve || 0) + 0.18, 0, 1.8);
         prey.gorePulse = clamp((prey.gorePulse || 0) + 0.24, 0, 1.8);
-        this.createRing(prey.x, prey.y, prey.radius + 8, node.color, 0.09, 2);
         this.spawnFragmentBurst(prey.x, prey.y, {
             count: profile.mode === 'feed' ? 4 : 7,
             speed: profile.mode === 'feed' ? 58 : 122,
@@ -250,7 +246,6 @@ const SceneCombatMixin = {
             directionX: node.attackDirX || -nx,
             directionY: node.attackDirY || -ny
         });
-        this.addScreenShake?.(profile.mode === 'feed' ? 0.06 : 0.12, profile.mode === 'feed' ? 0.08 : 0.12);
         return attachment;
     },
     getPreyPressure(prey, nodeByIndex = null) {
@@ -481,11 +476,6 @@ const SceneCombatMixin = {
         );
         prey.vx += dirX * (28 + amount * 2.6) / Math.max(prey.mass, 0.1);
         prey.vy += dirY * (28 + amount * 2.6) / Math.max(prey.mass, 0.1);
-        this.createRing(prey.x, prey.y, prey.radius + 10, node?.color || prey.color, 0.1, 2);
-        this.addScreenShake?.(
-            Math.min(1.1, 0.04 + damageRatio * (prey.sizeKey === 'large' ? 0.58 : 0.32)),
-            Math.min(1.2, 0.06 + damageRatio * (prey.sizeKey === 'large' ? 0.64 : 0.38))
-        );
 
         const healthRatio = prey.health / Math.max(prey.maxHealth, 1);
         while (prey.chunkCursor < prey.chunkThresholds.length && healthRatio <= prey.chunkThresholds[prey.chunkCursor]) {
@@ -698,8 +688,6 @@ const SceneCombatMixin = {
         node.feedPulse = Math.max(node.feedPulse || 0, fragment.kind === 'energy' ? 1.5 : 1.14);
         node.biteGlow = Math.max(node.biteGlow || 0, 0.78);
         this.bumpFeastMeter(fragment.kind === 'energy' ? 0.08 : 0.04);
-        this.createRing(node.x, node.y, 18 + fragment.size * 2.6, COLORS.energy, 0.1, 2);
-        this.addScreenShake?.(fragment.kind === 'energy' ? 0.04 : 0.025, fragment.kind === 'energy' ? 0.06 : 0.03);
         if (typeof this.absorbFragment === 'function') {
             this.absorbFragment(fragment);
         }
@@ -717,6 +705,5 @@ const SceneCombatMixin = {
         if (typeof this.applyEnergyDelta === 'function') {
             this.applyEnergyDelta(-Math.max(0.12, amount * 2.2), 0.08, 'hit');
         }
-        this.createRing(node.x, node.y, 28, COLORS.health, 0.14, 2);
     },
 };
