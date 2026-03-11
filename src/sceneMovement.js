@@ -210,6 +210,7 @@ const SceneMovementMixin = {
         const T = window.TUNING || {};
         if (!(T.enablePulse ?? true) || this.activeNodes.length === 0) return;
         this.rebalancePulseRunners();
+        let triggerCount = 0;
 
         this.player.pulseRunners.forEach((runner) => {
             runner.timer -= simDt;
@@ -220,6 +221,7 @@ const SceneMovementMixin = {
                 const current = this.activeNodes[chainIndex];
                 const edge = this.getEdgeModifier(chainIndex);
                 this.triggerNode(current, edge);
+                triggerCount += 1;
 
                 const loopReset = chainIndex === this.activeNodes.length - 1;
                 const nextIndex = loopReset ? 0 : chainIndex + 1;
@@ -237,6 +239,10 @@ const SceneMovementMixin = {
                 };
             }
         });
+
+        if (triggerCount > 0 && typeof this.consumePulseMetabolism === 'function') {
+            this.consumePulseMetabolism(triggerCount);
+        }
 
         this.syncLegacyPulseState();
     },

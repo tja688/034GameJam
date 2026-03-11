@@ -309,6 +309,13 @@ const SceneInitMixin = {
             focusY: 0,
             compositionX: 0,
             compositionY: 0,
+            shake: 0,
+            hudShake: 0,
+            shakeTime: 0,
+            renderOffsetX: 0,
+            renderOffsetY: 0,
+            hudOffsetX: 0,
+            hudOffsetY: 0,
             initialized: false,
             urgency: 0,
             subjectBounds: null,
@@ -449,14 +456,14 @@ const SceneInitMixin = {
     },
     worldToScreen(x, y) {
         return {
-            x: (x - this.cameraRig.x) * this.cameraRig.zoom + this.cameraRig.viewportWidth * 0.5,
-            y: (y - this.cameraRig.y) * this.cameraRig.zoom + this.cameraRig.viewportHeight * 0.5
+            x: (x - this.cameraRig.x) * this.cameraRig.zoom + this.cameraRig.viewportWidth * 0.5 + (this.cameraRig.renderOffsetX || 0),
+            y: (y - this.cameraRig.y) * this.cameraRig.zoom + this.cameraRig.viewportHeight * 0.5 + (this.cameraRig.renderOffsetY || 0)
         };
     },
     screenToWorld(x, y) {
         return {
-            x: (x - this.cameraRig.viewportWidth * 0.5) / this.cameraRig.zoom + this.cameraRig.x,
-            y: (y - this.cameraRig.viewportHeight * 0.5) / this.cameraRig.zoom + this.cameraRig.y
+            x: (x - this.cameraRig.viewportWidth * 0.5 - (this.cameraRig.renderOffsetX || 0)) / this.cameraRig.zoom + this.cameraRig.x,
+            y: (y - this.cameraRig.viewportHeight * 0.5 - (this.cameraRig.renderOffsetY || 0)) / this.cameraRig.zoom + this.cameraRig.y
         };
     },
     createCameraBoundsTracker() {
@@ -655,6 +662,15 @@ const SceneInitMixin = {
         this.cameraRig.urgency = desiredLead.intensity;
         this.cameraRig.subjectBounds = bounds;
         this.cameraRig.subjectSpan = span;
+        this.cameraRig.shake = Math.max(0, (this.cameraRig.shake || 0) - frameDt * 2.8);
+        this.cameraRig.hudShake = Math.max(0, (this.cameraRig.hudShake || 0) - frameDt * 3.4);
+        this.cameraRig.shakeTime = (this.cameraRig.shakeTime || 0) + frameDt * (18 + this.cameraRig.shake * 36);
+        const worldShake = Math.pow(this.cameraRig.shake || 0, 0.92);
+        const hudShake = Math.pow(this.cameraRig.hudShake || 0, 0.92);
+        this.cameraRig.renderOffsetX = (Math.sin(this.cameraRig.shakeTime * 1.7) + Math.cos(this.cameraRig.shakeTime * 2.4) * 0.62) * worldShake * 14;
+        this.cameraRig.renderOffsetY = (Math.cos(this.cameraRig.shakeTime * 1.34) + Math.sin(this.cameraRig.shakeTime * 2.1) * 0.56) * worldShake * 10;
+        this.cameraRig.hudOffsetX = (Math.sin(this.cameraRig.shakeTime * 1.9) + Math.cos(this.cameraRig.shakeTime * 2.8) * 0.4) * hudShake * 10;
+        this.cameraRig.hudOffsetY = (Math.cos(this.cameraRig.shakeTime * 1.56) + Math.sin(this.cameraRig.shakeTime * 2.36) * 0.46) * hudShake * 8;
     },
     updateDisplay(frameDt) {
         const T = window.TUNING || {};

@@ -4,6 +4,13 @@ const SceneRenderMixin = {
     createRing(x, y, radius, color, life, thickness) {
         this.effects.push({ type: 'ring', x, y, radius, color, life, total: life, thickness });
     },
+    addScreenShake(worldAmount = 0, hudAmount = worldAmount) {
+        if (!this.cameraRig) {
+            return;
+        }
+        this.cameraRig.shake = Math.max(this.cameraRig.shake || 0, worldAmount);
+        this.cameraRig.hudShake = Math.max(this.cameraRig.hudShake || 0, hudAmount);
+    },
     updateEffects(simDt) {
         for (let i = this.effects.length - 1; i >= 0; i -= 1) {
             this.effects[i].life -= simDt;
@@ -45,6 +52,9 @@ const SceneRenderMixin = {
         const objective = this.getObjectivePrey ? this.getObjectivePrey() : null;
         const objectivePulse = clamp(this.runState?.objectivePulse || 0, 0, 1);
         const stageFlash = clamp(this.runState?.stageFlash || 0, 0, 1.8);
+        const energyGainPulse = clamp(this.runState?.energyGainPulse || 0, 0, 1.4);
+        const energyLossPulse = clamp(this.runState?.energyLossPulse || 0, 0, 1.4);
+        const energyBeat = clamp(this.runState?.energyBeat || 0, 0, 1);
         g.fillStyle(palette.arena, 0.98);
         g.fillRect(0, 0, width, height);
         g.fillStyle(palette.mist, 0.08 + stageFlash * 0.04);
@@ -86,9 +96,19 @@ const SceneRenderMixin = {
             g.fillStyle(palette.pulse, huntGlow * 0.03);
             g.fillRect(0, 0, width, height);
         }
-        if ((this.runState?.lowEnergyPulse || 0) > 0.01) {
-            g.fillStyle(COLORS.health, (this.runState.lowEnergyPulse || 0) * 0.035);
+        if (energyGainPulse > 0.01) {
+            g.fillStyle(COLORS.energy, 0.025 + energyGainPulse * 0.05);
             g.fillRect(0, 0, width, height);
+        }
+        if (energyLossPulse > 0.01) {
+            g.fillStyle(COLORS.health, 0.025 + energyLossPulse * 0.07);
+            g.fillRect(0, 0, width, height);
+        }
+        if ((this.runState?.lowEnergyPulse || 0) > 0.01) {
+            g.fillStyle(COLORS.health, (this.runState.lowEnergyPulse || 0) * (0.04 + energyBeat * 0.03));
+            g.fillRect(0, 0, width, height);
+            g.lineStyle(4, COLORS.health, 0.08 + (this.runState.lowEnergyPulse || 0) * 0.14);
+            g.strokeRect(12, 12, width - 24, height - 24);
         }
     },
     drawEffects(g) {
@@ -106,7 +126,11 @@ const SceneRenderMixin = {
             const pulse = fragment.kind === 'energy'
                 ? 1 + Math.sin(this.worldTime * 10 + fragment.pulse) * 0.14
                 : 1;
-            const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 14);
+            const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 20);
+            const trailX = position.x - fragment.vx * 0.016 * this.cameraRig.zoom;
+            const trailY = position.y - fragment.vy * 0.016 * this.cameraRig.zoom;
+            g.lineStyle(Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
+            g.lineBetween(trailX, trailY, position.x, position.y);
             if (fragment.kind === 'energy') {
                 g.lineStyle(1.5, COLORS.core, alpha * 0.32);
                 g.strokeCircle(position.x, position.y, size + 2);
@@ -117,26 +141,38 @@ const SceneRenderMixin = {
     drawPrey(g) {
         this.prey.forEach((prey) => {
             const position = this.worldToScreen(prey.displayX, prey.displayY);
-            const shakeX = Math.cos(prey.pulse * 1.7 + prey.seed) * prey.shudder * 3.2 * this.cameraRig.zoom;
-            const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * prey.shudder * 3.2 * this.cameraRig.zoom;
+            const healthRatio = clamp(prey.health / Math.max(prey.maxHealth, 1), 0, 1);
+            const carve = clamp(prey.carve || 0, 0, 2);
+            const gorePulse = clamp(prey.gorePulse || 0, 0, 2);
+            const devourGlow = clamp(prey.devourGlow || 0, 0, 2);
+            const shakeX = Math.cos(prey.pulse * 1.7 + prey.seed) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
+            const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
             const pulseScale = 1
                 + Math.sin(prey.pulse) * (prey.shape === 'circle' ? 0.08 : 0.04)
-                + prey.wound * 0.05
+                + prey.wound * 0.08
+                + carve * 0.04
                 + (prey.guardPulse || 0) * 0.08
                 + (prey.isObjective ? 0.06 : 0);
-            const baseSize = prey.radius * 2 * pulseScale * this.cameraRig.zoom;
-            const size = clamp(baseSize, 12, prey.sizeKey === 'large' ? 120 : 86);
+            const chewShrink = 1 - (1 - healthRatio) * (prey.sizeKey === 'large' ? 0.1 : prey.sizeKey === 'medium' ? 0.06 : 0.03);
+            const baseSize = prey.radius * 2 * pulseScale * chewShrink * this.cameraRig.zoom;
+            const size = clamp(baseSize, 14, prey.sizeKey === 'large' ? 220 : prey.sizeKey === 'medium' ? 156 : 118);
             const x = position.x + shakeX;
             const y = position.y + shakeY;
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
 
-            drawShape(g, prey.shape, x + 3, y + 4, size * 1.06, COLORS.shadow, 0.42, prey.displayRotation);
+            drawShape(g, prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
+            if (prey.sizeKey !== 'small') {
+                drawShape(g, prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
+            }
             if ((prey.guardPulse || 0) > 0.04) {
                 g.lineStyle(clamp((2 + prey.guardPulse * 3) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
                 g.strokeCircle(x, y, size * 0.66);
             }
             if (prey.wound > 0.02) {
-                drawShape(g, prey.shape, x, y, size * (1.02 + prey.wound * 0.06), COLORS.gore, 0.18 + prey.wound * 0.3, prey.displayRotation);
+                drawShape(g, prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);
+            }
+            if (devourGlow > 0.02) {
+                drawShape(g, prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03);
             }
             drawShape(g, prey.shape, x, y, size, color, 0.95, prey.displayRotation);
             if (prey.exposed > 0.03) {
@@ -151,13 +187,40 @@ const SceneRenderMixin = {
                     prey.displayRotation + prey.spin * 0.02
                 );
             }
+            if (prey.attachments.length > 0) {
+                (prey.attachments || []).forEach((attachment) => {
+                    const node = this.activeNodes.find((entry) => entry.index === attachment.nodeIndex);
+                    const angle = node
+                        ? Math.atan2(node.displayY - prey.displayY, node.displayX - prey.displayX)
+                        : attachment.phase || 0;
+                    const biteX = x + Math.cos(angle) * size * (0.24 + attachment.depth * 0.08);
+                    const biteY = y + Math.sin(angle) * size * (0.24 + attachment.depth * 0.08);
+                    const biteShape = attachment.mode === 'hook'
+                        ? 'triangle'
+                        : attachment.mode === 'grind'
+                            ? 'square'
+                            : 'circle';
+                    const biteColor = attachment.mode === 'feed' ? COLORS.energy : COLORS.gore;
+                    drawShape(g, 'circle', biteX, biteY, size * (0.18 + attachment.depth * 0.14), COLORS.shadow, 0.22 + attachment.depth * 0.32, angle);
+                    drawShape(
+                        g,
+                        biteShape,
+                        biteX - Math.cos(angle) * size * 0.04,
+                        biteY - Math.sin(angle) * size * 0.04,
+                        size * (0.12 + attachment.depth * 0.12),
+                        biteColor,
+                        0.18 + attachment.depth * 0.26 + devourGlow * 0.06,
+                        angle
+                    );
+                });
+            }
             if (prey.weakArc > 0) {
                 const weakSpotX = x + Math.cos(prey.weakAngle) * size * 0.18;
                 const weakSpotY = y + Math.sin(prey.weakAngle) * size * 0.18;
                 drawShape(g, 'circle', weakSpotX, weakSpotY, size * 0.22, prey.signalColor || COLORS.core, 0.18 + clamp(prey.exposed || 0, 0, 1) * 0.24, 0);
             }
             if (prey.attachments.length > 0) {
-                g.lineStyle(clamp((1.2 + prey.attachments.length * 0.4) * this.cameraRig.zoom, 1, 4), COLORS.pulse, 0.18 + prey.attachments.length * 0.04);
+                g.lineStyle(clamp((1.6 + prey.attachments.length * 0.52) * this.cameraRig.zoom, 1, 5), COLORS.pulse, 0.2 + prey.attachments.length * 0.05 + gorePulse * 0.06);
                 g.strokeCircle(x, y, size * 0.32);
             }
             if (prey.isObjective) {
@@ -184,25 +247,35 @@ const SceneRenderMixin = {
                     : attachment.mode === 'grind'
                         ? COLORS.square
                         : COLORS.circle;
-                const width = clamp((1.8 + attachment.depth * 4.2) * this.cameraRig.zoom, 1, 6);
-                g.lineStyle(width, color, 0.26 + attachment.depth * 0.44);
+                const width = clamp((2.2 + attachment.depth * 5.2 + (prey.gorePulse || 0) * 0.8) * this.cameraRig.zoom, 1, 8);
+                g.lineStyle(width, color, 0.28 + attachment.depth * 0.48 + (prey.gorePulse || 0) * 0.08);
                 g.lineBetween(nodePos.x, nodePos.y, attachX, attachY);
-                g.lineStyle(Math.max(1, width * 0.58), COLORS.pulse, 0.16 + attachment.depth * 0.28);
+                g.lineStyle(Math.max(1, width * 0.58), COLORS.pulse, 0.2 + attachment.depth * 0.3 + (prey.devourGlow || 0) * 0.06);
                 g.lineBetween(attachX, attachY, preyPos.x, preyPos.y);
                 g.fillStyle(color, 0.82);
                 g.fillCircle(attachX, attachY, clamp((3 + attachment.depth * 3) * this.cameraRig.zoom, 2, 5));
+                g.fillStyle(COLORS.core, 0.12 + attachment.depth * 0.14);
+                g.fillCircle(preyPos.x, preyPos.y, clamp((2 + attachment.depth * 2.4) * this.cameraRig.zoom, 1, 4));
             });
         });
     },
     drawFormation(g) {
         const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
         const energyRatio = this.getEnergyRatio ? this.getEnergyRatio() : 1;
+        const energyGainPulse = clamp(this.runState?.energyGainPulse || 0, 0, 1.4);
+        const energyLossPulse = clamp(this.runState?.energyLossPulse || 0, 0, 1.4);
+        const energyBeat = clamp(this.runState?.energyBeat || 0, 0, 1);
+        const lowEnergyPulse = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
         const growthPulse = clamp(this.runState?.growthPulse || 0, 0, 1);
         const victoryPulse = clamp(this.player.victoryPulse || 0, 0, 1);
         if (energyRatio > 0.02 || growthPulse > 0.02 || victoryPulse > 0.02) {
             const center = this.worldToScreen(this.player.centroidX, this.player.centroidY);
-            g.fillStyle(palette.pulse, 0.03 + energyRatio * 0.03 + victoryPulse * 0.05);
-            g.fillCircle(center.x, center.y, clamp((this.getFormationSpan() * (1.18 + growthPulse * 0.08) + 60) * this.cameraRig.zoom, 32, 220));
+            g.fillStyle(lowEnergyPulse > 0.08 ? COLORS.health : palette.pulse, 0.04 + energyRatio * 0.03 + victoryPulse * 0.05 + energyGainPulse * 0.04);
+            g.fillCircle(center.x, center.y, clamp((this.getFormationSpan() * (1.18 + growthPulse * 0.08) + 60 + energyBeat * 18) * this.cameraRig.zoom, 32, 240));
+            if (energyLossPulse > 0.02 || lowEnergyPulse > 0.02) {
+                g.lineStyle(clamp((2.2 + lowEnergyPulse * 3.6 + energyBeat * 1.8) * this.cameraRig.zoom, 1, 5), COLORS.health, 0.1 + lowEnergyPulse * 0.18 + energyLossPulse * 0.12);
+                g.strokeCircle(center.x, center.y, clamp((this.getFormationSpan() * 1.28 + 78 + energyBeat * 22) * this.cameraRig.zoom, 36, 268));
+            }
         }
         this.links.forEach((link) => {
             const render = this.getLinkRenderPoints(link);
@@ -259,6 +332,10 @@ const SceneRenderMixin = {
                 size *= pulse;
             } else if (node.shape === 'square') {
                 size *= 1 + node.biteGlow * 0.08 + victoryPulse * 0.04;
+                if (node.spinVelocity > 0.02) {
+                    g.lineStyle(clamp((1.8 + node.spinVelocity * 0.04) * this.cameraRig.zoom, 1, 4), COLORS.core, 0.12 + node.biteGlow * 0.18);
+                    g.strokeCircle(nodePos.x, nodePos.y, clamp(size * 0.56, 5, 22));
+                }
             } else {
                 size *= 1 + node.hookTension * 0.1;
                 if (node.hookTension > 0.02) {
@@ -279,43 +356,109 @@ const SceneRenderMixin = {
             if (node.shape === 'circle' && node.feedPulse > 0.02) {
                 g.fillStyle(COLORS.core, 0.18 + node.feedPulse * 0.14);
                 g.fillCircle(nodePos.x, nodePos.y, clamp(size * 0.18, 2, 7));
+                g.lineStyle(clamp((1.6 + node.feedPulse * 1.2) * this.cameraRig.zoom, 1, 3), COLORS.energy, 0.16 + node.feedPulse * 0.14);
+                g.strokeCircle(nodePos.x, nodePos.y, clamp(size * (0.26 + node.feedPulse * 0.06), 4, 16));
             }
         });
     },
     drawHud(g) {
-        const left = 22;
-        const top = 22;
-        const barWidth = 196;
+        const hudJolt = clamp(this.runState?.hudJolt || 0, 0, 1.4);
+        const hudBeat = clamp(this.runState?.energyBeat || 0, 0, 1);
+        const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
+        const energyGainPulse = clamp(this.runState?.energyGainPulse || 0, 0, 1.4);
+        const energyLossPulse = clamp(this.runState?.energyLossPulse || 0, 0, 1.4);
+        const barWidth = Math.min(this.scale.width - 56, clamp(this.scale.width * 0.42, 300, 560));
+        const left = this.scale.width * 0.5 - barWidth * 0.5 + (this.cameraRig?.hudOffsetX || 0) + Math.sin(this.worldTime * 42) * hudJolt * 2.4;
+        const top = 24 + (this.cameraRig?.hudOffsetY || 0) + Math.cos(this.worldTime * 35) * hudJolt * 1.6;
+        const barHeight = 26 + hudBeat * 3 + lowEnergy * 2;
         const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core, threat: COLORS.health };
-        const energy = this.getEnergyRatio ? this.getEnergyRatio() : 0;
+        const maxEnergy = Math.max(1, this.player.maxEnergy || 100);
+        const energy = clamp((this.player.energyDisplay || this.player.energy || 0) / maxEnergy, 0, 1);
+        const energyGhost = clamp((this.player.energyGhost || this.player.energy || 0) / maxEnergy, 0, 1);
         const growth = this.getGrowthRatio ? this.getGrowthRatio() : 0;
         const progress = this.getStageProgressRatio ? this.getStageProgressRatio() : 0;
         const predation = clamp(this.player.predationPressure || 0, 0, 1);
-        const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
         const objectivePulse = clamp(this.runState?.objectivePulse || 0, 0, 1);
+        const panelHeight = 118 + hudBeat * 4;
 
-        g.fillStyle(COLORS.shadow, 0.36);
-        g.fillRoundedRect(left - 4, top - 6, barWidth + 8, 58, 12);
+        g.fillStyle(COLORS.shadow, 0.48);
+        g.fillRoundedRect(left - 18, top - 14, barWidth + 36, panelHeight, 18);
+        g.fillStyle(lowEnergy > 0.04 ? COLORS.health : palette.signal, 0.08 + lowEnergy * 0.16 + energyGainPulse * 0.06);
+        g.fillRoundedRect(left - 12, top - 8, barWidth + 24, barHeight + 20, 16);
+        g.fillStyle(COLORS.shadow, 0.54);
+        g.fillRoundedRect(left, top, barWidth, barHeight, 12);
+
+        const filledWidth = barWidth * energy;
+        const ghostWidth = barWidth * energyGhost;
+        if (ghostWidth > filledWidth + 2) {
+            g.fillStyle(COLORS.health, 0.28 + energyLossPulse * 0.14);
+            g.fillRoundedRect(left + filledWidth, top + 2, ghostWidth - filledWidth, Math.max(6, barHeight - 4), 8);
+        } else if (filledWidth > ghostWidth + 2) {
+            g.fillStyle(COLORS.energy, 0.24 + energyGainPulse * 0.18);
+            g.fillRoundedRect(left + ghostWidth, top + 2, filledWidth - ghostWidth, Math.max(6, barHeight - 4), 8);
+        }
+
+        const segmentCount = 24;
+        for (let i = 0; i < segmentCount; i += 1) {
+            const startRatio = i / segmentCount;
+            const endRatio = (i + 1) / segmentCount;
+            if (energy <= startRatio) {
+                break;
+            }
+            const segmentLeft = left + barWidth * startRatio;
+            const segmentRight = left + barWidth * Math.min(endRatio, energy);
+            const segmentWidth = Math.max(1, segmentRight - segmentLeft - 1);
+            const colorRatio = i / Math.max(1, segmentCount - 1);
+            const warmColor = colorRatio < 0.34
+                ? blendColor(COLORS.health, COLORS.inverse, colorRatio / 0.34)
+                : colorRatio < 0.68
+                    ? blendColor(COLORS.inverse, palette.signal, (colorRatio - 0.34) / 0.34)
+                    : blendColor(palette.signal, palette.pulse, (colorRatio - 0.68) / 0.32);
+            const fillColor = lowEnergy > 0.08
+                ? blendColor(warmColor, COLORS.health, lowEnergy * Math.max(0, 1 - colorRatio) * 0.45)
+                : warmColor;
+            g.fillStyle(fillColor, 0.92);
+            g.fillRect(segmentLeft, top + 2, segmentWidth, Math.max(4, barHeight - 4));
+        }
+
+        if (filledWidth > 4) {
+            g.fillStyle(COLORS.core, 0.14 + energyGainPulse * 0.12 + hudBeat * 0.08);
+            g.fillRoundedRect(left + 6, top + 4, Math.max(0, filledWidth - 12), Math.max(4, barHeight * 0.32), 7);
+        }
+
+        const edgeX = left + filledWidth;
+        if (filledWidth > 0) {
+            g.lineStyle(3, COLORS.core, 0.34 + energyGainPulse * 0.18 + lowEnergy * 0.12);
+            g.lineBetween(edgeX, top - 2, edgeX, top + barHeight + 2);
+        }
+
+        if (lowEnergy > 0.02) {
+            const pulseWidth = barWidth * (0.18 + lowEnergy * 0.12);
+            const pulseOffset = (Math.sin(this.worldTime * 12) * 0.5 + 0.5) * Math.max(0, barWidth - pulseWidth);
+            g.fillStyle(COLORS.health, 0.08 + lowEnergy * 0.12);
+            g.fillRoundedRect(left + pulseOffset, top + 2, pulseWidth, Math.max(4, barHeight - 4), 10);
+        }
+
+        g.lineStyle(3, lowEnergy > 0.08 ? COLORS.health : palette.signal, 0.34 + objectivePulse * 0.16 + lowEnergy * 0.28);
+        g.strokeRoundedRect(left - 4, top - 4, barWidth + 8, barHeight + 8, 14);
+
+        const growthTop = top + barHeight + 12;
+        const growthHeight = 10;
+        const predTop = growthTop + 16;
+        const predHeight = 8;
         g.fillStyle(COLORS.shadow, 0.42);
-        g.fillRoundedRect(left, top, barWidth, 14, 7);
-        g.fillRoundedRect(left, top + 20, barWidth, 9, 5);
-        g.fillRoundedRect(left, top + 35, barWidth, 7, 4);
-
-        g.fillStyle(lowEnergy > 0.08 ? COLORS.health : palette.signal, 0.9);
-        g.fillRoundedRect(left, top, barWidth * energy, 14, 7);
-        g.fillStyle(palette.pulse, 0.84);
-        g.fillRoundedRect(left, top + 20, barWidth * growth, 9, 5);
-        g.fillStyle(palette.threat, 0.88);
-        g.fillRoundedRect(left, top + 35, barWidth * predation, 7, 4);
-
-        g.lineStyle(2, palette.signal, 0.3 + objectivePulse * 0.22);
-        g.strokeRoundedRect(left - 4, top - 6, barWidth + 8, 58, 12);
+        g.fillRoundedRect(left, growthTop, barWidth, growthHeight, 5);
+        g.fillRoundedRect(left, predTop, barWidth, predHeight, 4);
+        g.fillStyle(palette.pulse, 0.9);
+        g.fillRoundedRect(left, growthTop, barWidth * growth, growthHeight, 5);
+        g.fillStyle(palette.threat, 0.9);
+        g.fillRoundedRect(left, predTop, barWidth * predation, predHeight, 4);
 
         const stageCount = this.getStageCount ? this.getStageCount() : 4;
         const stageIndex = clamp(this.runState?.stageIndex || 0, 0, stageCount - 1);
         const pipSpacing = 34;
-        const pipStartX = this.scale.width - 30 - pipSpacing * (stageCount - 1);
-        const pipY = 34;
+        const pipStartX = left + barWidth - pipSpacing * (stageCount - 1);
+        const pipY = predTop + 26;
         for (let i = 0; i < stageCount; i += 1) {
             const x = pipStartX + i * pipSpacing;
             const filled = i < stageIndex;
@@ -334,8 +477,8 @@ const SceneRenderMixin = {
             }
         }
 
-        const centerX = this.scale.width * 0.5;
-        const bottomY = this.scale.height - 38;
+        const centerX = this.scale.width * 0.5 + (this.cameraRig?.hudOffsetX || 0) * 0.4;
+        const bottomY = this.scale.height - 42 + (this.cameraRig?.hudOffsetY || 0) * 0.4;
         const phaseColor = this.getDrivePhaseColor(this.intent.pointerDrivePhase || this.intent.burstPhase);
         const centerCompression = clamp(this.intent.centerCompression || 0, 0, 1);
         g.lineStyle(2, phaseColor, 0.54 + clamp(this.intent.burstAggro || 0, 0, 1) * 0.28);

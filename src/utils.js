@@ -102,3 +102,11 @@ function getFiniteNumber(value, fallback) {
     return Number.isFinite(value) ? value : fallback;
 }
 
+function blendColor(colorA, colorB, t) {
+    const mix = clamp(t, 0, 1);
+    const from = Phaser.Display.Color.ValueToColor(colorA);
+    const to = Phaser.Display.Color.ValueToColor(colorB);
+    const color = Phaser.Display.Color.Interpolate.ColorWithColor(from, to, 100, Math.round(mix * 100));
+    return Phaser.Display.Color.GetColor(color.r, color.g, color.b);
+}
+

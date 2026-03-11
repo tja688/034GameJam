@@ -1,4 +1,53 @@
 const SceneEnemiesMixin = {
+    getStageInitialSpawnCount(rule) {
+        const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1));
+        const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
+        return Math.max(rule.packMin || 1, Math.round(rule.desired * density) + bonus);
+    },
+    seedConfiguredPrey(spawnConfig, count = 1) {
+        const results = [];
+        const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
+        const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
+        const fieldMul = Math.max(0.35, this.getRunTuningValue('gameplayPreyFieldRadiusMul', 0.92));
+        const spreadMul = Math.max(0.35, this.getRunTuningValue('gameplayPreyFieldSpreadMul', 1));
+        const maxRadius = Math.max(220, Math.min(worldHalfWidth, worldHalfHeight) * fieldMul + Math.max(worldHalfWidth, worldHalfHeight) * 0.08);
+        const minRadius = Math.max(120, this.getFormationSpan() + 110);
+        const groupAngle = Math.random() * Math.PI * 2;
+        const groupRadius = Phaser.Math.FloatBetween(minRadius, maxRadius);
+        const centerX = this.player.centroidX + Math.cos(groupAngle) * groupRadius;
+        const centerY = this.player.centroidY + Math.sin(groupAngle) * groupRadius;
+        const clusterBase = (spawnConfig.archetype === 'school' ? 44 : spawnConfig.sizeKey === 'large' ? 28 : spawnConfig.sizeKey === 'medium' ? 64 : 92) * spreadMul;
+        const groupId = count > 1 ? `${spawnConfig.id || spawnConfig.archetype}-seed-${this.preyIdCounter}` : '';
+
+        for (let i = 0; i < count; i += 1) {
+            const ring = Math.sqrt((i + 0.35) / Math.max(1, count));
+            const angle = groupAngle + (Math.PI * 2 * i) / Math.max(1, count) + Phaser.Math.FloatBetween(-0.55, 0.55);
+            const offset = clusterBase * ring;
+            const prey = this.createPrey(spawnConfig, {
+                x: centerX + Math.cos(angle) * offset + Phaser.Math.FloatBetween(-18, 18),
+                y: centerY + Math.sin(angle) * offset + Phaser.Math.FloatBetween(-18, 18),
+                groupId,
+                isObjective: !!spawnConfig.isObjective
+            });
+            this.prey.push(prey);
+            results.push(prey);
+        }
+
+        return results;
+    },
+    populateStagePrey(forceReset = false) {
+        if (!forceReset && this.prey.length > 0) {
+            return;
+        }
+        const stage = this.getCurrentStageDef();
+        if (!stage) {
+            return;
+        }
+
+        stage.spawnRules.forEach((rule) => {
+            this.seedConfiguredPrey(rule, this.getStageInitialSpawnCount(rule));
+        });
+    },
     updateSpawns(simDt) {
         if (this.player.dead || this.runState?.complete) {
             return;
@@ -6,6 +55,10 @@ const SceneEnemiesMixin = {
 
         const stage = this.getCurrentStageDef();
         if (!stage) {
+            return;
+        }
+
+        if (!this.getRunTuningValue('gameplayPreyRespawnEnabled', false)) {
             return;
         }
 
@@ -72,7 +125,10 @@ const SceneEnemiesMixin = {
         let x = 0;
         let y = 0;
 
-        if (side === 'left') {
+        if (Number.isFinite(options.x) && Number.isFinite(options.y)) {
+            x = options.x;
+            y = options.y;
+        } else if (side === 'left') {
             x = this.player.centroidX - worldHalfWidth - margin;
             y = options.axis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
         } else if (side === 'right') {
@@ -122,6 +178,9 @@ const SceneEnemiesMixin = {
             panic: 0,
             wound: 0,
             shudder: 0,
+            carve: 0,
+            gorePulse: 0,
+            devourGlow: 0,
             exposed: sizeKey === 'small' ? 0.36 : 0.08,
             attachments: [],
             chunkThresholds: sizeKey === 'small'
@@ -340,6 +399,9 @@ const SceneEnemiesMixin = {
             prey.panic = Math.max(0, prey.panic - simDt * 0.72);
             prey.wound = Math.max(0, prey.wound - simDt * 0.34);
             prey.shudder = Math.max(0, prey.shudder - simDt * 1.9);
+            prey.carve = Math.max(0, prey.carve - simDt * 0.52);
+            prey.gorePulse = Math.max(0, prey.gorePulse - simDt * 1.85);
+            prey.devourGlow = Math.max(0, prey.devourGlow - simDt * 1.2);
             prey.spin *= Math.exp(-2.4 * simDt);
             prey.objectiveGlow = Math.max(0, (prey.objectiveGlow || 0) - simDt * 0.18);
             prey.pulse += simDt * (2.4 + prey.pulseMul * 1.8 + danger * 1.2 + attachmentPenalty * 1.5 + (prey.isObjective ? 1.6 : 0));

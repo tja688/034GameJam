@@ -237,17 +237,20 @@ const SceneCombatMixin = {
         node.biteGlow = Math.max(node.biteGlow || 0, 1);
         prey.panic = clamp((prey.panic || 0) + 0.3, 0, 1.6);
         prey.shudder = clamp((prey.shudder || 0) + 0.44, 0, 1.8);
+        prey.carve = clamp((prey.carve || 0) + 0.18, 0, 1.8);
+        prey.gorePulse = clamp((prey.gorePulse || 0) + 0.24, 0, 1.8);
         this.createRing(prey.x, prey.y, prey.radius + 8, node.color, 0.09, 2);
         this.spawnFragmentBurst(prey.x, prey.y, {
-            count: profile.mode === 'feed' ? 2 : 4,
-            speed: profile.mode === 'feed' ? 44 : 86,
-            size: profile.mode === 'feed' ? 3.8 : 4.8,
+            count: profile.mode === 'feed' ? 4 : 7,
+            speed: profile.mode === 'feed' ? 58 : 122,
+            size: profile.mode === 'feed' ? 4.8 : 5.8,
             baseColor: profile.mode === 'feed' ? COLORS.energy : COLORS.flesh,
             collectible: false,
             energyBias: profile.mode === 'feed' ? 0.62 : 0.12,
             directionX: node.attackDirX || -nx,
             directionY: node.attackDirY || -ny
         });
+        this.addScreenShake?.(profile.mode === 'feed' ? 0.06 : 0.12, profile.mode === 'feed' ? 0.08 : 0.12);
         return attachment;
     },
     getPreyPressure(prey, nodeByIndex = null) {
@@ -379,6 +382,9 @@ const SceneCombatMixin = {
                 node.vx -= dirX * stretch * gripForce * 0.08 / Math.max(node.mass, 0.1) * simDt;
                 node.vy -= dirY * stretch * gripForce * 0.08 / Math.max(node.mass, 0.1) * simDt;
                 prey.shudder = Math.max(prey.shudder || 0, pressure.pressure * 0.45 + attachment.depth * 0.34);
+                prey.carve = Math.max(prey.carve || 0, pressure.pressure * 0.3 + attachment.depth * 0.28);
+                prey.gorePulse = Math.max(prey.gorePulse || 0, pressure.pressure * 0.28 + attachment.depth * 0.18);
+                prey.devourGlow = Math.max(prey.devourGlow || 0, attachment.mode === 'feed' ? 0.24 + attachment.depth * 0.3 : 0.12 + attachment.depth * 0.16);
 
                 if (attachment.mode === 'grind') {
                     prey.spin += simDt * (10 + pressure.pressure * 10);
@@ -459,28 +465,36 @@ const SceneCombatMixin = {
         const previousRatio = prey.health / Math.max(prey.maxHealth, 1);
         prey.health -= amount;
         prey.hitFlash = 1;
-        prey.wound = clamp((prey.wound || 0) + amount / Math.max(prey.maxHealth, 1) * 1.24, 0, 1.8);
-        prey.panic = clamp((prey.panic || 0) + amount / Math.max(prey.maxHealth, 1) * 1.12, 0, 1.7);
-        prey.shudder = clamp((prey.shudder || 0) + amount / Math.max(prey.maxHealth, 1) * 1.6, 0, 1.8);
+        const damageRatio = amount / Math.max(prey.maxHealth, 1);
+        prey.wound = clamp((prey.wound || 0) + damageRatio * 1.48, 0, 2.2);
+        prey.panic = clamp((prey.panic || 0) + damageRatio * 1.3, 0, 1.9);
+        prey.shudder = clamp((prey.shudder || 0) + damageRatio * 2.1, 0, 2.4);
+        prey.carve = clamp((prey.carve || 0) + damageRatio * 1.4 + (attachment?.mode === 'feed' ? 0.08 : 0.22), 0, 2.4);
+        prey.gorePulse = clamp((prey.gorePulse || 0) + damageRatio * 1.7 + (attachment?.mode === 'feed' ? 0.06 : 0.26), 0, 2.8);
+        prey.devourGlow = clamp((prey.devourGlow || 0) + damageRatio * 0.9 + (attachment?.mode === 'feed' ? 0.24 : 0.08), 0, 2.2);
         prey.exposed = clamp(
-            (prey.exposed || 0) + amount / Math.max(prey.maxHealth, 1) * (attachment?.mode === 'feed' ? 0.14 : 0.28),
+            (prey.exposed || 0) + damageRatio * (attachment?.mode === 'feed' ? 0.14 : 0.28),
             0,
             1
         );
         prey.vx += dirX * (28 + amount * 2.6) / Math.max(prey.mass, 0.1);
         prey.vy += dirY * (28 + amount * 2.6) / Math.max(prey.mass, 0.1);
         this.createRing(prey.x, prey.y, prey.radius + 10, node?.color || prey.color, 0.1, 2);
+        this.addScreenShake?.(
+            Math.min(1.1, 0.04 + damageRatio * (prey.sizeKey === 'large' ? 0.58 : 0.32)),
+            Math.min(1.2, 0.06 + damageRatio * (prey.sizeKey === 'large' ? 0.64 : 0.38))
+        );
 
         const healthRatio = prey.health / Math.max(prey.maxHealth, 1);
         while (prey.chunkCursor < prey.chunkThresholds.length && healthRatio <= prey.chunkThresholds[prey.chunkCursor]) {
-            this.releasePreyFragments(prey, prey.sizeKey === 'large' ? 4 : 2, node, attachment, false, false);
+            this.releasePreyFragments(prey, prey.sizeKey === 'large' ? 6 : 3, node, attachment, false, false);
             prey.chunkCursor += 1;
         }
 
         if (attachment && attachment.mode !== 'feed') {
-            this.releasePreyFragments(prey, prey.sizeKey === 'large' ? 2 : 1, node, attachment, false, false);
+            this.releasePreyFragments(prey, prey.sizeKey === 'large' ? 3 : 2, node, attachment, false, false);
         } else if (attachment && attachment.mode === 'feed') {
-            this.releasePreyFragments(prey, 1, node, attachment, true, false);
+            this.releasePreyFragments(prey, prey.sizeKey === 'large' ? 2 : 1, node, attachment, true, false);
         }
 
         if (prey.health > 0) {
@@ -494,13 +508,17 @@ const SceneCombatMixin = {
         this.finishPreyDevour(prey, node, fatalAttachment);
     },
     releasePreyFragments(prey, count, node, attachment, collectible = false, fatal = false) {
+        const countMul = this.getRunTuningValue ? this.getRunTuningValue('gameplayPreyFragmentCountMul', 1.7) : 1.7;
+        const speedMul = this.getRunTuningValue ? this.getRunTuningValue('gameplayPreyFragmentSpeedMul', 1.2) : 1.2;
+        const sizeMul = this.getRunTuningValue ? this.getRunTuningValue('gameplayPreyFragmentSizeMul', 1.28) : 1.28;
+        const visualMul = Math.max(0.8, Math.pow(prey?.visualScale || 1, 0.48));
         const directionX = node?.attackDirX ?? normalize(prey.vx, prey.vy, 1, 0).x;
         const directionY = node?.attackDirY ?? normalize(prey.vx, prey.vy, 0, 1).y;
         const feedBias = attachment?.mode === 'feed' ? 0.62 : 0.14;
         this.spawnFragmentBurst(prey.x, prey.y, {
-            count,
-            speed: fatal ? 182 : (attachment?.mode === 'feed' ? 58 : 104),
-            size: fatal ? 6.4 : 4.8,
+            count: Math.max(1, Math.round(count * countMul * visualMul)),
+            speed: (fatal ? 182 : (attachment?.mode === 'feed' ? 58 : 104)) * speedMul * Math.max(0.85, visualMul * 0.9),
+            size: (fatal ? 6.4 : 4.8) * sizeMul * Math.max(0.9, visualMul * 0.72),
             baseColor: fatal ? COLORS.meat : (attachment?.mode === 'feed' ? COLORS.energy : COLORS.flesh),
             collectible: collectible || fatal,
             energyBias: fatal ? 0.55 : feedBias,
@@ -513,10 +531,15 @@ const SceneCombatMixin = {
         if (index >= 0) {
             this.prey.splice(index, 1);
         }
-        this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 4 : 1), node, attachment, true, true);
-        this.createRing(prey.x, prey.y, prey.radius + 24, node?.color || prey.color, 0.22, 3);
-        this.createRing(prey.x, prey.y, prey.radius + 8, COLORS.core, 0.16, 2);
+        this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
+        this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4);
+        this.createRing(prey.x, prey.y, prey.radius + 16, COLORS.core, 0.22, 3);
+        this.createRing(prey.x, prey.y, prey.radius * 0.82, COLORS.gore, 0.18, 2);
         this.bumpFeastMeter(0.18 + prey.yield * 0.09);
+        this.addScreenShake?.(
+            prey.sizeKey === 'large' ? 0.8 : prey.sizeKey === 'medium' ? 0.46 : 0.24,
+            prey.sizeKey === 'large' ? 0.95 : prey.sizeKey === 'medium' ? 0.56 : 0.3
+        );
         if (node) {
             node.feedPulse = Math.max(node.feedPulse || 0, attachment.mode === 'feed' ? 1.56 : 1.08);
             node.hookTension = Math.max(node.hookTension || 0, attachment.mode === 'hook' ? 1.02 : 0.46);
@@ -621,7 +644,8 @@ const SceneCombatMixin = {
         node.feedPulse = Math.max(node.feedPulse || 0, fragment.kind === 'energy' ? 1.5 : 1.14);
         node.biteGlow = Math.max(node.biteGlow || 0, 0.78);
         this.bumpFeastMeter(fragment.kind === 'energy' ? 0.08 : 0.04);
-        this.createRing(node.x, node.y, 16 + fragment.size * 2.1, COLORS.energy, 0.08, 2);
+        this.createRing(node.x, node.y, 18 + fragment.size * 2.6, COLORS.energy, 0.1, 2);
+        this.addScreenShake?.(fragment.kind === 'energy' ? 0.04 : 0.025, fragment.kind === 'energy' ? 0.06 : 0.03);
         if (typeof this.absorbFragment === 'function') {
             this.absorbFragment(fragment);
         }
@@ -637,7 +661,7 @@ const SceneCombatMixin = {
         node.vx -= dirX * push * 0.2;
         node.vy -= dirY * push * 0.2;
         if (typeof this.applyEnergyDelta === 'function') {
-            this.applyEnergyDelta(-Math.max(0.12, amount * 2.2));
+            this.applyEnergyDelta(-Math.max(0.12, amount * 2.2), 0.08, 'hit');
         }
         this.createRing(node.x, node.y, 28, COLORS.health, 0.14, 2);
     },

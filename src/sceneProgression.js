@@ -13,6 +13,10 @@ const SceneProgressionMixin = {
             objectivePulse: 0,
             growthPulse: 0,
             energyPulse: 0,
+            energyGainPulse: 0,
+            energyLossPulse: 0,
+            energyBeat: 0,
+            hudJolt: 0,
             lowEnergyPulse: 0,
             complete: false,
             completeTimer: 0,
@@ -95,6 +99,15 @@ const SceneProgressionMixin = {
         if (!Number.isFinite(this.player.energyFlash)) {
             this.player.energyFlash = 0;
         }
+        if (!Number.isFinite(this.player.energyDisplay)) {
+            this.player.energyDisplay = this.player.energy;
+        }
+        if (!Number.isFinite(this.player.energyGhost)) {
+            this.player.energyGhost = this.player.energy;
+        }
+        if (!Number.isFinite(this.player.energyDeltaFlash)) {
+            this.player.energyDeltaFlash = 0;
+        }
     },
     resetRunProgression() {
         const maxEnergy = Math.max(1, this.getRunTuningValue('gameplayMaxEnergy', 100));
@@ -106,9 +119,13 @@ const SceneProgressionMixin = {
         this.player.nextGrowthCost = this.getGrowthCostForNodeCount(this.player.chain?.length || DEFAULT_BASE_CHAIN.length);
         this.player.metabolism = 0;
         this.player.energyFlash = 0;
+        this.player.energyDisplay = this.player.energy;
+        this.player.energyGhost = this.player.energy;
+        this.player.energyDeltaFlash = 0;
         this.player.stagePulse = 0;
         this.player.victoryPulse = 0;
         this.syncSpawnTimersForStage(true);
+        this.populateStagePrey?.(true);
     },
     syncSpawnTimersForStage(forceReset = false) {
         this.ensureRunProgressionState();
@@ -147,6 +164,32 @@ const SceneProgressionMixin = {
         }
         return this.prey.find((entry) => entry.id === objectiveId) || null;
     },
+    getPreyRuleSizeMultiplier(ruleId = '') {
+        if (!ruleId) {
+            return 1;
+        }
+        return Math.max(0.2, this.getRunTuningValue(`gameplayPreySize__${ruleId}`, 1));
+    },
+    getPreyVisualMultiplier(prey, spawnConfig) {
+        const sizeKey = prey?.sizeKey || spawnConfig?.sizeKey || 'small';
+        const sizeMul = sizeKey === 'large'
+            ? this.getRunTuningValue('gameplayPreyLargeSizeMul', 1)
+            : sizeKey === 'medium'
+                ? this.getRunTuningValue('gameplayPreyMediumSizeMul', 1)
+                : this.getRunTuningValue('gameplayPreySmallSizeMul', 1);
+        const globalMul = this.getRunTuningValue('gameplayPreyGlobalSizeMul', 1);
+        const ruleMul = this.getPreyRuleSizeMultiplier(spawnConfig?.id || prey?.spawnRuleId || '');
+        return Math.max(0.2, globalMul * sizeMul * ruleMul);
+    },
+    getPreyYieldMultiplier(prey) {
+        const visualScale = Math.max(0.25, prey?.visualScale || 1);
+        const scaleYield = Math.max(0.65, Math.pow(visualScale, 0.32));
+        return {
+            energy: Math.max(0.1, this.getRunTuningValue('gameplayPreyEnergyYieldMul', 1) * scaleYield),
+            biomass: Math.max(0.1, this.getRunTuningValue('gameplayPreyBiomassYieldMul', 1) * scaleYield),
+            progress: Math.max(0.1, this.getRunTuningValue('gameplayPreyProgressYieldMul', 1) * Math.max(0.72, Math.pow(visualScale, 0.18)))
+        };
+    },
     applySpawnConfigToPrey(prey, spawnConfig, groupId = '') {
         const stage = this.getCurrentStageDef();
         const archetype = PREY_ARCHETYPE_DEFS[spawnConfig.archetype] || PREY_ARCHETYPE_DEFS.skittish;
@@ -177,15 +220,19 @@ const SceneProgressionMixin = {
         prey.color = spawnConfig.color ?? prey.color;
         prey.baseColor = prey.color;
         prey.signalColor = spawnConfig.signalColor ?? (prey.isObjective ? stage.palette.signal : stage.palette.pulse);
-        prey.radius *= spawnConfig.radiusMul ?? (prey.isObjective ? 1.08 : 1);
+        const visualScale = this.getPreyVisualMultiplier(prey, spawnConfig) * (spawnConfig.radiusMul ?? (prey.isObjective ? 1.08 : 1));
+        prey.visualScale = visualScale;
+        prey.radius *= visualScale;
         prey.baseRadius = prey.radius;
-        prey.maxHealth *= healthMul * objectiveMul;
+        prey.chunkBurst = Math.max(1, Math.round(prey.chunkBurst * Math.max(1, Math.pow(visualScale, 0.62))));
+        prey.maxHealth *= healthMul * objectiveMul * Math.max(0.85, Math.pow(visualScale, 0.28));
         prey.health = prey.maxHealth;
         prey.speed *= archetype.speedMul;
         prey.accel *= archetype.accelMul;
         prey.fleeMul *= archetype.fleeMul;
         prey.wander *= archetype.wanderMul;
-        prey.mass *= spawnConfig.archetype === 'bulwark' ? bulwarkMassMul : spawnConfig.archetype === 'apex' ? apexMassMul : 1;
+        prey.mass *= (spawnConfig.archetype === 'bulwark' ? bulwarkMassMul : spawnConfig.archetype === 'apex' ? apexMassMul : 1)
+            * Math.max(0.8, Math.pow(visualScale, 1.18));
         prey.maxAnchors += spawnConfig.archetype === 'bulwark'
             ? bulwarkExtraAnchors
             : spawnConfig.archetype === 'apex'
@@ -193,9 +240,10 @@ const SceneProgressionMixin = {
                 : spawnConfig.archetype === 'weakspot'
                     ? weakspotExtraAnchors
                     : 0;
-        prey.energyValue = archetype.energyValue * sizeFactor + (spawnConfig.energyBonus || 0);
-        prey.biomassValue = archetype.biomassValue * sizeFactor + (spawnConfig.biomassBonus || 0);
-        prey.progressValue = archetype.progressValue * sizeFactor + (spawnConfig.progressBonus || 0);
+        const yieldMul = this.getPreyYieldMultiplier(prey);
+        prey.energyValue = (archetype.energyValue * sizeFactor + (spawnConfig.energyBonus || 0)) * yieldMul.energy;
+        prey.biomassValue = (archetype.biomassValue * sizeFactor + (spawnConfig.biomassBonus || 0)) * yieldMul.biomass;
+        prey.progressValue = (archetype.progressValue * sizeFactor + (spawnConfig.progressBonus || 0)) * yieldMul.progress;
         prey.growthBonus = spawnConfig.growthBonus || 0;
         prey.armor = archetype.armor;
         prey.compressionNeed = archetype.compressionNeed;
@@ -285,13 +333,106 @@ const SceneProgressionMixin = {
 
         return multiplier;
     },
-    applyEnergyDelta(amount, pulseBoost = 0) {
-        this.ensureRunProgressionState();
-        this.player.energy = clamp((this.player.energy || 0) + amount, 0, this.player.maxEnergy || 100);
-        if (amount > 0) {
-            this.player.energyFlash = clamp((this.player.energyFlash || 0) + amount * 0.02 + pulseBoost, 0, 1.8);
-            this.runState.energyPulse = Math.max(this.runState.energyPulse || 0, 0.2 + pulseBoost);
+    getPulseMetabolismPhaseMultiplier(phase) {
+        switch (phase) {
+            case 'stable':
+                return this.getRunTuningValue('gameplayPulseStableMul', 1);
+            case 'pursuit':
+                return this.getRunTuningValue('gameplayPulsePursuitMul', 1);
+            case 'hunt':
+                return this.getRunTuningValue('gameplayPulseHuntMul', 1);
+            case 'burst':
+                return this.getRunTuningValue('gameplayPulseBurstMul', 1);
+            default:
+                return this.getRunTuningValue('gameplayPulseCruiseMul', 1);
         }
+    },
+    samplePlayerMotionIntensity() {
+        if (!Array.isArray(this.activeNodes) || this.activeNodes.length === 0) {
+            return 0;
+        }
+        let totalSpeed = 0;
+        this.activeNodes.forEach((node) => {
+            totalSpeed += Math.hypot(node.vx || 0, node.vy || 0);
+        });
+        return totalSpeed / this.activeNodes.length;
+    },
+    estimatePulseMetabolism(triggerCount = 1) {
+        const stage = this.getCurrentStageDef();
+        const nodeCount = this.activeNodes?.length || this.player.chain?.length || DEFAULT_BASE_CHAIN.length;
+        const baseCost = Math.max(0, this.getRunTuningValue('gameplayPulseMetabolismBase', 0.18));
+        const floorCost = Math.max(0, this.getRunTuningValue('gameplayMetabolismFloor', 0.8)) * 0.04;
+        const perStage = Math.max(0, this.getRunTuningValue('gameplayPulseMetabolismStageWeight', 0.038)) * Math.max(0, stage?.metabolism || 0);
+        const perNode = Math.max(0, this.getRunTuningValue('gameplayMetabolismNodeWeight', 0.24)) * Math.max(0, nodeCount - DEFAULT_BASE_CHAIN.length) * 0.12;
+        const motionNorm = clamp(
+            this.samplePlayerMotionIntensity() / Math.max(1, this.getRunTuningValue('gameplayPulseMotionSpeedNorm', 85)),
+            0,
+            2.2
+        );
+        const pointerNorm = clamp(
+            (this.intent?.burstPointerSpeed || 0) / Math.max(1, this.getRunTuningValue('gameplayPulsePointerSpeedNorm', 520)),
+            0,
+            2.4
+        );
+        const moveInput = clamp(this.intent?.moveLength || 0, 0, 1);
+        const burstAggro = clamp(this.intent?.burstAggro || 0, 0, 1);
+        const huntWeight = clamp(this.intent?.pointerDriveHuntWeight || 0, 0, 1.5);
+        const expansion = clamp(this.clusterVolume?.expansion ?? Math.max(0, this.intent?.clusterVolume ?? 0), 0, 1.4);
+        const compression = clamp(this.intent?.centerCompression ?? this.clusterVolume?.compression ?? 0, 0, 1);
+        const predation = clamp(this.player.predationPressure || 0, 0, 1);
+        const objectiveVisible = !!this.getObjectivePrey();
+        const activity = 1
+            + burstAggro * Math.max(0, this.getRunTuningValue('gameplayMetabolismBurstWeight', 2.45)) * 0.2
+            + huntWeight * Math.max(0, this.getRunTuningValue('gameplayMetabolismHuntWeight', 1.28)) * 0.16
+            + expansion * Math.max(0, this.getRunTuningValue('gameplayMetabolismExpansionWeight', 1.72)) * 0.2
+            + motionNorm * Math.max(0, this.getRunTuningValue('gameplayPulseMetabolismMotionWeight', 0.58))
+            + moveInput * Math.max(0, this.getRunTuningValue('gameplayPulseMetabolismMoveWeight', 0.24))
+            + pointerNorm * Math.max(0, this.getRunTuningValue('gameplayPulseMetabolismPointerWeight', 0.28))
+            + (objectiveVisible ? Math.max(0, this.getRunTuningValue('gameplayMetabolismObjectiveWeight', 0.5)) * 0.16 : 0);
+        const relief = 1
+            - compression * Math.max(0, this.getRunTuningValue('gameplayMetabolismCompressionRelief', 1.9)) * 0.18
+            - predation * Math.max(0, this.getRunTuningValue('gameplayMetabolismPredationRelief', 0.55)) * 0.18;
+        const phase = this.intent?.burstPhase || this.intent?.pointerDrivePhase || 'cruise';
+        const phaseMul = this.getPulseMetabolismPhaseMultiplier(phase);
+        return Math.max(0, (baseCost + floorCost + perStage + perNode) * Math.max(0.18, activity) * Math.max(0.18, relief) * phaseMul * Math.max(1, triggerCount));
+    },
+    consumePulseMetabolism(triggerCount = 1) {
+        if (this.player.dead || this.runState?.complete || triggerCount <= 0) {
+            return 0;
+        }
+        const drain = this.estimatePulseMetabolism(triggerCount);
+        this.player.metabolism = drain;
+        this.runState.energyBeat = Math.max(this.runState.energyBeat || 0, 0.24 + Math.min(0.9, triggerCount * 0.18));
+        this.applyEnergyDelta(-drain, 0.1 + Math.min(0.3, triggerCount * 0.04), 'pulse');
+        return drain;
+    },
+    applyEnergyDelta(amount, pulseBoost = 0, source = 'generic') {
+        this.ensureRunProgressionState();
+        const previous = this.player.energy || 0;
+        this.player.energy = clamp(previous + amount, 0, this.player.maxEnergy || 100);
+        const applied = this.player.energy - previous;
+        if (applied > 0) {
+            this.player.energyFlash = clamp((this.player.energyFlash || 0) + applied * 0.024 + pulseBoost, 0, 2.6);
+            this.runState.energyPulse = Math.max(this.runState.energyPulse || 0, 0.2 + pulseBoost);
+            this.runState.energyGainPulse = Math.max(this.runState.energyGainPulse || 0, 0.16 + applied * 0.024 + pulseBoost);
+            this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, 0.12 + applied * 0.012);
+            this.player.energyDeltaFlash = Math.max(this.player.energyDeltaFlash || 0, 0.1 + applied * 0.02);
+            if (source === 'devour' || source === 'objective' || source === 'fragment') {
+                this.addScreenShake?.(Math.min(0.9, 0.08 + applied * 0.012), Math.min(1, 0.12 + applied * 0.015));
+            }
+        } else if (applied < 0) {
+            const loss = Math.abs(applied);
+            this.runState.energyLossPulse = Math.max(
+                this.runState.energyLossPulse || 0,
+                0.16 + loss * 0.022 + pulseBoost + (source === 'pulse' ? 0.06 : 0)
+            );
+            this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, 0.1 + loss * 0.02 + (source === 'pulse' ? 0.08 : 0));
+            this.player.energyDeltaFlash = Math.max(this.player.energyDeltaFlash || 0, 0.08 + loss * 0.028);
+            if (source !== 'pulse') {
+                this.addScreenShake?.(Math.min(0.7, 0.05 + loss * 0.01), Math.min(0.85, 0.08 + loss * 0.014));
+            }
+        }
+        return applied;
     },
     gainBiomass(amount) {
         this.ensureRunProgressionState();
@@ -304,7 +445,8 @@ const SceneProgressionMixin = {
             isEnergy
                 ? this.getRunTuningValue('gameplayFragmentEnergyGain', 4.8)
                 : this.getRunTuningValue('gameplayFragmentMatterGain', 2.1),
-            isEnergy ? 0.22 : 0.08
+            isEnergy ? 0.22 : 0.08,
+            'fragment'
         );
         this.gainBiomass(
             isEnergy
@@ -317,7 +459,7 @@ const SceneProgressionMixin = {
             return;
         }
 
-        this.applyEnergyDelta(prey.energyValue || 0, prey.isObjective ? 0.68 : 0.3);
+        this.applyEnergyDelta(prey.energyValue || 0, prey.isObjective ? 0.68 : 0.3, prey.isObjective ? 'objective' : 'devour');
         this.gainBiomass((prey.biomassValue || 0) + (prey.growthBonus || 0));
         this.runState.totalProgress += prey.progressValue || 0;
         if (!prey.isObjective) {
@@ -363,7 +505,8 @@ const SceneProgressionMixin = {
             this.applyEnergyDelta(
                 this.getRunTuningValue('gameplayGrowthEnergyBase', 6)
                 + grown * this.getRunTuningValue('gameplayGrowthEnergyPerNode', 1.5),
-                0.16
+                0.16,
+                'growth'
             );
             this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 28, this.getRunPalette().pulse, 0.18, 2);
         }
@@ -406,12 +549,14 @@ const SceneProgressionMixin = {
         this.runState.stageSignal = 1;
         this.runState.stageChangedAt = this.worldTime;
         this.syncSpawnTimersForStage(true);
+        this.populateStagePrey?.(true);
         this.applyEnergyDelta(
             Math.max(
                 this.getRunTuningValue('gameplayStageAdvanceEnergyFlat', 12),
                 this.player.maxEnergy * this.getRunTuningValue('gameplayStageAdvanceEnergyRatio', 0.24)
             ),
-            0.42
+            0.42,
+            'stage'
         );
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3);
     },
@@ -426,7 +571,7 @@ const SceneProgressionMixin = {
         this.runState.objectiveSpawned = false;
         this.runState.objectiveId = '';
         this.prey = [];
-        this.applyEnergyDelta(this.player.maxEnergy, 0.6);
+        this.applyEnergyDelta(this.player.maxEnergy, 0.6, 'victory');
         this.player.victoryPulse = 1;
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 84, this.getRunPalette().signal, 0.36, 4);
     },
@@ -464,9 +609,16 @@ const SceneProgressionMixin = {
         this.runState.stageFlash = Math.max(0, (this.runState.stageFlash || 0) - simDt * 0.64);
         this.runState.stageSignal += simDt * (0.8 + (this.runState.stageIndex || 0) * 0.18);
         this.runState.energyPulse = Math.max(0, (this.runState.energyPulse || 0) - simDt * 1.55);
+        this.runState.energyGainPulse = Math.max(0, (this.runState.energyGainPulse || 0) - simDt * 1.85);
+        this.runState.energyLossPulse = Math.max(0, (this.runState.energyLossPulse || 0) - simDt * 2.35);
+        this.runState.energyBeat = Math.max(0, (this.runState.energyBeat || 0) - simDt * 4.8);
+        this.runState.hudJolt = Math.max(0, (this.runState.hudJolt || 0) - simDt * 3.2);
         this.runState.growthPulse = Math.max(0, (this.runState.growthPulse || 0) - simDt * 1.4);
         this.player.energyFlash = Math.max(0, (this.player.energyFlash || 0) - simDt * 1.6);
+        this.player.energyDeltaFlash = Math.max(0, (this.player.energyDeltaFlash || 0) - simDt * 2.2);
         this.player.victoryPulse = Math.max(0, (this.player.victoryPulse || 0) - simDt * 0.65);
+        this.player.energyDisplay = damp(this.player.energyDisplay || this.player.energy || 0, this.player.energy || 0, (this.player.energy || 0) >= (this.player.energyDisplay || 0) ? 16 : 28, simDt);
+        this.player.energyGhost = damp(this.player.energyGhost || this.player.energy || 0, this.player.energy || 0, (this.player.energy || 0) >= (this.player.energyGhost || 0) ? 4.2 : 7.4, simDt);
 
         const objectiveVisible = !!objective;
         this.runState.objectivePulse = damp(this.runState.objectivePulse || 0, objectiveVisible ? 1 : 0, objectivePulseDamp, simDt);
@@ -484,19 +636,7 @@ const SceneProgressionMixin = {
         }
 
         if (!this.player.dead) {
-            const drain = Math.max(
-                this.getRunTuningValue('gameplayMetabolismFloor', 0.8),
-                stage.metabolism
-                + nodeCount * this.getRunTuningValue('gameplayMetabolismNodeWeight', 0.24)
-                + burstAggro * this.getRunTuningValue('gameplayMetabolismBurstWeight', 2.45)
-                + huntWeight * this.getRunTuningValue('gameplayMetabolismHuntWeight', 1.28)
-                + expansion * this.getRunTuningValue('gameplayMetabolismExpansionWeight', 1.72)
-                + (objectiveVisible ? this.getRunTuningValue('gameplayMetabolismObjectiveWeight', 0.5) : 0)
-                - compression * this.getRunTuningValue('gameplayMetabolismCompressionRelief', 1.9)
-                - clamp(this.player.predationPressure || 0, 0, 1) * this.getRunTuningValue('gameplayMetabolismPredationRelief', 0.55)
-            );
-            this.player.metabolism = drain;
-            this.applyEnergyDelta(-drain * simDt);
+            this.player.metabolism = this.estimatePulseMetabolism(Math.max(1, this.player.pulseRunners?.length || 1));
 
             while ((this.player.growthBuffer || 0) >= (this.player.nextGrowthCost || Infinity)) {
                 const currentNodeCount = this.activeNodes?.length || nodeCount;
