@@ -130,6 +130,27 @@ function ensureGameUiStyles() {
             border-color: rgba(255, 93, 73, 0.38);
             color: #ffd4ce;
         }
+        #game-fps-overlay {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            z-index: 19990;
+            min-width: 108px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(7, 16, 23, 0.88);
+            border: 1px solid rgba(79, 169, 198, 0.22);
+            color: #d7e6eb;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            font-size: 12px;
+            line-height: 1.35;
+            letter-spacing: 0.03em;
+            pointer-events: none;
+            white-space: pre-line;
+        }
+        #game-fps-overlay.hidden {
+            display: none;
+        }
         @media (max-width: 640px) {
             .game-menu-panel {
                 width: calc(100vw - 24px);
@@ -172,12 +193,18 @@ const SceneUiMixin = {
         const toast = document.createElement('div');
         toast.id = 'game-toast';
 
+        const fps = document.createElement('div');
+        fps.id = 'game-fps-overlay';
+        fps.className = 'hidden';
+
         document.body.appendChild(overlay);
         document.body.appendChild(toast);
+        document.body.appendChild(fps);
 
         this.ui = {
             overlay,
             toast,
+            fps,
             title: overlay.querySelector('#game-menu-title'),
             subtitle: overlay.querySelector('#game-menu-subtitle'),
             slot: overlay.querySelector('#game-menu-slot'),
@@ -269,6 +296,7 @@ const SceneUiMixin = {
         }
 
         this.exitEditMode();
+        this.debugMenuAutoPaused = false;
         this.menuMode = 'pause';
         this.paused = true;
         this.refreshMenuState();
@@ -279,8 +307,48 @@ const SceneUiMixin = {
             return;
         }
         this.exitEditMode();
+        this.debugMenuAutoPaused = false;
         this.menuMode = 'main';
         this.paused = true;
         this.refreshMenuState();
+    },
+
+    setDebugMenuOpen(isOpen) {
+        this.debugMenuOpen = !!isOpen;
+
+        if (!this.sessionStarted || this.menuMode || this.player?.dead) {
+            this.debugMenuAutoPaused = false;
+            return;
+        }
+
+        const shouldPauseOnOpen = window.TUNING?.debugPauseOnTuningOpen ?? true;
+        if (this.debugMenuOpen && shouldPauseOnOpen) {
+            if (!this.paused) {
+                this.debugMenuAutoPaused = true;
+                this.paused = true;
+            }
+            return;
+        }
+
+        if (this.debugMenuAutoPaused && !this.menuMode) {
+            this.paused = false;
+        }
+        this.debugMenuAutoPaused = false;
+    },
+
+    updateFpsOverlay(deltaMs = 16.67) {
+        if (!this.ui?.fps) {
+            return;
+        }
+
+        const showFpsCounter = !!window.TUNING?.showFpsCounter;
+        this.ui.fps.classList.toggle('hidden', !showFpsCounter);
+        if (!showFpsCounter) {
+            return;
+        }
+
+        const actualFps = Number.isFinite(this.game?.loop?.actualFps) ? this.game.loop.actualFps : 0;
+        const frameMs = Number.isFinite(deltaMs) ? deltaMs : 0;
+        this.ui.fps.textContent = `FPS ${actualFps.toFixed(1)}\n${frameMs.toFixed(1)} ms`;
     },
 };

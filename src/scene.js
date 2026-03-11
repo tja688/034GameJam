@@ -31,11 +31,14 @@ class CoreDemoScene extends Phaser.Scene {
                 this.nudgeCameraZoom(deltaY);
             }
         });
+        this.debugMenuOpen = false;
+        this.debugMenuAutoPaused = false;
         this.menuMode = null;
         this.toastTimer = null;
         this.buildUi();
         this.resetSimulation(false);
         this.showMainMenu();
+        window.syncTuningPanelState?.();
     }
 
     handleResize() {

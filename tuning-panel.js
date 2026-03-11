@@ -215,6 +215,8 @@ const TUNING_FALLBACKS = {
     showDriveRingsDebug: false,
     showDriveVectorsDebug: false,
     showCameraRigDebug: false,
+    showFpsCounter: false,
+    debugPauseOnTuningOpen: true,
 
     // ─── 编队跨度比例 ────────────────────────────
     formationSpanFactor: 0.16,
@@ -223,6 +225,7 @@ const TUNING_FALLBACKS = {
     // ─── Gameplay：局内基础 ─────────────────────
     gameplayMaxEnergy: 100,
     gameplayStartEnergyRatio: 0.78,
+    gameplayInfiniteEnergy: false,
 
     // ─── Gameplay：阶段缩放 ─────────────────────
     gameplayStageProgressGoalMul: 1,
@@ -703,6 +706,7 @@ const TUNING_DEFS = [
     { section: '局内基础', sectionDesc: '短局的能量池和开局资源。', defaultOpen: true },
     { key: 'gameplayMaxEnergy', label: '最大能量池', desc: '玩家总能量上限。', min: 20, max: 300, step: 1 },
     { key: 'gameplayStartEnergyRatio', label: '开局能量比例', desc: '重开或新局时，按最大能量填充多少。', min: 0.1, max: 1, step: 0.01 },
+    { key: 'gameplayInfiniteEnergy', label: '无限能量', desc: '开启后能量条会锁满，不再因代谢或战斗掉能。', type: 'toggle' },
 
     { section: '阶段缩放', sectionDesc: '对全部 stage 的目标、刷怪和节点上限做整体缩放。' },
     { key: 'gameplayStageProgressGoalMul', label: '阶段目标倍率', desc: '统一放大或缩小各阶段 progressGoal。', min: 0.25, max: 3, step: 0.05 },
@@ -834,6 +838,8 @@ const TUNING_DEFS = [
     { category: '🧪 调试与可视化' },
 
     { section: '大调试栏目', sectionDesc: '统一查看鼠标距离圈层、移动趋势和镜头前探。总开关关掉后，下面所有可视化都会停用。', defaultOpen: true },
+    { key: 'debugPauseOnTuningOpen', label: '打开调参自动暂停', desc: '展开调参面板时自动暂停游戏；收起后若是它触发的暂停会自动恢复。', type: 'toggle' },
+    { key: 'showFpsCounter', label: '显示帧率', desc: '在左上角显示实时 FPS 和当前帧耗时。', type: 'toggle' },
     { key: 'showDebugVisuals', label: '启用调试可视化', desc: '统一开启下方所有调试图层的渲染能力', type: 'toggle' },
     { key: 'showDriveRingsDebug', label: '显示三圈与指针', desc: '显示内圈/中圈/外圈、指针位置与当前圈层状态', type: 'toggle' },
     { key: 'showDriveVectorsDebug', label: '显示移动趋势', desc: '显示 WASD、鼠标瞄准和综合 Flow 的运动趋势向量', type: 'toggle' },
@@ -952,6 +958,38 @@ function applyCompositeTuning(masterKey, value, allRows = []) {
 //  当前默认基线：优先使用本地已应用配置，否则回退到 tuning-profile.json
 // ═══════════════════════════════════════════════════════════════
 const TUNING_DEFAULTS = cloneTuningProfile(window.TUNING);
+
+function isTuningPanelOpen() {
+    const panel = document.getElementById('tuning-panel');
+    return !!panel && !panel.classList.contains('collapsed');
+}
+
+function syncTuningPanelState() {
+    const isOpen = isTuningPanelOpen();
+    window.activeScene?.setDebugMenuOpen?.(isOpen);
+    return isOpen;
+}
+
+function applyImmediateTuningEffects(changedKey = '') {
+    if (!changedKey || changedKey === 'debugPauseOnTuningOpen') {
+        syncTuningPanelState();
+    }
+
+    if (!changedKey || changedKey === 'gameplayInfiniteEnergy') {
+        window.activeScene?.ensureRunProgressionState?.();
+        if (window.activeScene?.isInfiniteEnergyEnabled?.()) {
+            window.activeScene.syncInfiniteEnergyState?.();
+        }
+    }
+
+    if (!changedKey || changedKey === 'showFpsCounter') {
+        const fps = window.activeScene?.game?.loop?.actualFps || 60;
+        window.activeScene?.updateFpsOverlay?.(1000 / Math.max(1, fps));
+    }
+}
+
+window.isTuningPanelOpen = isTuningPanelOpen;
+window.syncTuningPanelState = syncTuningPanelState;
 
 // ═══════════════════════════════════════════════════════════════
 //  构建面板 UI
@@ -1399,8 +1437,12 @@ function buildTuningPanel() {
     const toggle = document.createElement('button');
     toggle.id = 'tuning-toggle';
     toggle.textContent = '⚙ 开发调参';
+    const setPanelCollapsed = (collapsed) => {
+        panel.classList.toggle('collapsed', collapsed);
+        syncTuningPanelState();
+    };
     toggle.addEventListener('click', () => {
-        panel.classList.toggle('collapsed');
+        setPanelCollapsed(isTuningPanelOpen());
     });
 
     // ─── Header ───────────────────────────────────
@@ -1606,6 +1648,7 @@ function buildTuningPanel() {
             window.TUNING[key] = TUNING_DEFAULTS[key];
         });
         allRows.forEach((row) => row.sync());
+        applyImmediateTuningEffects();
         window.dispatchEvent(new CustomEvent('tuning:changed'));
     });
 
@@ -1665,10 +1708,12 @@ function buildTuningPanel() {
     // ─── 键盘: Tab 切换面板 ─────────────────────────
     document.addEventListener('keydown', (e) => {
         if (e.key === '`' || e.key === '~') {
-            panel.classList.toggle('collapsed');
+            setPanelCollapsed(isTuningPanelOpen());
             e.preventDefault();
         }
     });
+
+    syncTuningPanelState();
 }
 
 function createToggleRow(def) {
@@ -1698,6 +1743,7 @@ function createToggleRow(def) {
         if (def.key === 'autoPulseOrbCount' && checkbox.checked) {
              // Game will auto-update orb count in next frame
         }
+        applyImmediateTuningEffects(def.key);
         row.classList.toggle('modified', checkbox.checked !== TUNING_DEFAULTS[def.key]);
         window.dispatchEvent(new CustomEvent('tuning:changed'));
     });

@@ -27,6 +27,21 @@ const SceneProgressionMixin = {
     isDebugToolsEnabled() {
         return window.CORE_DEMO_DEBUG !== false;
     },
+    isInfiniteEnergyEnabled() {
+        return !!window.TUNING?.gameplayInfiniteEnergy;
+    },
+    syncInfiniteEnergyState() {
+        const tunedMaxEnergy = Math.max(1, this.getRunTuningValue('gameplayMaxEnergy', 100));
+        this.player.maxEnergy = tunedMaxEnergy;
+        this.player.energy = tunedMaxEnergy;
+        this.player.energyDisplay = tunedMaxEnergy;
+        this.player.energyGhost = tunedMaxEnergy;
+        this.player.energyFlash = 0;
+        this.player.energyDeltaFlash = 0;
+        if (this.runState) {
+            this.runState.lowEnergyPulse = 0;
+        }
+    },
     getRunTuningValue(key, fallback) {
         return getFiniteNumber(window.TUNING?.[key], fallback);
     },
@@ -108,6 +123,9 @@ const SceneProgressionMixin = {
         if (!Number.isFinite(this.player.energyDeltaFlash)) {
             this.player.energyDeltaFlash = 0;
         }
+        if (this.isInfiniteEnergyEnabled()) {
+            this.syncInfiniteEnergyState();
+        }
     },
     resetRunProgression() {
         const maxEnergy = Math.max(1, this.getRunTuningValue('gameplayMaxEnergy', 100));
@@ -124,6 +142,9 @@ const SceneProgressionMixin = {
         this.player.energyDeltaFlash = 0;
         this.player.stagePulse = 0;
         this.player.victoryPulse = 0;
+        if (this.isInfiniteEnergyEnabled()) {
+            this.syncInfiniteEnergyState();
+        }
         this.syncSpawnTimersForStage(true);
         this.populateStagePrey?.(true);
     },
@@ -408,6 +429,10 @@ const SceneProgressionMixin = {
     },
     applyEnergyDelta(amount, pulseBoost = 0, source = 'generic') {
         this.ensureRunProgressionState();
+        if (this.isInfiniteEnergyEnabled()) {
+            this.syncInfiniteEnergyState();
+            return 0;
+        }
         const previous = this.player.energy || 0;
         this.player.energy = clamp(previous + amount, 0, this.player.maxEnergy || 100);
         const applied = this.player.energy - previous;
@@ -619,6 +644,10 @@ const SceneProgressionMixin = {
         this.player.victoryPulse = Math.max(0, (this.player.victoryPulse || 0) - simDt * 0.65);
         this.player.energyDisplay = damp(this.player.energyDisplay || this.player.energy || 0, this.player.energy || 0, (this.player.energy || 0) >= (this.player.energyDisplay || 0) ? 16 : 28, simDt);
         this.player.energyGhost = damp(this.player.energyGhost || this.player.energy || 0, this.player.energy || 0, (this.player.energy || 0) >= (this.player.energyGhost || 0) ? 4.2 : 7.4, simDt);
+
+        if (this.isInfiniteEnergyEnabled()) {
+            this.syncInfiniteEnergyState();
+        }
 
         const objectiveVisible = !!objective;
         this.runState.objectivePulse = damp(this.runState.objectivePulse || 0, objectiveVisible ? 1 : 0, objectivePulseDamp, simDt);

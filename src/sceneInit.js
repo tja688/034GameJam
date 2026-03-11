@@ -363,6 +363,7 @@ const SceneInitMixin = {
     },
     update(_, deltaMs) {
         const frameDt = Math.min(deltaMs, 33) / 1000;
+        this.updateFpsOverlay?.(deltaMs);
 
         if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
             if (this.menuMode === 'pause') {

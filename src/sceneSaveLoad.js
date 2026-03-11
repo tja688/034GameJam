@@ -297,6 +297,7 @@ const SceneSaveLoadMixin = {
             return;
         }
 
+        this.debugMenuAutoPaused = false;
         this.menuMode = null;
         this.paused = false;
         this.refreshMenuState();
