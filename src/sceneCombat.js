@@ -316,6 +316,7 @@ const SceneCombatMixin = {
         };
     },
     updatePredation(simDt) {
+        this._preyAliveSet = new Set(this.prey);
         const nodeByIndex = new Map(this.activeNodes.map((node) => [node.index, node]));
         this.activeNodes.forEach((node) => {
             node.attachedPreyCount = 0;
@@ -407,13 +408,14 @@ const SceneCombatMixin = {
                 attachment.chewTimer -= simDt;
                 if (attachment.chewTimer <= 0 && ((node.predationWindow || 0) > 0.02 || attachment.mode === 'feed')) {
                     this.performAttachmentBite(prey, attachment, node, pressure);
-                    if (!this.prey.includes(prey)) {
+                    if (!this._preyAliveSet || !this._preyAliveSet.has(prey)) {
                         break;
                     }
                 }
             }
         }
 
+        this._preyAliveSet = null;
         this.player.predationPressure = damp(this.player.predationPressure || 0, clamp(totalAttachments / 10, 0, 1.2), 7.5, simDt);
         this.updateFragments(simDt);
     },
@@ -458,7 +460,7 @@ const SceneCombatMixin = {
         this.bumpFeastMeter(amount / Math.max(prey.maxHealth, 1) * (attachment.mode === 'feed' ? 0.22 : 0.1));
     },
     damagePrey(prey, amount, dirX, dirY, node, attachment = null) {
-        if (!this.prey.includes(prey)) {
+        if (this._preyAliveSet ? !this._preyAliveSet.has(prey) : !this.prey.includes(prey)) {
             return;
         }
 
@@ -529,8 +531,13 @@ const SceneCombatMixin = {
     finishPreyDevour(prey, node, attachment) {
         const index = this.prey.indexOf(prey);
         if (index >= 0) {
-            this.prey.splice(index, 1);
+            // swap-and-pop: O(1) removal instead of splice O(n)
+            const last = this.prey.length - 1;
+            if (index !== last) { this.prey[index] = this.prey[last]; }
+            this.prey.pop();
         }
+        // Keep alive-set in sync for same-frame checks
+        if (this._preyAliveSet) { this._preyAliveSet.delete(prey); }
         this.noteDevourBurst?.(1);
         this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
         if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPreyDeathRingsEnabled', true)) {
@@ -630,6 +637,10 @@ const SceneCombatMixin = {
         }
         const collectPerFrameCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentCollectPerFrameCap', 8) ?? 8));
         let collectedThisFrame = 0;
+        // Pre-compute drag decay factors to avoid per-fragment Math.exp
+        const dragDecayEnergy = Math.exp(-3.2 * simDt);
+        const dragDecayMeat = Math.exp(-2.1 * simDt);
+        const hasFeeders = feeders.length > 0;
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
             const fragment = this.fragments[i];
             fragment.life -= simDt;
@@ -638,9 +649,9 @@ const SceneCombatMixin = {
                 continue;
             }
 
-            let targetNode = null;
-            let targetDistanceSq = Infinity;
-            if (fragment.collectible && feeders.length > 0) {
+            if (fragment.collectible && hasFeeders) {
+                let targetNode = null;
+                let targetDistanceSq = Infinity;
                 for (let j = 0; j < feeders.length; j += 1) {
                     const node = feeders[j];
                     const dx = node.x - fragment.x;
@@ -651,32 +662,33 @@ const SceneCombatMixin = {
                         targetNode = node;
                     }
                 }
-            }
 
-            if (targetNode) {
-                const dx = targetNode.x - fragment.x;
-                const dy = targetNode.y - fragment.y;
-                const distance = Math.hypot(dx, dy) || 0.0001;
-                const dirX = dx / distance;
-                const dirY = dy / distance;
-                const suckRange = 150 + (targetNode.feedPulse || 0) * 34;
-                if (distance < suckRange) {
-                    const suction = (fragment.kind === 'energy' ? 280 : 190)
-                        * (0.56 + (targetNode.suctionPower || 0) * 0.32 + (targetNode.feedPulse || 0) * 0.22);
-                    fragment.vx += dirX * suction * simDt;
-                    fragment.vy += dirY * suction * simDt;
-                    targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 1.02);
-                    if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10 && collectedThisFrame < collectPerFrameCap) {
-                        collectedThisFrame += 1;
-                        this.consumeFragment(fragment, targetNode);
-                        this.removeFragmentAt(i);
-                        continue;
+                if (targetNode) {
+                    const dx = targetNode.x - fragment.x;
+                    const dy = targetNode.y - fragment.y;
+                    const distance = Math.sqrt(targetDistanceSq) || 0.0001;
+                    const dirX = dx / distance;
+                    const dirY = dy / distance;
+                    const suckRange = 150 + (targetNode.feedPulse || 0) * 34;
+                    if (distance < suckRange) {
+                        const suction = (fragment.kind === 'energy' ? 280 : 190)
+                            * (0.56 + (targetNode.suctionPower || 0) * 0.32 + (targetNode.feedPulse || 0) * 0.22);
+                        fragment.vx += dirX * suction * simDt;
+                        fragment.vy += dirY * suction * simDt;
+                        targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 1.02);
+                        if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10 && collectedThisFrame < collectPerFrameCap) {
+                            collectedThisFrame += 1;
+                            this.consumeFragment(fragment, targetNode);
+                            this.removeFragmentAt(i);
+                            continue;
+                        }
                     }
                 }
             }
 
-            fragment.vx *= Math.exp(-fragment.drag * simDt);
-            fragment.vy *= Math.exp(-fragment.drag * simDt);
+            const decay = fragment.drag > 2.5 ? dragDecayEnergy : dragDecayMeat;
+            fragment.vx *= decay;
+            fragment.vy *= decay;
             fragment.x += fragment.vx * simDt;
             fragment.y += fragment.vy * simDt;
             fragment.rotation += fragment.spin * simDt;

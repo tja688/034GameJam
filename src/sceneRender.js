@@ -24,7 +24,10 @@ const SceneRenderMixin = {
         for (let i = this.effects.length - 1; i >= 0; i -= 1) {
             this.effects[i].life -= simDt;
             if (this.effects[i].life <= 0) {
-                this.effects.splice(i, 1);
+                // swap-and-pop: O(1) removal
+                const last = this.effects.length - 1;
+                if (i !== last) { this.effects[i] = this.effects[last]; }
+                this.effects.pop();
             }
         }
     },

@@ -262,7 +262,10 @@ const SceneEnemiesMixin = {
             const toCenterY = prey.y - this.player.centroidY;
             const distanceFromCenter = Math.hypot(toCenterX, toCenterY);
             if (distanceFromCenter > 3200) {
-                this.prey.splice(i, 1);
+                // swap-and-pop: O(1) removal instead of splice O(n)
+                const last = this.prey.length - 1;
+                if (i !== last) { this.prey[i] = this.prey[last]; }
+                this.prey.pop();
                 continue;
             }
 
@@ -415,8 +418,13 @@ const SceneEnemiesMixin = {
         }
     },
     resolvePreyNodeCollisions() {
+        // Use shared alive-set so finishPreyDevour can mark deaths visible to this loop
+        this._preyAliveSet = new Set(this.prey);
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
+            if (!prey || !this._preyAliveSet.has(prey)) {
+                continue;
+            }
             const candidates = this.pickNearbyNodes(prey.x, prey.y, 6, prey.radius + 126 + ((prey.guardPulse || 0) > 0.1 ? 24 : 0));
             if (candidates.length === 0) {
                 const nearest = this.pickNearestNode(prey.x, prey.y);
@@ -429,7 +437,7 @@ const SceneEnemiesMixin = {
             }
 
             for (let j = 0; j < candidates.length; j += 1) {
-                if (!this.prey.includes(prey)) {
+                if (!this._preyAliveSet.has(prey)) {
                     break;
                 }
                 const node = candidates[j];
@@ -467,7 +475,7 @@ const SceneEnemiesMixin = {
                     2
                 );
                 this.tryLatchPrey(prey, node, nx, ny, impactScale);
-                if (!this.prey.includes(prey)) {
+                if (!this._preyAliveSet.has(prey)) {
                     break;
                 }
 
