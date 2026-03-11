@@ -322,6 +322,9 @@ const SceneCombatMixin = {
         let totalAttachments = 0;
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
+            if (!prey) {
+                continue;
+            }
             prey.attachments = (prey.attachments || []).filter((attachment) => {
                 const node = nodeByIndex.get(attachment.nodeIndex);
                 if (!node) {
@@ -398,6 +401,9 @@ const SceneCombatMixin = {
                 attachment.chewTimer -= simDt;
                 if (attachment.chewTimer <= 0 && ((node.predationWindow || 0) > 0.02 || attachment.mode === 'feed')) {
                     this.performAttachmentBite(prey, attachment, node, pressure);
+                    if (!this.prey.includes(prey)) {
+                        break;
+                    }
                 }
             }
         }

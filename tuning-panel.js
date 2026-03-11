@@ -240,6 +240,11 @@ function sanitizeTuningProfile(profile) {
 }
 
 function loadRepoTuningProfile() {
+    const protocol = window.location?.protocol || '';
+    if (protocol === 'file:') {
+        return cloneTuningProfile(TUNING_FALLBACKS);
+    }
+
     try {
         const request = new XMLHttpRequest();
         request.open('GET', TUNING_PROFILE_PATH, false);
