@@ -12,49 +12,21 @@ const SceneTopologyMixin = {
     createTopologyEdgeDescriptor(a, b, kind = 'support', id = createTopologyEdgeId()) {
         return { id, a, b, kind };
     },
-    isCompoundTopologyEdgesEnabled() {
-        const T = window.TUNING || {};
-        return T.enableCompoundTopologyEdges ?? false;
-    },
-    collapseCompoundTopologyEdges(edges) {
-        const seenPairs = new Set();
-        return edges.filter((edge) => {
-            const pairKey = makeEdgeKey(edge.a, edge.b);
-            if (seenPairs.has(pairKey)) {
-                return false;
-            }
-            seenPairs.add(pairKey);
-            return true;
-        });
-    },
     normalizeTopologyEdges(edges) {
-        const normalized = (Array.isArray(edges) ? edges : [])
+        const seenPairs = new Set();
+        return (Array.isArray(edges) ? edges : [])
             .filter((edge) => Number.isInteger(edge?.a) && Number.isInteger(edge?.b) && edge.a !== edge.b)
-            .map((edge) => this.createTopologyEdgeDescriptor(edge.a, edge.b, edge.kind || 'support', edge.id || createTopologyEdgeId()));
-        return this.isCompoundTopologyEdgesEnabled()
-            ? normalized
-            : this.collapseCompoundTopologyEdges(normalized);
+            .map((edge) => this.createTopologyEdgeDescriptor(edge.a, edge.b, edge.kind || 'support', edge.id || createTopologyEdgeId()))
+            .filter((edge) => {
+                const pairKey = makeEdgeKey(edge.a, edge.b);
+                if (seenPairs.has(pairKey)) {
+                    return false;
+                }
+                seenPairs.add(pairKey);
+                return true;
+            });
     },
-    isSunflowerTopologyEnabled() {
-        const T = window.TUNING || {};
-        return T.enableSunflowerTopologySlots ?? true;
-    },
-    getSunflowerTopologySlot(order) {
-        if (order <= 0) {
-            return { x: 0, y: 0 };
-        }
-        const T = window.TUNING || {};
-        const spacing = T.slotSpacing ?? PARTIAL_MESH_RULES.slotSpacing;
-        const yComp = T.slotYCompression ?? 0.84;
-        const rScale = T.slotRadiusScale ?? 0.94;
-        const radius = spacing * Math.sqrt(order) * rScale;
-        const angle = order * GOLDEN_ANGLE;
-        return {
-            x: Math.cos(angle) * radius,
-            y: Math.sin(angle) * radius * yComp
-        };
-    },
-    getLinearTopologySlot(order) {
+    getDefaultTopologySlot(order) {
         if (order <= 0) {
             return { x: 0, y: 0 };
         }
@@ -67,60 +39,6 @@ const SceneTopologyMixin = {
             x: lane * forwardStep,
             y: side * spacing * 0.38
         };
-    },
-    getDefaultTopologySlot(order) {
-        return this.isSunflowerTopologyEnabled()
-            ? this.getSunflowerTopologySlot(order)
-            : this.getLinearTopologySlot(order);
-    },
-    captureNodeLocalSlot(node) {
-        const local = rotateLocal(node.x - this.player.centroidX, node.y - this.player.centroidY, -this.player.heading);
-        return { x: local.x, y: local.y };
-    },
-    applyTopologySlotLayout(useSunflower) {
-        const previousTopology = this.player.topology || { slots: {}, edges: [] };
-        const previousSlots = previousTopology.slots || {};
-        const activeByIndex = new Map((this.activeNodes || []).map((node) => [node.index, node]));
-        const slots = {};
-
-        this.player.chain.forEach((poolIndex, order) => {
-            if (useSunflower) {
-                slots[poolIndex] = this.getSunflowerTopologySlot(order);
-                return;
-            }
-
-            const activeNode = activeByIndex.get(poolIndex);
-            if (activeNode) {
-                slots[poolIndex] = this.captureNodeLocalSlot(activeNode);
-                return;
-            }
-            if (Object.prototype.hasOwnProperty.call(previousSlots, poolIndex)) {
-                slots[poolIndex] = { ...previousSlots[poolIndex] };
-                return;
-            }
-            slots[poolIndex] = this.getLinearTopologySlot(order);
-        });
-
-        this.player.topology = {
-            slots,
-            edges: this.normalizeTopologyEdges(
-                (previousTopology.edges || []).filter((edge) => Object.prototype.hasOwnProperty.call(slots, edge.a) && Object.prototype.hasOwnProperty.call(slots, edge.b))
-            )
-        };
-    },
-    syncTopologySlotLayoutMode() {
-        const useSunflower = this.isSunflowerTopologyEnabled();
-        if (this.lastSunflowerTopologyEnabled === useSunflower) {
-            return;
-        }
-
-        this.lastSunflowerTopologyEnabled = useSunflower;
-        if (!this.player?.topology) {
-            return;
-        }
-
-        this.applyTopologySlotLayout(useSunflower);
-        this.rebuildFormation();
     },
     buildPartialMeshEdges(chain, slots) {
         const entries = chain.map((index) => {
@@ -220,44 +138,6 @@ const SceneTopologyMixin = {
 
         return edges;
     },
-    buildSeedPolarityEdges(chain) {
-        const baseNodes = [];
-        const inverseNodes = [];
-
-        chain.forEach((index) => {
-            const node = this.poolNodes[index];
-            if (!node) {
-                return;
-            }
-            if (node.polarity === 'inverse') {
-                inverseNodes.push(index);
-            } else {
-                baseNodes.push(index);
-            }
-        });
-
-        const edges = [];
-        for (let i = 0; i < inverseNodes.length; i += 1) {
-            for (let j = i + 1; j < inverseNodes.length; j += 1) {
-                edges.push(this.createTopologyEdgeDescriptor(inverseNodes[i], inverseNodes[j], 'spine'));
-                edges.push(this.createTopologyEdgeDescriptor(inverseNodes[i], inverseNodes[j], 'support'));
-            }
-        }
-
-        if (inverseNodes.length > 0) {
-            baseNodes.forEach((baseIndex, order) => {
-                const targetInverse = inverseNodes[order % inverseNodes.length];
-                edges.push(this.createTopologyEdgeDescriptor(baseIndex, targetInverse, 'support'));
-            });
-        }
-
-        return edges;
-    },
-    buildDefaultTopologyEdges(chain, slots) {
-        return this.isCompoundTopologyEdgesEnabled()
-            ? this.buildSeedPolarityEdges(chain)
-            : this.buildPartialMeshEdges(chain, slots);
-    },
     rebuildTopologyFromCurrentChain(preserveExistingSlots = false) {
         const chain = [...this.player.chain];
         const previousSlots = preserveExistingSlots ? (this.player.topology?.slots || {}) : {};
@@ -273,27 +153,8 @@ const SceneTopologyMixin = {
 
         return {
             slots,
-            edges: this.normalizeTopologyEdges(this.buildDefaultTopologyEdges(chain, slots))
+            edges: this.normalizeTopologyEdges(this.buildPartialMeshEdges(chain, slots))
         };
-    },
-    syncCompoundTopologyEdgesMode() {
-        const enabled = this.isCompoundTopologyEdgesEnabled();
-        if (this.lastCompoundTopologyEdgesEnabled === enabled) {
-            return;
-        }
-
-        this.lastCompoundTopologyEdgesEnabled = enabled;
-        if (!this.player?.topology || enabled) {
-            return;
-        }
-
-        const collapsedEdges = this.normalizeTopologyEdges(this.player.topology.edges);
-        if (collapsedEdges.length === this.player.topology.edges.length) {
-            return;
-        }
-
-        this.player.topology.edges = collapsedEdges;
-        this.rebuildFormation();
     },
     getExpansionDirection() {
         const pointerWorld = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
@@ -495,7 +356,7 @@ const SceneTopologyMixin = {
         if (a === b) {
             return false;
         }
-        if (!this.isCompoundTopologyEdgesEnabled() && this.getTopologyEdgeCount(a, b) > 0) {
+        if (this.getTopologyEdgeCount(a, b) > 0) {
             return false;
         }
         this.player.topology.edges.push(this.createTopologyEdgeDescriptor(a, b, kind));

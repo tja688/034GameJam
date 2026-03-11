@@ -620,13 +620,10 @@ const SceneInputMixin = {
         const moveWeight = this.keys.shift.isDown ? (T.shiftMoveWeight ?? 0.32) : (T.normalMoveWeight ?? 0.58);
         const aimWeight = 1 - moveWeight;
         const legacyFlow = normalize(move.x * moveWeight + aim.x * aimWeight, move.y * moveWeight + aim.y * aimWeight, aim.x, aim.y);
-        const upgradedIntentEnabled = this.isUpgradedIntentDriveEnabled();
-        const clusterAggro = upgradedIntentEnabled ? this.getIntentClusterAggression() : 0;
-        const totalAggro = clamp(clusterAggro + driveState.aggro, 0, 1);
+        const totalAggro = clamp(driveState.aggro, 0, 1);
         const aggressiveAimWeight = clamp(lerp(aimWeight, 0.78, totalAggro) - driveState.centerCompression * 0.16, 0.08, 0.95);
         const aggressiveMoveWeight = 1 - aggressiveAimWeight;
-        const adaptiveFlowEnabled = upgradedIntentEnabled || this.isBurstIntentDriveEnabled();
-        const aggressiveFlow = adaptiveFlowEnabled
+        const aggressiveFlow = this.isBurstIntentDriveEnabled()
             ? normalize(
                 move.x * aggressiveMoveWeight + aim.x * aggressiveAimWeight + heading.x * driveState.centerCompression * 0.18,
                 move.y * aggressiveMoveWeight + aim.y * aggressiveAimWeight + heading.y * driveState.centerCompression * 0.18,
@@ -634,31 +631,7 @@ const SceneInputMixin = {
                 legacyFlow.y
             )
             : legacyFlow;
-        const splitPolarityIntent = this.isSplitPolarityIntentEnabled();
-        const baseFlow = splitPolarityIntent
-            ? normalize(
-                aim.x * (0.92 + driveState.aggro * 0.12) + aggressiveFlow.x * 0.28,
-                aim.y * (0.92 + driveState.aggro * 0.12) + aggressiveFlow.y * 0.28,
-                aggressiveFlow.x,
-                aggressiveFlow.y
-            )
-            : aggressiveFlow;
-        const inverseFlow = splitPolarityIntent
-            ? move.length > 0.01
-                ? normalize(
-                    move.x * 0.96 + aggressiveFlow.x * 0.34,
-                    move.y * 0.96 + aggressiveFlow.y * 0.34,
-                    aggressiveFlow.x,
-                    aggressiveFlow.y
-                )
-                : normalize(
-                    aggressiveFlow.x * 0.72 + heading.x * 0.28,
-                    aggressiveFlow.y * 0.72 + heading.y * 0.28,
-                    aggressiveFlow.x,
-                    aggressiveFlow.y
-                )
-            : aggressiveFlow;
-        const flow = adaptiveFlowEnabled ? aggressiveFlow : legacyFlow;
+        const flow = aggressiveFlow;
 
         this.intent.moveX = move.x;
         this.intent.moveY = move.y;
@@ -672,11 +645,11 @@ const SceneInputMixin = {
         this.intent.legacyFlowY = legacyFlow.y;
         this.intent.aggressiveFlowX = aggressiveFlow.x;
         this.intent.aggressiveFlowY = aggressiveFlow.y;
-        this.intent.baseFlowX = baseFlow.x;
-        this.intent.baseFlowY = baseFlow.y;
-        this.intent.inverseFlowX = inverseFlow.x;
-        this.intent.inverseFlowY = inverseFlow.y;
-        this.intent.clusterAggro = clusterAggro;
+        this.intent.baseFlowX = aggressiveFlow.x;
+        this.intent.baseFlowY = aggressiveFlow.y;
+        this.intent.inverseFlowX = aggressiveFlow.x;
+        this.intent.inverseFlowY = aggressiveFlow.y;
+        this.intent.clusterAggro = 0;
         this.intent.pointerX = worldPointer.x;
         this.intent.pointerY = worldPointer.y;
         this.intent.pointerDistance = aim.length;
@@ -860,11 +833,7 @@ const SceneInputMixin = {
                     this.rebuildFormation();
                     this.pushEditHistorySnapshot(snapshot);
                 }
-                if (this.isCompoundTopologyEdgesEnabled()) {
-                    this.setEditSelection([sourceNode], []);
-                } else {
-                    this.clearEditSelection();
-                }
+                this.clearEditSelection();
                 return;
             }
 

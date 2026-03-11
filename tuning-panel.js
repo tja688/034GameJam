@@ -13,9 +13,6 @@ const TUNING_FALLBACKS = {
     feelCameraDirector: 0.68,
     feelCameraGlide: 0.74,
     feelCameraBreathing: 0.58,
-    legacyAllNodesMove: true,
-    enableUpgradedIntentDrive: false,
-    splitPolarityIntentDrive: false,
     enableBurstIntentDrive: false,
     intentChaosDegree: 0.0,
     enableClusterVolumeControl: false,
@@ -62,7 +59,6 @@ const TUNING_FALLBACKS = {
     burstPointerSpeedThreshold: 360,
 
     // ─── 力开关 ───────────────────────────────────
-    enableFormationPull: false,
     enableDrift: true,
     enableCorePull: true,
     enableAnchor: true,
@@ -70,11 +66,6 @@ const TUNING_FALLBACKS = {
     enableRepulsion: true,
     enablePBD: true,
     enablePulse: true,
-
-    // ─── 编队拉力 ─────────────────────────────────
-    formationPullAnchored: 32,
-    formationPullFreeBase: 76,
-    formationPullStabilityBonus: 22,
 
     // ─── 漂移力 ───────────────────────────────────
     driftAttack: 54,
@@ -191,11 +182,7 @@ const TUNING_FALLBACKS = {
     plantBladeAimBias: 0.38,
 
     // ─── 拓扑槽位 ────────────────────────────────
-    enableCompoundTopologyEdges: false,
-    enableSunflowerTopologySlots: false,
     slotSpacing: 102,
-    slotYCompression: 0.84,
-    slotRadiusScale: 0.94,
     forwardStep: 72,
 
     // ─── 脉冲循环 ────────────────────────────────
@@ -327,9 +314,6 @@ const TUNING_DEFS = [
     { key: 'feelCameraBreathing', label: '视野呼吸感', desc: '控制默认视野、缩放上下限、构图留白和整体空间感', min: 0, max: 1, step: 0.01 },
 
     { section: '模式与意图控制', sectionDesc: '移动模式与玩家意图的驱动逻辑' },
-    { key: 'legacyAllNodesMove', label: '全节点主动移动', desc: '默认开启。关闭后只保留主驱节点的主动移动与牵引', type: 'toggle' },
-    { key: 'enableUpgradedIntentDrive', label: '升级版意图驱动', desc: '默认关闭。开启后按规模放大前压范围与推进强度', type: 'toggle' },
-    { key: 'splitPolarityIntentDrive', label: '极性分驱', desc: '不同极性的节点读取不同的意图权重，强化内部器官分工感', type: 'toggle' },
     { key: 'enableBurstIntentDrive', label: '阶段爆发意图', desc: '根据鼠标与质心的真实世界距离、外甩趋势和指针速度，进入追击/爆发节奏', type: 'toggle' },
     { key: 'intentChaosDegree', label: '意图混沌度 (Hot值)', desc: '为脉冲冲刺增添随机偏移、抖动与独立性', min: 0.0, max: 1.5, step: 0.05 },
 
@@ -395,7 +379,6 @@ const TUNING_DEFS = [
     { category: '🔧 物理与运动约束' },
 
     { section: '全局物理力场', sectionDesc: '决定全局运动物理反馈的各项基本力' },
-    { key: 'enableFormationPull', label: '旧编队拉回', desc: '旧范式遗留：把节点拉回黄金角槽位', type: 'toggle' },
     { key: 'enableDrift', label: '漂移推进力', desc: '引擎：控制 WASD 向结构的直接推力', type: 'toggle' },
     { key: 'enableCorePull', label: '核心收束力开关', desc: '对圆形核心节点的收束倾向', type: 'toggle' },
     { key: 'enableAnchor', label: '脉冲牵引力', desc: '节点被脉冲锁定时向锚点移动', type: 'toggle' },
@@ -521,17 +504,9 @@ const TUNING_DEFS = [
 
     { section: '拓扑结构基底分布', sectionDesc: '当有新细胞生长与加入时的基建布局指导' },
     { key: 'maxNodeCount', label: '最大节点数量限制', desc: '限制玩家可拥有的最大节点总数', min: 1, max: 2000, step: 1 },
-    { key: 'enableCompoundTopologyEdges', label: '复合连线允许', desc: '打开后结构网不再强制规整，可多重叠加韧带', type: 'toggle' },
-    { key: 'enableSunflowerTopologySlots', label: '向日葵槽位', desc: '退回老版整齐环列的黄金角分布律', type: 'toggle' },
     { key: 'slotSpacing', label: '基础散件距离', desc: '生成骨架之间初始缝隙(不等于最终拉扯弹性长度)', min: 40, max: 250, step: 2 },
-    { key: 'slotYCompression', label: '前后侧轴压缩', desc: '做扁长或圆阵', min: 0.3, max: 1.5, step: 0.02 },
-    { key: 'slotRadiusScale', label: '结构网半径倍缩', desc: '调整全体胖瘦', min: 0.3, max: 2, step: 0.02 },
     { key: 'forwardStep', label: '前探延展间隔', desc: '', min: 20, max: 200, step: 2 },
-    
-    { section: '弃用老旧编队规则', sectionDesc: '老一套硬套座标方案残留' },
-    { key: 'formationPullAnchored', label: '锚定硬拉力度', desc: '-', min: 0, max: 200, step: 1 },
-    { key: 'formationPullFreeBase', label: '脱机硬拉力度', desc: '-', min: 0, max: 300, step: 1 },
-    { key: 'formationPullStabilityBonus', label: '稳定态强拉成', desc: '-', min: 0, max: 100, step: 1 },
+
     { key: 'formationSpanFactor', label: '编队跨度延伸比', desc: '大组织自动更拉长前伸力', min: 0, max: 0.5, step: 0.01 },
 
     { section: '镜头高级细项（折叠）', sectionDesc: '默认先拧上面的 3 个主旋钮。这里是高级细调，谨慎修改。', defaultOpen: false },

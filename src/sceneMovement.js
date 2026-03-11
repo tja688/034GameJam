@@ -309,27 +309,6 @@ const SceneMovementMixin = {
             link.rest = clamp(targetRest, restMin, restMax);
         });
     },
-    isBlueOnlyDriveMode() {
-        const T = window.TUNING || {};
-        return !(T.legacyAllNodesMove ?? true);
-    },
-    nodeIsFunctionSuppressed(node) {
-        return this.isBlueOnlyDriveMode() && node.polarity === 'inverse';
-    },
-    nodeHasMoveAbility(node) {
-        if (!this.isBlueOnlyDriveMode()) {
-            return true;
-        }
-        return node.polarity === 'base';
-    },
-    isUpgradedIntentDriveEnabled() {
-        const T = window.TUNING || {};
-        return !!(T.enableUpgradedIntentDrive ?? false);
-    },
-    isSplitPolarityIntentEnabled() {
-        const T = window.TUNING || {};
-        return this.isUpgradedIntentDriveEnabled() && !!(T.splitPolarityIntentDrive ?? false);
-    },
     isBurstIntentDriveEnabled() {
         const T = window.TUNING || {};
         return !!(T.enableBurstIntentDrive ?? false);
@@ -354,13 +333,6 @@ const SceneMovementMixin = {
         const liveSpan = this.activeNodes && this.activeNodes.length > 0 ? this.getFormationSpan() : 0;
         return Math.max(PARTIAL_MESH_RULES.slotSpacing, this.player.topologyRadius || 0, liveSpan);
     },
-    getIntentClusterAggression() {
-        const nodeCount = this.activeNodes?.length || this.player?.chain?.length || 0;
-        const span = this.getIntentDriveSpan();
-        const countBias = clamp((nodeCount - 8) / 18, 0, 1);
-        const spanBias = clamp((span - 180) / 360, 0, 1);
-        return clamp(Math.max(countBias, spanBias), 0, 1);
-    },
     getNodeDriveFrontRatio(node, direction, span = this.getIntentDriveSpan()) {
         const rotated = rotateLocal(node.localX || 0, node.localY || 0, this.player.heading);
         const projection = rotated.x * direction.x + rotated.y * direction.y;
@@ -370,50 +342,14 @@ const SceneMovementMixin = {
         const forward = vectorFromAngle(this.player.heading);
         const flow = normalize(this.intent.flowX, this.intent.flowY, forward.x, forward.y);
         const aim = normalize(this.intent.aimX, this.intent.aimY, flow.x, flow.y);
-        const move = normalize(this.intent.moveX, this.intent.moveY, flow.x, flow.y);
-        const clusterAggro = clamp(this.intent.clusterAggro ?? 0, 0, 1);
         const burstAggro = this.isBurstIntentDriveEnabled()
             ? clamp(this.intent.burstAggro ?? 0, 0, 1)
             : 0;
-        const burstActivity = 1 + burstAggro * 0.24;
-
-        if (!this.isUpgradedIntentDriveEnabled()) {
-            return {
-                flow,
-                focus: aim,
-                aggression: burstAggro * 0.72,
-                activity: burstActivity
-            };
-        }
-
-        if (!this.isSplitPolarityIntentEnabled()) {
-            return {
-                flow,
-                focus: aim,
-                aggression: clamp(clusterAggro + burstAggro * 0.82, 0, 1),
-                activity: burstActivity
-            };
-        }
-
-        if (node.polarity === 'base') {
-            const baseFlow = normalize(this.intent.baseFlowX, this.intent.baseFlowY, flow.x, flow.y);
-            return {
-                flow: baseFlow,
-                focus: normalize(this.intent.aimX, this.intent.aimY, baseFlow.x, baseFlow.y),
-                aggression: clamp(0.18 + clusterAggro * 0.92 + burstAggro * 0.78, 0, 1),
-                activity: burstActivity
-            };
-        }
-
-        const hasMoveInput = (this.intent.moveLength ?? 0) > 0.01;
-        const inverseFlow = normalize(this.intent.inverseFlowX, this.intent.inverseFlowY, flow.x, flow.y);
         return {
-            flow: inverseFlow,
-            focus: hasMoveInput
-                ? normalize(move.x, move.y, inverseFlow.x, inverseFlow.y)
-                : normalize(forward.x, forward.y, inverseFlow.x, inverseFlow.y),
-            aggression: clamp(clusterAggro * 0.8 + burstAggro * 0.6 + (hasMoveInput ? 0.2 : 0), 0, 1),
-            activity: (hasMoveInput ? 1 : 0.4) * burstActivity
+            flow,
+            focus: aim,
+            aggression: burstAggro * 0.72,
+            activity: 1 + burstAggro * 0.24
         };
     },
     plantNode(node, profile) {
@@ -463,35 +399,21 @@ const SceneMovementMixin = {
         node.anchorX = this.player.centroidX + lead.x * forwardReach + right.x * sideReach;
         node.anchorY = this.player.centroidY + lead.y * forwardReach + right.y * sideReach;
         node.pulseGlow = 1;
-        if (this.nodeHasMoveAbility(node)) {
-            const stanceJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.5 : 1.0;
-            node.anchorStrength = profile.strength
-                * (1 + driveIntent.aggression * 0.52 + burstStrengthBoost * (T.burstStrengthBoost ?? 0.78))
-                * driveIntent.activity;
-            node.stanceTimer = profile.stance
-                * lerp(1, 0.84, driveIntent.aggression)
-                * lerp(1, 0.72, burstTempo)
-                * stanceJitter;
-            node.anchored = driveIntent.activity > 0.05;
-            if (!node.anchored) {
-                node.anchorStrength = 0;
-                node.stanceTimer = 0;
-            }
-            return;
-        }
-
-        node.anchorStrength = 0;
-        node.stanceTimer = 0;
-        node.anchored = false;
-    },
-    triggerNode(node, edge) {
-        if (this.nodeIsFunctionSuppressed(node)) {
+        const stanceJitter = chaos > 0 ? 1.0 + (Math.random() - 0.5) * chaos * 0.5 : 1.0;
+        node.anchorStrength = profile.strength
+            * (1 + driveIntent.aggression * 0.52 + burstStrengthBoost * (T.burstStrengthBoost ?? 0.78))
+            * driveIntent.activity;
+        node.stanceTimer = profile.stance
+            * lerp(1, 0.84, driveIntent.aggression)
+            * lerp(1, 0.72, burstTempo)
+            * stanceJitter;
+        node.anchored = driveIntent.activity > 0.05;
+        if (!node.anchored) {
             node.anchorStrength = 0;
             node.stanceTimer = 0;
-            node.anchored = false;
-            return;
         }
-
+    },
+    triggerNode(node, edge) {
         if (edge.kind === 'inverse') {
             this.player.agitation = clamp(this.player.agitation + 0.22, 0, 2);
         } else if (edge.kind === 'steady') {
@@ -554,11 +476,6 @@ const SceneMovementMixin = {
                 node.anchored = false;
                 node.anchorStrength = 0;
             }
-            if (!this.nodeHasMoveAbility(node) && node.anchored) {
-                node.anchored = false;
-                node.anchorStrength = 0;
-                node.stanceTimer = 0;
-            }
             if (node.anchored) {
                 node.stanceTimer -= simDt;
                 if (node.stanceTimer <= 0) {
@@ -569,7 +486,6 @@ const SceneMovementMixin = {
         });
 
         this.activeNodes.forEach((node) => {
-            const canDrive = this.nodeHasMoveAbility(node);
             const driveIntent = this.resolveNodeDriveIntent(node);
             if ((this.isClusterVolumeControlEnabled() || volume.latticePull > 0.01) && !(draggedTarget && node.index === draggedTarget.index)) {
                 const nominal = this.computeNominalOffset(node);
@@ -580,23 +496,8 @@ const SceneMovementMixin = {
                 node.fy += (targetY - node.y) * volume.latticePull;
             }
 
-            // ── 编队拉力 ──
-            if ((T.enableFormationPull ?? true) && canDrive) {
-                const nominal = this.computeNominalOffset(node);
-                const rotated = rotateLocal(nominal.x, nominal.y, this.player.heading);
-                const targetX = this.player.centroidX + rotated.x;
-                const targetY = this.player.centroidY + rotated.y;
-                const toNominalX = targetX - node.x;
-                const toNominalY = targetY - node.y;
-                const formationPull = node.anchored
-                    ? (T.formationPullAnchored ?? 32)
-                    : (T.formationPullFreeBase ?? 76) + this.player.stability * (T.formationPullStabilityBonus ?? 22);
-                node.fx += toNominalX * formationPull;
-                node.fy += toNominalY * formationPull;
-            }
-
             // ── 漂移力 ──
-            if ((T.enableDrift ?? true) && !node.anchored && canDrive) {
+            if ((T.enableDrift ?? true) && !node.anchored) {
                 const drive = node.role === 'blade' || node.role === 'dart'
                     ? (T.driftAttack ?? 54)
                     : node.role === 'shell'
@@ -612,7 +513,7 @@ const SceneMovementMixin = {
             }
 
             // ── 核心收束力 ──
-            if ((T.enableCorePull ?? true) && canDrive && (node.role === 'source' || node.role === 'compressor')) {
+            if ((T.enableCorePull ?? true) && (node.role === 'source' || node.role === 'compressor')) {
                 const pullToCoreX = this.player.centroidX - node.x;
                 const pullToCoreY = this.player.centroidY - node.y;
                 const coreStr = (T.corePullStrength ?? 24) * (volume.corePullScale || 1);
@@ -621,7 +522,7 @@ const SceneMovementMixin = {
             }
 
             // ── 锚定力 ──
-            if ((T.enableAnchor ?? true) && node.anchored && canDrive) {
+            if ((T.enableAnchor ?? true) && node.anchored) {
                 node.fx += (node.anchorX - node.x) * node.anchorStrength;
                 node.fy += (node.anchorY - node.y) * node.anchorStrength;
             }
@@ -736,10 +637,9 @@ const SceneMovementMixin = {
     updatePlayerState(simDt) {
         const T = window.TUNING || {};
         const desiredHeading = Math.atan2(this.intent.flowY, this.intent.flowX);
-        const clusterAggro = this.isUpgradedIntentDriveEnabled() ? clamp(this.intent.clusterAggro ?? 0, 0, 1) : 0;
         const burstAggro = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstAggro ?? 0, 0, 1) : 0;
         const turnRate = ((T.baseTurnRate ?? 3.1) + this.player.turnAssist * (T.turnAssistBonus ?? 2.1))
-            * (1 + clusterAggro * 0.28 + burstAggro * 0.42);
+            * (1 + burstAggro * 0.42);
         this.player.heading = Phaser.Math.Angle.RotateTo(this.player.heading, desiredHeading, turnRate * simDt);
         this.player.shieldTimer = Math.max(0, this.player.shieldTimer - simDt);
         this.player.tempoBoost = Math.max(0, this.player.tempoBoost - simDt * (T.tempoBoostDecay ?? 1.5));

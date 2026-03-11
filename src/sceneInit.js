@@ -338,8 +338,6 @@ const SceneInitMixin = {
         this.activeNodes = [];
         this.links = [];
         this.rebuildFormation(true);
-        this.lastCompoundTopologyEdgesEnabled = this.isCompoundTopologyEdgesEnabled();
-        this.lastSunflowerTopologyEnabled = this.isSunflowerTopologyEnabled();
         this.expandHoldTimer = 0;
         this.expandAddCount = 0;
         this.nextExpandThreshold = 0;
@@ -411,8 +409,6 @@ const SceneInitMixin = {
         this.handleModeInputs();
         this.readIntent(frameDt);
         this.updateEditMode(frameDt);
-        this.syncCompoundTopologyEdgesMode();
-        this.syncTopologySlotLayoutMode();
 
         const simDt = frameDt * this.timeScaleFactor;
         this.worldTime += simDt;

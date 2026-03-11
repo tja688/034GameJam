@@ -60,7 +60,7 @@
 
 1. **状态检查**：判定是否处于菜单模式、暂停状态、或死亡惩罚周期。
 2. **读入意图 (Intent)**：调用 `sceneInput.js -> handleModeInputs()` 及 `readIntent()`，把鼠标世界距离解算成内圈/中圈/外圈驱动、爆发态和体积态。
-3. **拓扑反馈**：`syncTopologySlotLayoutMode()` 设置目前的规则体系支撑力度。
+3. **拓扑反馈**：沿当前线性槽位 + 部分网格拓扑基线维持结构形体与支撑力度。
 4. **模拟推进 (Simulation Step)**：按物理缩放 `simDt`，顺序依次更新：
    * 脉冲流向推进 (`updatePulse`)
    * 重拉节点和变形计算 (`updateFormation`)
