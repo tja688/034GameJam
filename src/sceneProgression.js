@@ -483,7 +483,7 @@ const SceneProgressionMixin = {
                 : this.getRunTuningValue('gameplayFragmentMatterBiomass', 0.08)
         );
     },
-    onPreyDevoured(prey, node, attachment) {
+    applyPreyDevourOutcome(prey) {
         if (!prey) {
             return;
         }
@@ -506,6 +506,57 @@ const SceneProgressionMixin = {
         } else {
             this.advanceStage();
         }
+    },
+    queuePreyDevourOutcome(prey) {
+        if (!prey) {
+            return;
+        }
+
+        if (prey.isObjective) {
+            this.flushPendingDevourRewards();
+            this.applyPreyDevourOutcome(prey);
+            return;
+        }
+
+        if (!Array.isArray(this.pendingDevourRewards)) {
+            this.pendingDevourRewards = [];
+        }
+
+        this.pendingDevourRewards.push({
+            energyValue: prey.energyValue || 0,
+            biomassValue: (prey.biomassValue || 0) + (prey.growthBonus || 0),
+            progressValue: prey.progressValue || 0
+        });
+    },
+    flushPendingDevourRewards() {
+        if (!Array.isArray(this.pendingDevourRewards) || this.pendingDevourRewards.length === 0) {
+            return;
+        }
+
+        let totalEnergy = 0;
+        let totalBiomass = 0;
+        let totalProgress = 0;
+        let flash = this.runState?.stageFlash || 0;
+        let count = 0;
+
+        while (this.pendingDevourRewards.length > 0) {
+            const reward = this.pendingDevourRewards.pop();
+            totalEnergy += reward.energyValue || 0;
+            totalBiomass += reward.biomassValue || 0;
+            totalProgress += reward.progressValue || 0;
+            flash = Math.max(flash, 0.18 + (reward.progressValue || 0) * 0.04);
+            count += 1;
+        }
+
+        this.applyEnergyDelta(totalEnergy, Math.min(0.52, 0.18 + count * 0.06), 'devour');
+        this.gainBiomass(totalBiomass);
+        this.runState.totalProgress += totalProgress;
+        this.runState.stageProgress += totalProgress;
+        this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, flash);
+        this.noteDevourBatch?.(count);
+    },
+    onPreyDevoured(prey, node, attachment) {
+        this.queuePreyDevourOutcome(prey, node, attachment);
     },
     pickGrowthTemplate() {
         const stage = this.getCurrentStageDef();
@@ -625,6 +676,7 @@ const SceneProgressionMixin = {
     },
     updateRunState(simDt) {
         this.ensureRunProgressionState();
+        this.flushPendingDevourRewards();
         const stage = this.getCurrentStageDef();
         const objective = this.getObjectivePrey();
         const nodeCount = this.activeNodes?.length || this.player.chain?.length || DEFAULT_BASE_CHAIN.length;

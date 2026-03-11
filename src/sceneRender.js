@@ -11,6 +11,15 @@ const SceneRenderMixin = {
         this.cameraRig.shake = Math.max(this.cameraRig.shake || 0, worldAmount);
         this.cameraRig.hudShake = Math.max(this.cameraRig.hudShake || 0, hudAmount);
     },
+    buildRenderCaches() {
+        this.activeNodeIndexMap = new Map(this.activeNodes.map((node) => [node.index, node]));
+    },
+    isScreenCircleVisible(x, y, radius = 0, margin = 0) {
+        const width = this.cameraRig?.viewportWidth || this.scale?.width || window.innerWidth;
+        const height = this.cameraRig?.viewportHeight || this.scale?.height || window.innerHeight;
+        const pad = Math.max(0, radius + margin);
+        return !(x < -pad || x > width + pad || y < -pad || y > height + pad);
+    },
     updateEffects(simDt) {
         for (let i = this.effects.length - 1; i >= 0; i -= 1) {
             this.effects[i].life -= simDt;
@@ -22,6 +31,7 @@ const SceneRenderMixin = {
     render() {
         const g = this.graphics;
         g.clear();
+        this.buildRenderCaches();
         this.drawWorld(g);
         this.drawFragments(g);
         this.drawPrey(g);
@@ -114,6 +124,10 @@ const SceneRenderMixin = {
     drawEffects(g) {
         this.effects.forEach((effect) => {
             const position = this.worldToScreen(effect.x, effect.y);
+            const radius = effect.radius * this.cameraRig.zoom + 18;
+            if (!this.isScreenCircleVisible(position.x, position.y, radius, 8)) {
+                return;
+            }
             const alpha = clamp(effect.life / effect.total, 0, 1);
             g.lineStyle(effect.thickness, effect.color, alpha * 0.9);
             g.strokeCircle(position.x, position.y, effect.radius * this.cameraRig.zoom + (1 - alpha) * 18);
@@ -130,6 +144,9 @@ const SceneRenderMixin = {
                 ? 1 + Math.sin(this.worldTime * 10 + fragment.pulse) * 0.14
                 : 1;
             const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 20);
+            if (!this.isScreenCircleVisible(position.x, position.y, size * 2, 18)) {
+                return;
+            }
             const trailX = position.x - fragment.vx * 0.016 * this.cameraRig.zoom;
             const trailY = position.y - fragment.vy * 0.016 * this.cameraRig.zoom;
             g.lineStyle(Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
@@ -161,6 +178,9 @@ const SceneRenderMixin = {
             const size = clamp(baseSize, 14, prey.sizeKey === 'large' ? 220 : prey.sizeKey === 'medium' ? 156 : 118);
             const x = position.x + shakeX;
             const y = position.y + shakeY;
+            if (!this.isScreenCircleVisible(x, y, size * 1.2, 20)) {
+                return;
+            }
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
 
             drawShape(g, prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
@@ -192,7 +212,7 @@ const SceneRenderMixin = {
             }
             if (prey.attachments.length > 0) {
                 (prey.attachments || []).forEach((attachment) => {
-                    const node = this.activeNodes.find((entry) => entry.index === attachment.nodeIndex);
+                    const node = this.activeNodeIndexMap?.get(attachment.nodeIndex);
                     const angle = node
                         ? Math.atan2(node.displayY - prey.displayY, node.displayX - prey.displayX)
                         : attachment.phase || 0;
@@ -237,12 +257,15 @@ const SceneRenderMixin = {
     drawPredationLinks(g) {
         this.prey.forEach((prey) => {
             (prey.attachments || []).forEach((attachment) => {
-                const node = this.activeNodes.find((entry) => entry.index === attachment.nodeIndex);
+                const node = this.activeNodeIndexMap?.get(attachment.nodeIndex);
                 if (!node) {
                     return;
                 }
                 const nodePos = this.worldToScreen(node.displayX, node.displayY);
                 const preyPos = this.worldToScreen(prey.displayX, prey.displayY);
+                if (!this.isScreenCircleVisible(nodePos.x, nodePos.y, 10, 12) && !this.isScreenCircleVisible(preyPos.x, preyPos.y, 10, 12)) {
+                    return;
+                }
                 const attachX = lerp(nodePos.x, preyPos.x, 0.32);
                 const attachY = lerp(nodePos.y, preyPos.y, 0.32);
                 const color = attachment.mode === 'hook'

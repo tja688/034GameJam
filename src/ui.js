@@ -349,6 +349,9 @@ const SceneUiMixin = {
 
         const actualFps = Number.isFinite(this.game?.loop?.actualFps) ? this.game.loop.actualFps : 0;
         const frameMs = Number.isFinite(deltaMs) ? deltaMs : 0;
-        this.ui.fps.textContent = `FPS ${actualFps.toFixed(1)}\n${frameMs.toFixed(1)} ms`;
+        const probe = this.performanceProbe || {};
+        const peakLabel = probe.lastPeakSection ? `${probe.lastPeakSection} ${getFiniteNumber(probe.lastPeakMs, 0).toFixed(1)} ms` : 'section --';
+        const devourLabel = `devour ${Math.max(0, probe.lastDevourBurst || 0)} / batch ${Math.max(0, probe.lastDevourBatch || 0)}`;
+        this.ui.fps.textContent = `FPS ${actualFps.toFixed(1)}\n${frameMs.toFixed(1)} ms\n${peakLabel}\n${devourLabel}`;
     },
 };

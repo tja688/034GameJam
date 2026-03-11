@@ -531,6 +531,7 @@ const SceneCombatMixin = {
         if (index >= 0) {
             this.prey.splice(index, 1);
         }
+        this.noteDevourBurst?.(1);
         this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
         if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPreyDeathRingsEnabled', true)) {
             this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4);
@@ -620,7 +621,13 @@ const SceneCombatMixin = {
             }
             return;
         }
-        const feeders = this.activeNodes.filter((node) => node.shape === 'circle');
+        const feeders = [];
+        for (let i = 0; i < this.activeNodes.length; i += 1) {
+            const node = this.activeNodes[i];
+            if (node.shape === 'circle') {
+                feeders.push(node);
+            }
+        }
         const collectPerFrameCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentCollectPerFrameCap', 8) ?? 8));
         let collectedThisFrame = 0;
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
@@ -634,7 +641,8 @@ const SceneCombatMixin = {
             let targetNode = null;
             let targetDistanceSq = Infinity;
             if (fragment.collectible && feeders.length > 0) {
-                feeders.forEach((node) => {
+                for (let j = 0; j < feeders.length; j += 1) {
+                    const node = feeders[j];
                     const dx = node.x - fragment.x;
                     const dy = node.y - fragment.y;
                     const distanceSq = dx * dx + dy * dy;
@@ -642,7 +650,7 @@ const SceneCombatMixin = {
                         targetDistanceSq = distanceSq;
                         targetNode = node;
                     }
-                });
+                }
             }
 
             if (targetNode) {

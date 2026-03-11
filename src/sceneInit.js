@@ -1,6 +1,83 @@
 
 
 const SceneInitMixin = {
+    createDefaultPerformanceProbe() {
+        return {
+            frame: 0,
+            current: null,
+            lastFrameMs: 0,
+            lastPeakSection: '',
+            lastPeakMs: 0,
+            pendingDevourBurst: 0,
+            lastDevourBurst: 0,
+            pendingDevourBatch: 0,
+            lastDevourBatch: 0
+        };
+    },
+    beginFramePerformanceProbe(deltaMs = 16.67) {
+        if (!this.performanceProbe) {
+            this.performanceProbe = this.createDefaultPerformanceProbe();
+        }
+        this.performanceProbe.current = {
+            frame: (this.performanceProbe.frame || 0) + 1,
+            deltaMs: Number.isFinite(deltaMs) ? deltaMs : 0,
+            sections: {}
+        };
+    },
+    profileFrameSection(name, callback) {
+        if (typeof callback !== 'function') {
+            return undefined;
+        }
+        const probe = this.performanceProbe;
+        if (!probe?.current || typeof performance?.now !== 'function') {
+            return callback();
+        }
+        const startedAt = performance.now();
+        const result = callback();
+        const elapsed = performance.now() - startedAt;
+        probe.current.sections[name] = (probe.current.sections[name] || 0) + elapsed;
+        return result;
+    },
+    endFramePerformanceProbe() {
+        const probe = this.performanceProbe;
+        if (!probe?.current) {
+            return;
+        }
+
+        let peakSection = '';
+        let peakMs = 0;
+        Object.entries(probe.current.sections).forEach(([name, value]) => {
+            if (name === 'fpsOverlay') {
+                return;
+            }
+            if (value > peakMs) {
+                peakMs = value;
+                peakSection = name;
+            }
+        });
+
+        probe.frame = probe.current.frame;
+        probe.lastFrameMs = probe.current.deltaMs;
+        probe.lastPeakSection = peakSection;
+        probe.lastPeakMs = peakMs;
+        probe.lastDevourBurst = probe.pendingDevourBurst || 0;
+        probe.lastDevourBatch = probe.pendingDevourBatch || 0;
+        probe.pendingDevourBurst = 0;
+        probe.pendingDevourBatch = 0;
+        probe.current = null;
+    },
+    noteDevourBurst(count = 1) {
+        if (!this.performanceProbe) {
+            this.performanceProbe = this.createDefaultPerformanceProbe();
+        }
+        this.performanceProbe.pendingDevourBurst += Math.max(0, Math.round(count) || 0);
+    },
+    noteDevourBatch(count = 1) {
+        if (!this.performanceProbe) {
+            this.performanceProbe = this.createDefaultPerformanceProbe();
+        }
+        this.performanceProbe.pendingDevourBatch += Math.max(0, Math.round(count) || 0);
+    },
     createDefaultEditState() {
         return {
             active: false,
@@ -347,6 +424,8 @@ const SceneInitMixin = {
         this.cameraRig = this.createDefaultCameraRig();
         this.clusterVolume = this.createDefaultClusterVolumeState();
         this.burstDrive = this.createDefaultBurstDriveState();
+        this.performanceProbe = this.createDefaultPerformanceProbe();
+        this.pendingDevourRewards = [];
         this.poolNodes = this.createPoolNodesFromLibrary();
         this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
         this.player.topology = this.rebuildTopologyFromCurrentChain();
@@ -363,34 +442,40 @@ const SceneInitMixin = {
     },
     update(_, deltaMs) {
         const frameDt = Math.min(deltaMs, 33) / 1000;
-        this.updateFpsOverlay?.(deltaMs);
+        this.beginFramePerformanceProbe(deltaMs);
+        this.profileFrameSection('fpsOverlay', () => this.updateFpsOverlay?.(deltaMs));
 
         if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
             if (this.menuMode === 'pause') {
+                this.endFramePerformanceProbe();
                 this.resumeGame();
                 return;
             }
             if (this.menuMode === 'main') {
+                this.endFramePerformanceProbe();
                 return;
             }
             if (this.player.edit.active) {
                 this.exitEditMode();
             } else if (this.sessionStarted) {
+                this.endFramePerformanceProbe();
                 this.showPauseMenu();
                 return;
             }
         }
 
         if (this.menuMode) {
-            this.updateCamera(frameDt);
-            this.updateDisplay(frameDt);
-            this.render();
+            this.profileFrameSection('camera', () => this.updateCamera(frameDt));
+            this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+            this.profileFrameSection('render', () => this.render());
+            this.endFramePerformanceProbe();
             return;
         }
 
         if (this.player.dead) {
             this.player.deathTimer -= frameDt;
             if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
+                this.endFramePerformanceProbe();
                 this.resetSimulation(true);
                 this.resumeGame();
                 return;
@@ -398,9 +483,10 @@ const SceneInitMixin = {
         }
 
         if (this.paused) {
-            this.updateCamera(frameDt);
-            this.updateDisplay(frameDt);
-            this.render();
+            this.profileFrameSection('camera', () => this.updateCamera(frameDt));
+            this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+            this.profileFrameSection('render', () => this.render());
+            this.endFramePerformanceProbe();
             return;
         }
 
@@ -421,39 +507,41 @@ const SceneInitMixin = {
             }
         }
         if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+            this.endFramePerformanceProbe();
             this.resetSimulation(true);
             return;
         }
 
-        this.handleModeInputs();
-        this.readIntent(frameDt);
-        this.updateEditMode(frameDt);
+        this.profileFrameSection('modeInputs', () => this.handleModeInputs());
+        this.profileFrameSection('intent', () => this.readIntent(frameDt));
+        this.profileFrameSection('editMode', () => this.updateEditMode(frameDt));
 
         const simDt = frameDt * this.timeScaleFactor;
         this.worldTime += simDt;
 
         if (!this.player.dead) {
-            this.updatePulse(simDt);
-            this.updateFormation(simDt);
-            this.updatePlayerState(simDt);
-            this.updateSpawns(simDt);
-            this.updatePrey(simDt);
-            this.resolvePreyNodeCollisions();
-            this.updatePredation(simDt);
+            this.profileFrameSection('pulse', () => this.updatePulse(simDt));
+            this.profileFrameSection('formation', () => this.updateFormation(simDt));
+            this.profileFrameSection('playerState', () => this.updatePlayerState(simDt));
+            this.profileFrameSection('spawns', () => this.updateSpawns(simDt));
+            this.profileFrameSection('prey', () => this.updatePrey(simDt));
+            this.profileFrameSection('collisions', () => this.resolvePreyNodeCollisions());
+            this.profileFrameSection('predation', () => this.updatePredation(simDt));
             if (typeof this.updateRunState === 'function') {
-                this.updateRunState(simDt);
+                this.profileFrameSection('runState', () => this.updateRunState(simDt));
             }
-            this.updateEffects(simDt);
+            this.profileFrameSection('effects', () => this.updateEffects(simDt));
         } else {
             if (typeof this.updateRunState === 'function') {
-                this.updateRunState(frameDt);
+                this.profileFrameSection('runState', () => this.updateRunState(frameDt));
             }
-            this.updateEffects(frameDt);
+            this.profileFrameSection('effects', () => this.updateEffects(frameDt));
         }
 
-        this.updateCamera(frameDt);
-        this.updateDisplay(frameDt);
-        this.render();
+        this.profileFrameSection('camera', () => this.updateCamera(frameDt));
+        this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+        this.profileFrameSection('render', () => this.render());
+        this.endFramePerformanceProbe();
     },
     worldToScreen(x, y) {
         return {
