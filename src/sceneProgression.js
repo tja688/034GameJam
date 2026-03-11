@@ -21,16 +21,47 @@ const SceneProgressionMixin = {
         };
     },
     isDebugToolsEnabled() {
-        return !!window.CORE_DEMO_DEBUG;
+        return window.CORE_DEMO_DEBUG !== false;
+    },
+    getRunTuningValue(key, fallback) {
+        return getFiniteNumber(window.TUNING?.[key], fallback);
     },
     getStageCount() {
         return DEMO_STAGE_DEFS.length;
     },
     getCurrentStageDef() {
-        if (!this.runState) {
-            return DEMO_STAGE_DEFS[0];
-        }
-        return DEMO_STAGE_DEFS[clamp(this.runState.stageIndex || 0, 0, DEMO_STAGE_DEFS.length - 1)];
+        const stageIndex = this.runState
+            ? clamp(this.runState.stageIndex || 0, 0, DEMO_STAGE_DEFS.length - 1)
+            : 0;
+        const baseStage = DEMO_STAGE_DEFS[stageIndex];
+        const spawnDensityMul = Math.max(0.25, this.getRunTuningValue('gameplayStageSpawnDensityMul', 1));
+        const spawnIntervalMul = Math.max(0.25, this.getRunTuningValue('gameplayStageSpawnIntervalMul', 1));
+        const spawnCapMul = Math.max(0.25, this.getRunTuningValue('gameplayStageSpawnCapMul', 1));
+        const progressGoalMul = Math.max(0.25, this.getRunTuningValue('gameplayStageProgressGoalMul', 1));
+        const metabolismMul = Math.max(0.25, this.getRunTuningValue('gameplayStageMetabolismMul', 1));
+        const maxNodesBonus = Math.round(this.getRunTuningValue('gameplayStageMaxNodesBonus', 0));
+
+        return {
+            ...baseStage,
+            progressGoal: Math.max(1, baseStage.progressGoal * progressGoalMul),
+            maxNodes: Math.max(DEFAULT_BASE_CHAIN.length, baseStage.maxNodes + maxNodesBonus),
+            metabolism: Math.max(0.1, baseStage.metabolism * metabolismMul),
+            spawnCap: Math.max(1, Math.round(baseStage.spawnCap * spawnCapMul)),
+            spawnRules: baseStage.spawnRules.map((rule) => {
+                const desired = Math.max(1, Math.round(rule.desired * spawnDensityMul));
+                const packMin = Math.min(desired, Math.max(1, Math.round((rule.packMin || 1) * spawnDensityMul)));
+                const packMaxBase = Math.max(rule.packMax || packMin, packMin);
+                const packMax = Math.min(desired, Math.max(packMin, Math.round(packMaxBase * spawnDensityMul)));
+                return {
+                    ...rule,
+                    desired,
+                    packMin,
+                    packMax,
+                    interval: Math.max(0.12, rule.interval * spawnIntervalMul)
+                };
+            }),
+            objective: baseStage.objective ? { ...baseStage.objective } : null
+        };
     },
     getRunPalette() {
         return this.getCurrentStageDef()?.palette || {
@@ -46,12 +77,12 @@ const SceneProgressionMixin = {
         if (!this.runState) {
             this.runState = this.createDefaultRunState();
         }
-        if (!Number.isFinite(this.player.maxEnergy) || this.player.maxEnergy <= 0) {
-            this.player.maxEnergy = 100;
-        }
+        const tunedMaxEnergy = Math.max(1, this.getRunTuningValue('gameplayMaxEnergy', 100));
+        this.player.maxEnergy = tunedMaxEnergy;
         if (!Number.isFinite(this.player.energy)) {
             this.player.energy = this.player.maxEnergy * 0.8;
         }
+        this.player.energy = clamp(this.player.energy, 0, tunedMaxEnergy);
         if (!Number.isFinite(this.player.growthBuffer)) {
             this.player.growthBuffer = 0;
         }
@@ -66,9 +97,11 @@ const SceneProgressionMixin = {
         }
     },
     resetRunProgression() {
+        const maxEnergy = Math.max(1, this.getRunTuningValue('gameplayMaxEnergy', 100));
+        const startEnergyRatio = clamp(this.getRunTuningValue('gameplayStartEnergyRatio', 0.78), 0, 1);
         this.runState = this.createDefaultRunState();
-        this.player.maxEnergy = 100;
-        this.player.energy = 78;
+        this.player.maxEnergy = maxEnergy;
+        this.player.energy = maxEnergy * startEnergyRatio;
         this.player.growthBuffer = 0;
         this.player.nextGrowthCost = this.getGrowthCostForNodeCount(this.player.chain?.length || DEFAULT_BASE_CHAIN.length);
         this.player.metabolism = 0;
@@ -89,7 +122,10 @@ const SceneProgressionMixin = {
         this.runState.spawnTimers = timers;
     },
     getGrowthCostForNodeCount(nodeCount) {
-        return Math.min(18, 3.2 + Math.max(0, nodeCount - DEFAULT_BASE_CHAIN.length) * 0.92);
+        const baseCost = this.getRunTuningValue('gameplayGrowthCostBase', 3.2);
+        const perNodeCost = this.getRunTuningValue('gameplayGrowthCostPerNode', 0.92);
+        const cap = Math.max(1, this.getRunTuningValue('gameplayGrowthCostCap', 18));
+        return Math.min(cap, baseCost + Math.max(0, nodeCount - DEFAULT_BASE_CHAIN.length) * perNodeCost);
     },
     getEnergyRatio() {
         return clamp((this.player.energy || 0) / Math.max(1, this.player.maxEnergy || 100), 0, 1);
@@ -116,15 +152,22 @@ const SceneProgressionMixin = {
         const archetype = PREY_ARCHETYPE_DEFS[spawnConfig.archetype] || PREY_ARCHETYPE_DEFS.skittish;
         const sizeFactor = prey.sizeKey === 'large' ? 1.95 : prey.sizeKey === 'medium' ? 1.35 : 1;
         const healthMul = spawnConfig.archetype === 'bulwark'
-            ? 1.42
+            ? this.getRunTuningValue('gameplayBulwarkHealthMul', 1.42)
             : spawnConfig.archetype === 'weakspot'
-                ? 1.28
+                ? this.getRunTuningValue('gameplayWeakspotHealthMul', 1.28)
                 : spawnConfig.archetype === 'apex'
-                    ? 2.1
+                    ? this.getRunTuningValue('gameplayApexHealthMul', 2.1)
                     : spawnConfig.archetype === 'school'
-                        ? 0.9
+                        ? this.getRunTuningValue('gameplaySchoolHealthMul', 0.9)
                         : 1;
-        const objectiveMul = spawnConfig.isObjective ? 1.22 : 1;
+        const objectiveMul = spawnConfig.isObjective
+            ? this.getRunTuningValue('gameplayObjectiveHealthMul', 1.22)
+            : 1;
+        const bulwarkMassMul = this.getRunTuningValue('gameplayBulwarkMassMul', 1.2);
+        const apexMassMul = this.getRunTuningValue('gameplayApexMassMul', 1.42);
+        const bulwarkExtraAnchors = Math.max(0, Math.round(this.getRunTuningValue('gameplayBulwarkExtraAnchors', 1)));
+        const weakspotExtraAnchors = Math.max(0, Math.round(this.getRunTuningValue('gameplayWeakspotExtraAnchors', 1)));
+        const apexExtraAnchors = Math.max(0, Math.round(this.getRunTuningValue('gameplayApexExtraAnchors', 2)));
 
         prey.archetype = spawnConfig.archetype;
         prey.spawnRuleId = spawnConfig.id || spawnConfig.archetype;
@@ -142,8 +185,14 @@ const SceneProgressionMixin = {
         prey.accel *= archetype.accelMul;
         prey.fleeMul *= archetype.fleeMul;
         prey.wander *= archetype.wanderMul;
-        prey.mass *= spawnConfig.archetype === 'bulwark' ? 1.2 : spawnConfig.archetype === 'apex' ? 1.42 : 1;
-        prey.maxAnchors += spawnConfig.archetype === 'bulwark' ? 1 : spawnConfig.archetype === 'apex' ? 2 : spawnConfig.archetype === 'weakspot' ? 1 : 0;
+        prey.mass *= spawnConfig.archetype === 'bulwark' ? bulwarkMassMul : spawnConfig.archetype === 'apex' ? apexMassMul : 1;
+        prey.maxAnchors += spawnConfig.archetype === 'bulwark'
+            ? bulwarkExtraAnchors
+            : spawnConfig.archetype === 'apex'
+                ? apexExtraAnchors
+                : spawnConfig.archetype === 'weakspot'
+                    ? weakspotExtraAnchors
+                    : 0;
         prey.energyValue = archetype.energyValue * sizeFactor + (spawnConfig.energyBonus || 0);
         prey.biomassValue = archetype.biomassValue * sizeFactor + (spawnConfig.biomassBonus || 0);
         prey.progressValue = archetype.progressValue * sizeFactor + (spawnConfig.progressBonus || 0);
@@ -173,7 +222,8 @@ const SceneProgressionMixin = {
         const compression = clamp(this.intent?.centerCompression ?? this.clusterVolume?.compression ?? 0, 0, 1);
         const encircle = clamp(pressure?.encirclement || 0, 0, 1);
         const need = clamp(prey?.compressionNeed || 0, 0, 0.9);
-        return clamp((compression - need + encircle * 0.26) / Math.max(0.08, 1 - need), 0, 1);
+        const encircleAssist = this.getRunTuningValue('gameplayCompressionEncircleAssist', 0.26);
+        return clamp((compression - need + encircle * encircleAssist) / Math.max(0.08, 1 - need), 0, 1);
     },
     getWeakspotAccess(prey, node, pressure) {
         if (!prey || !(prey.weakArc > 0) || !node) {
@@ -185,7 +235,9 @@ const SceneProgressionMixin = {
         const angularAccess = 1 - clamp(angleDistance(attackAngle, weakAngle) / Math.max(0.0001, prey.weakArc), 0, 1);
         const encircle = clamp(pressure?.encirclement || 0, 0, 1);
         const compression = clamp(this.intent?.centerCompression ?? 0, 0, 1);
-        return clamp(Math.max(angularAccess, encircle * 0.82 + compression * 0.18), 0, 1);
+        const encircleAssist = this.getRunTuningValue('gameplayWeakspotEncircleAssist', 0.82);
+        const compressionAssist = this.getRunTuningValue('gameplayWeakspotCompressionAssist', 0.18);
+        return clamp(Math.max(angularAccess, encircle * encircleAssist + compression * compressionAssist), 0, 1);
     },
     getPreyDamageMultiplier(prey, node, attachment, pressure) {
         if (!prey) {
@@ -198,24 +250,37 @@ const SceneProgressionMixin = {
         let multiplier = 1;
 
         if (prey.archetype === 'bulwark') {
-            multiplier *= 0.16 + compressionAccess * 0.96 + encircle * 0.32;
-            if (attachment?.mode === 'feed' && compressionAccess < 0.4) {
-                multiplier *= 0.58;
+            multiplier *= this.getRunTuningValue('gameplayBulwarkBaseDamage', 0.16)
+                + compressionAccess * this.getRunTuningValue('gameplayBulwarkCompressionDamage', 0.96)
+                + encircle * this.getRunTuningValue('gameplayBulwarkEncircleDamage', 0.32);
+            if (attachment?.mode === 'feed' && compressionAccess < this.getRunTuningValue('gameplayBulwarkFeedCompressionGate', 0.4)) {
+                multiplier *= this.getRunTuningValue('gameplayBulwarkFeedPenalty', 0.58);
             }
         } else if (prey.archetype === 'weakspot') {
-            multiplier *= 0.12 + weakAccess * 1.08;
-            if (attachment?.mode === 'feed' && weakAccess < 0.42) {
-                multiplier *= 0.4;
+            multiplier *= this.getRunTuningValue('gameplayWeakspotBaseDamage', 0.12)
+                + weakAccess * this.getRunTuningValue('gameplayWeakspotWeakArcDamage', 1.08);
+            if (attachment?.mode === 'feed' && weakAccess < this.getRunTuningValue('gameplayWeakspotFeedGate', 0.42)) {
+                multiplier *= this.getRunTuningValue('gameplayWeakspotFeedPenalty', 0.4);
             }
         } else if (prey.archetype === 'apex') {
-            multiplier *= 0.08 + compressionAccess * 0.44 + weakAccess * 0.88 + encircle * 0.26;
-            if (attachment?.mode === 'feed' && (compressionAccess < 0.38 || weakAccess < 0.36)) {
-                multiplier *= 0.34;
+            multiplier *= this.getRunTuningValue('gameplayApexBaseDamage', 0.08)
+                + compressionAccess * this.getRunTuningValue('gameplayApexCompressionDamage', 0.44)
+                + weakAccess * this.getRunTuningValue('gameplayApexWeakspotDamage', 0.88)
+                + encircle * this.getRunTuningValue('gameplayApexEncircleDamage', 0.26);
+            if (
+                attachment?.mode === 'feed'
+                && (
+                    compressionAccess < this.getRunTuningValue('gameplayApexFeedCompressionGate', 0.38)
+                    || weakAccess < this.getRunTuningValue('gameplayApexFeedWeakGate', 0.36)
+                )
+            ) {
+                multiplier *= this.getRunTuningValue('gameplayApexFeedPenalty', 0.34);
             }
         }
 
         if (prey.isObjective) {
-            multiplier *= 0.92 + clamp((pressure?.cutterCount || 0) / 4, 0, 1) * 0.18;
+            multiplier *= this.getRunTuningValue('gameplayObjectiveCutterBase', 0.92)
+                + clamp((pressure?.cutterCount || 0) / 4, 0, 1) * this.getRunTuningValue('gameplayObjectiveCutterPerCount', 0.18);
         }
 
         return multiplier;
@@ -235,8 +300,17 @@ const SceneProgressionMixin = {
     },
     absorbFragment(fragment) {
         const isEnergy = fragment.kind === 'energy';
-        this.applyEnergyDelta(isEnergy ? 4.8 : 2.1, isEnergy ? 0.22 : 0.08);
-        this.gainBiomass(isEnergy ? 0.24 : 0.08);
+        this.applyEnergyDelta(
+            isEnergy
+                ? this.getRunTuningValue('gameplayFragmentEnergyGain', 4.8)
+                : this.getRunTuningValue('gameplayFragmentMatterGain', 2.1),
+            isEnergy ? 0.22 : 0.08
+        );
+        this.gainBiomass(
+            isEnergy
+                ? this.getRunTuningValue('gameplayFragmentEnergyBiomass', 0.24)
+                : this.getRunTuningValue('gameplayFragmentMatterBiomass', 0.08)
+        );
     },
     onPreyDevoured(prey, node, attachment) {
         if (!prey) {
@@ -286,7 +360,11 @@ const SceneProgressionMixin = {
         }
         if (grown > 0) {
             this.runState.growthPulse = Math.max(this.runState.growthPulse || 0, 0.8);
-            this.applyEnergyDelta(6 + grown * 1.5, 0.16);
+            this.applyEnergyDelta(
+                this.getRunTuningValue('gameplayGrowthEnergyBase', 6)
+                + grown * this.getRunTuningValue('gameplayGrowthEnergyPerNode', 1.5),
+                0.16
+            );
             this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 28, this.getRunPalette().pulse, 0.18, 2);
         }
         return grown;
@@ -328,7 +406,13 @@ const SceneProgressionMixin = {
         this.runState.stageSignal = 1;
         this.runState.stageChangedAt = this.worldTime;
         this.syncSpawnTimersForStage(true);
-        this.applyEnergyDelta(Math.max(12, this.player.maxEnergy * 0.24), 0.42);
+        this.applyEnergyDelta(
+            Math.max(
+                this.getRunTuningValue('gameplayStageAdvanceEnergyFlat', 12),
+                this.player.maxEnergy * this.getRunTuningValue('gameplayStageAdvanceEnergyRatio', 0.24)
+            ),
+            0.42
+        );
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3);
     },
     triggerVictory() {
@@ -337,7 +421,7 @@ const SceneProgressionMixin = {
         }
 
         this.runState.complete = true;
-        this.runState.completeTimer = 5.5;
+        this.runState.completeTimer = Math.max(0.5, this.getRunTuningValue('gameplayVictoryDuration', 5.5));
         this.runState.stageFlash = 1.8;
         this.runState.objectiveSpawned = false;
         this.runState.objectiveId = '';
@@ -352,7 +436,7 @@ const SceneProgressionMixin = {
         }
 
         this.player.dead = true;
-        this.player.deathTimer = 2.6;
+        this.player.deathTimer = Math.max(0.5, this.getRunTuningValue('gameplayDeathDuration', 2.6));
         this.runState.deathCause = reason;
         this.runState.lowEnergyPulse = 1;
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.9);
@@ -374,6 +458,8 @@ const SceneProgressionMixin = {
         const huntWeight = clamp(this.intent?.pointerDriveHuntWeight ?? 0, 0, 1.2);
         const expansion = clamp(this.clusterVolume?.expansion ?? Math.max(0, this.intent?.clusterVolume ?? 0), 0, 1);
         const compression = clamp(this.intent?.centerCompression ?? this.clusterVolume?.compression ?? 0, 0, 1);
+        const objectivePulseDamp = Math.max(0.1, this.getRunTuningValue('gameplayObjectivePulseDamp', 3.6));
+        const lowEnergyThreshold = clamp(this.getRunTuningValue('gameplayLowEnergyThreshold', 0.28), 0.01, 0.95);
 
         this.runState.stageFlash = Math.max(0, (this.runState.stageFlash || 0) - simDt * 0.64);
         this.runState.stageSignal += simDt * (0.8 + (this.runState.stageIndex || 0) * 0.18);
@@ -383,7 +469,7 @@ const SceneProgressionMixin = {
         this.player.victoryPulse = Math.max(0, (this.player.victoryPulse || 0) - simDt * 0.65);
 
         const objectiveVisible = !!objective;
-        this.runState.objectivePulse = damp(this.runState.objectivePulse || 0, objectiveVisible ? 1 : 0, 3.6, simDt);
+        this.runState.objectivePulse = damp(this.runState.objectivePulse || 0, objectiveVisible ? 1 : 0, objectivePulseDamp, simDt);
         if (this.runState.objectiveSpawned && !objectiveVisible && !this.runState.complete && !this.player.dead) {
             this.runState.objectiveSpawned = false;
             this.runState.objectiveId = '';
@@ -399,15 +485,15 @@ const SceneProgressionMixin = {
 
         if (!this.player.dead) {
             const drain = Math.max(
-                0.8,
+                this.getRunTuningValue('gameplayMetabolismFloor', 0.8),
                 stage.metabolism
-                + nodeCount * 0.24
-                + burstAggro * 2.45
-                + huntWeight * 1.28
-                + expansion * 1.72
-                + (objectiveVisible ? 0.5 : 0)
-                - compression * 1.9
-                - clamp(this.player.predationPressure || 0, 0, 1) * 0.55
+                + nodeCount * this.getRunTuningValue('gameplayMetabolismNodeWeight', 0.24)
+                + burstAggro * this.getRunTuningValue('gameplayMetabolismBurstWeight', 2.45)
+                + huntWeight * this.getRunTuningValue('gameplayMetabolismHuntWeight', 1.28)
+                + expansion * this.getRunTuningValue('gameplayMetabolismExpansionWeight', 1.72)
+                + (objectiveVisible ? this.getRunTuningValue('gameplayMetabolismObjectiveWeight', 0.5) : 0)
+                - compression * this.getRunTuningValue('gameplayMetabolismCompressionRelief', 1.9)
+                - clamp(this.player.predationPressure || 0, 0, 1) * this.getRunTuningValue('gameplayMetabolismPredationRelief', 0.55)
             );
             this.player.metabolism = drain;
             this.applyEnergyDelta(-drain * simDt);
@@ -434,6 +520,6 @@ const SceneProgressionMixin = {
             }
         }
 
-        this.runState.lowEnergyPulse = damp(this.runState.lowEnergyPulse || 0, this.getEnergyRatio() < 0.28 ? 1 : 0, 3.2, simDt);
+        this.runState.lowEnergyPulse = damp(this.runState.lowEnergyPulse || 0, this.getEnergyRatio() < lowEnergyThreshold ? 1 : 0, 3.2, simDt);
     }
 };

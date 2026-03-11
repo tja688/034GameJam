@@ -62,12 +62,15 @@
     <button id="floating-add-node" aria-hidden="true"></button>
     <script>
         const debugButton = document.getElementById('floating-add-node');
-        if (window.CORE_DEMO_DEBUG === true) {
+        const devToolsEnabled = window.CORE_DEMO_DEBUG !== false;
+        debugButton.textContent = '➕ 节点';
+        debugButton.setAttribute('aria-hidden', String(!devToolsEnabled));
+        if (devToolsEnabled) {
             debugButton.style.display = 'flex';
         }
         debugButton.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            if (window.CORE_DEMO_DEBUG === true && window.activeScene) {
+            if (devToolsEnabled && window.activeScene) {
                 window.activeScene.addDebugNode();
             }
         });

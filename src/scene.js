@@ -33,12 +33,9 @@ class CoreDemoScene extends Phaser.Scene {
         });
         this.menuMode = null;
         this.toastTimer = null;
-        if (this.isDebugToolsEnabled()) {
-            this.buildUi();
-        } else {
-            this.ui = null;
-        }
-        this.resetSimulation(true);
+        this.buildUi();
+        this.resetSimulation(false);
+        this.showMainMenu();
     }
 
     handleResize() {

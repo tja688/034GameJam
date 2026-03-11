@@ -313,7 +313,8 @@ const SceneInputMixin = {
         return changed;
     },
     findActiveNodeAtWorld(x, y, extraRadius = 0) {
-        const radius = 28 / this.cameraRig.zoom + extraRadius;
+        const T = window.TUNING || {};
+        const radius = (T.editNodePickRadiusPx ?? 28) / this.cameraRig.zoom + extraRadius;
         const radiusSq = radius * radius;
         let best = null;
         let bestDistance = Infinity;
@@ -332,7 +333,8 @@ const SceneInputMixin = {
         return best;
     },
     findActiveLinkAtWorld(x, y) {
-        const threshold = (18 / this.cameraRig.zoom) ** 2;
+        const T = window.TUNING || {};
+        const threshold = ((T.editLinkPickRadiusPx ?? 18) / this.cameraRig.zoom) ** 2;
         let best = null;
         let bestDistance = threshold;
 
@@ -349,7 +351,8 @@ const SceneInputMixin = {
         return best;
     },
     shouldExitEditMode(x, y) {
-        return Math.hypot(x - this.player.centroidX, y - this.player.centroidY) > this.getFormationSpan() + 96;
+        const T = window.TUNING || {};
+        return Math.hypot(x - this.player.centroidX, y - this.player.centroidY) > this.getFormationSpan() + (T.editExitPaddingPx ?? 96);
     },
     refreshEditHover() {
         const edit = this.player.edit;
@@ -683,6 +686,7 @@ const SceneInputMixin = {
         this.intent.clusterVolumeLateralScale = volumeState.lateralScale;
     },
     handleModeInputs() {
+        const T = window.TUNING || {};
         if (!this.player.edit.active) {
             this.timeScaleFactor = 1;
             return;
@@ -695,7 +699,9 @@ const SceneInputMixin = {
             this.deleteCurrentEditSelection();
         }
 
-        this.timeScaleFactor = this.player.edit.deleteType === 'nodes' && this.player.edit.deleteNodes.length > 0 ? 0.05 : 0.08;
+        this.timeScaleFactor = this.player.edit.deleteType === 'nodes' && this.player.edit.deleteNodes.length > 0
+            ? (T.editDeleteTimeScale ?? 0.05)
+            : (T.editTimeScale ?? 0.08);
         this.refreshEditHover();
     },
     handlePointerDown(pointer) {
@@ -712,9 +718,10 @@ const SceneInputMixin = {
         const hitNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
         const hitLink = hitNode ? null : this.findActiveLinkAtWorld(pointerWorld.x, pointerWorld.y);
         const edit = this.player.edit;
+        const T = window.TUNING || {};
 
         if (!edit.active) {
-            if (!this.isDebugToolsEnabled()) {
+            if (!this.isDebugToolsEnabled() || !(T.enableClickToEditMode ?? true)) {
                 return;
             }
             if (hitNode || hitLink) {
@@ -869,7 +876,8 @@ const SceneInputMixin = {
     },
     updateEditMode(frameDt) {
         const edit = this.player.edit;
-        edit.ambience = damp(edit.ambience, edit.active ? 1 : 0, 8.5, frameDt);
+        const T = window.TUNING || {};
+        edit.ambience = damp(edit.ambience, edit.active ? 1 : 0, T.editAmbienceDamp ?? 8.5, frameDt);
 
         if (!edit.active) {
             return;
@@ -880,7 +888,7 @@ const SceneInputMixin = {
         const pointerWorld = this.getPointerWorld();
 
         if (pointer.leftButtonDown() && edit.boxSelectPending) {
-            const dragThreshold = 16 / this.cameraRig.zoom;
+            const dragThreshold = (T.editBoxSelectThresholdPx ?? 16) / this.cameraRig.zoom;
             const dragDistance = Math.hypot(pointerWorld.x - edit.dragStartX, pointerWorld.y - edit.dragStartY);
             if (!edit.boxSelecting && dragDistance >= dragThreshold) {
                 edit.boxSelecting = true;
@@ -889,7 +897,7 @@ const SceneInputMixin = {
         }
 
         if (pointer.leftButtonDown() && edit.pointerNode >= 0) {
-            const dragThreshold = 16 / this.cameraRig.zoom;
+            const dragThreshold = (T.editNodeDragThresholdPx ?? 16) / this.cameraRig.zoom;
             const dragDistance = Math.hypot(pointerWorld.x - edit.dragStartX, pointerWorld.y - edit.dragStartY);
             if (edit.dragNode < 0 && dragDistance >= dragThreshold) {
                 this.beginPendingEditSnapshot();
@@ -916,7 +924,7 @@ const SceneInputMixin = {
         }
 
         if (edit.deleteType === 'nodes' && edit.deleteNodes.length > 0) {
-            const hoveredNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y, 8);
+            const hoveredNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y, T.editDeleteHoldRadiusBonusPx ?? 8);
             const deleteSet = new Set(edit.deleteNodes);
             const stillHovering = hoveredNode && deleteSet.has(hoveredNode.index) && pointer.rightButtonDown();
 
@@ -926,7 +934,8 @@ const SceneInputMixin = {
                 return;
             }
 
-            edit.deleteProgress = clamp(edit.deleteProgress + frameDt / PARTIAL_MESH_RULES.deleteHoldDuration, 0, 1);
+            const deleteHoldDuration = Math.max(0.08, T.editDeleteHoldDuration ?? PARTIAL_MESH_RULES.deleteHoldDuration);
+            edit.deleteProgress = clamp(edit.deleteProgress + frameDt / deleteHoldDuration, 0, 1);
             if (edit.deleteProgress >= 1) {
                 const snapshot = this.captureEditSnapshot();
                 const removed = this.removeNodesFromTopology(edit.deleteNodes);

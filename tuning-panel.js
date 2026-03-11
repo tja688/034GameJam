@@ -219,6 +219,103 @@ const TUNING_FALLBACKS = {
     // ─── 编队跨度比例 ────────────────────────────
     formationSpanFactor: 0.16,
     maxNodeCount: 2000,
+
+    // ─── Gameplay：局内基础 ─────────────────────
+    gameplayMaxEnergy: 100,
+    gameplayStartEnergyRatio: 0.78,
+
+    // ─── Gameplay：阶段缩放 ─────────────────────
+    gameplayStageProgressGoalMul: 1,
+    gameplayStageMetabolismMul: 1,
+    gameplayStageSpawnCapMul: 1,
+    gameplayStageSpawnDensityMul: 1,
+    gameplayStageSpawnIntervalMul: 1,
+    gameplayStageMaxNodesBonus: 0,
+
+    // ─── Gameplay：成长经济 ─────────────────────
+    gameplayGrowthCostBase: 3.2,
+    gameplayGrowthCostPerNode: 0.92,
+    gameplayGrowthCostCap: 18,
+    gameplayGrowthEnergyBase: 6,
+    gameplayGrowthEnergyPerNode: 1.5,
+
+    // ─── Gameplay：碎片收益 ─────────────────────
+    gameplayFragmentEnergyGain: 4.8,
+    gameplayFragmentMatterGain: 2.1,
+    gameplayFragmentEnergyBiomass: 0.24,
+    gameplayFragmentMatterBiomass: 0.08,
+
+    // ─── Gameplay：代谢压力 ─────────────────────
+    gameplayMetabolismFloor: 0.8,
+    gameplayMetabolismNodeWeight: 0.24,
+    gameplayMetabolismBurstWeight: 2.45,
+    gameplayMetabolismHuntWeight: 1.28,
+    gameplayMetabolismExpansionWeight: 1.72,
+    gameplayMetabolismObjectiveWeight: 0.5,
+    gameplayMetabolismCompressionRelief: 1.9,
+    gameplayMetabolismPredationRelief: 0.55,
+    gameplayLowEnergyThreshold: 0.28,
+    gameplayObjectivePulseDamp: 3.6,
+
+    // ─── Gameplay：阶段切换 ─────────────────────
+    gameplayStageAdvanceEnergyFlat: 12,
+    gameplayStageAdvanceEnergyRatio: 0.24,
+    gameplayVictoryDuration: 5.5,
+    gameplayDeathDuration: 2.6,
+
+    // ─── Gameplay：猎物强度 ─────────────────────
+    gameplayBulwarkHealthMul: 1.42,
+    gameplayWeakspotHealthMul: 1.28,
+    gameplayApexHealthMul: 2.1,
+    gameplaySchoolHealthMul: 0.9,
+    gameplayObjectiveHealthMul: 1.22,
+    gameplayBulwarkMassMul: 1.2,
+    gameplayApexMassMul: 1.42,
+    gameplayBulwarkExtraAnchors: 1,
+    gameplayWeakspotExtraAnchors: 1,
+    gameplayApexExtraAnchors: 2,
+
+    // ─── Gameplay：姿态判定 ─────────────────────
+    gameplayCompressionEncircleAssist: 0.26,
+    gameplayWeakspotEncircleAssist: 0.82,
+    gameplayWeakspotCompressionAssist: 0.18,
+
+    // ─── Gameplay：伤害乘区 ─────────────────────
+    gameplayBulwarkBaseDamage: 0.16,
+    gameplayBulwarkCompressionDamage: 0.96,
+    gameplayBulwarkEncircleDamage: 0.32,
+    gameplayBulwarkFeedCompressionGate: 0.4,
+    gameplayBulwarkFeedPenalty: 0.58,
+    gameplayWeakspotBaseDamage: 0.12,
+    gameplayWeakspotWeakArcDamage: 1.08,
+    gameplayWeakspotFeedGate: 0.42,
+    gameplayWeakspotFeedPenalty: 0.4,
+    gameplayApexBaseDamage: 0.08,
+    gameplayApexCompressionDamage: 0.44,
+    gameplayApexWeakspotDamage: 0.88,
+    gameplayApexEncircleDamage: 0.26,
+    gameplayApexFeedCompressionGate: 0.38,
+    gameplayApexFeedWeakGate: 0.36,
+    gameplayApexFeedPenalty: 0.34,
+    gameplayObjectiveCutterBase: 0.92,
+    gameplayObjectiveCutterPerCount: 0.18,
+
+    // ─── 编辑与慢放 ─────────────────────────────
+    enableClickToEditMode: true,
+    editTimeScale: 0.08,
+    editDeleteTimeScale: 0.05,
+    editAmbienceDamp: 8.5,
+
+    // ─── 编辑命中与拖拽 ─────────────────────────
+    editNodePickRadiusPx: 28,
+    editLinkPickRadiusPx: 18,
+    editNodeDragThresholdPx: 16,
+    editBoxSelectThresholdPx: 16,
+
+    // ─── 编辑删除与退场 ─────────────────────────
+    editExitPaddingPx: 96,
+    editDeleteHoldDuration: 0.72,
+    editDeleteHoldRadiusBonusPx: 8,
 };
 
 function cloneTuningProfile(profile) {
@@ -309,9 +406,9 @@ loadPersistedTuningProfile();
 // ═══════════════════════════════════════════════════════════════
 
 const TUNING_DEFS = [
-    { category: '🕹️ 控制与驱动系统' },
+    { category: '🧠 主角驱动与技能' },
 
-    { section: '主手感总控', sectionDesc: '先拧这几个总旋钮，再进下面折叠细项微调', defaultOpen: true },
+    { section: '主角 / 镜头总控', sectionDesc: '先拧这几个总旋钮，再进入下面分组微调', defaultOpen: true },
     { key: 'feelClusterBloom', label: '体积呼吸感', desc: '同时控制舒张尺度、骨架回显、排斥撑开和三圈体积抬升', min: 0, max: 1, step: 0.01 },
     { key: 'feelPredatorSurge', label: '追猎爆发感', desc: '同时控制蓄压速度、突破阈值、冲刺节奏、锚点爆发和外扩冲劲', min: 0, max: 1, step: 0.01 },
     { key: 'feelCameraDirector', label: '镜头目标感', desc: '控制鼠标意图优先级，以及镜头顾头不顾腚的程度', min: 0, max: 1, step: 0.01 },
@@ -381,7 +478,7 @@ const TUNING_DEFS = [
     { key: 'baseTurnRate', label: '基础转向速率', desc: '结构朝向旋转速率 (rad/s)', min: 0, max: 10, step: 0.1 },
     { key: 'turnAssistBonus', label: '转向辅助加成', desc: '特定节点提供的额外转向速率', min: 0, max: 8, step: 0.1 },
 
-    { category: '🔧 物理与运动约束' },
+    { category: '🔧 结构与约束' },
 
     { section: '全局物理力场', sectionDesc: '决定全局运动物理反馈的各项基本力' },
     { key: 'enableDrift', label: '漂移推进力', desc: '引擎：控制 WASD 向结构的直接推力', type: 'toggle' },
@@ -413,7 +510,7 @@ const TUNING_DEFS = [
     { key: 'pbdCorrectionRate', label: '每次修正比例', desc: '修正率0-100%', min: 0, max: 0.8, step: 0.01 },
     { key: 'pbdRigidPasses', label: '骨架强约束轮数', desc: '强化关键支撑结构的维持', min: 0, max: 8, step: 1 },
 
-    { category: '🕸️ 多形态连线系统' },
+    { category: '🕸️ 拓扑与连线' },
 
     { section: '基本弹簧与阻尼', sectionDesc: '整体弹簧连接的基础刚性与拉力' },
     { key: 'springK', label: '基础弹簧K', desc: '核心弹射力度', min: 0, max: 800, step: 5 },
@@ -448,7 +545,7 @@ const TUNING_DEFS = [
     { key: 'samePolarityRestMul', label: '同相长度拓展', desc: '同型组网的距离调节', min: 0.5, max: 2.0, step: 0.01 },
     { key: 'inversePolarityRestMul', label: '排斥长度拓展', desc: '异极性结构之间撑得更开', min: 0.5, max: 2.0, step: 0.01 },
 
-    { category: '🧬 各节点个体属性与植入' },
+    { category: '🧬 节点模板与植入' },
 
     { section: '各单位质量(Mass)', sectionDesc: '决定了它们响应系统施力的速度反应(a=F/m)' },
     { key: 'massShell', label: 'Shell 护盾质量', desc: '笨重防御方块', min: 0.1, max: 5, step: 0.05 },
@@ -505,16 +602,35 @@ const TUNING_DEFS = [
     { key: 'plantBladeFlowBias', label: 'Flow权重比', desc: '-', min: 0, max: 1, step: 0.02 },
     { key: 'plantBladeAimBias', label: 'Aim权重比', desc: '-', min: 0, max: 1, step: 0.02 },
 
-    { category: '🎥 视觉呈现与结构扩建' },
+    { category: '✏️ 编辑与开发' },
 
-    { section: '拓扑结构基底分布', sectionDesc: '当有新细胞生长与加入时的基建布局指导' },
+    { section: '结构扩建', sectionDesc: '生长新节点、扩编拓扑时使用的开发参数' },
     { key: 'maxNodeCount', label: '最大节点数量限制', desc: '限制玩家可拥有的最大节点总数', min: 1, max: 2000, step: 1 },
     { key: 'slotSpacing', label: '基础散件距离', desc: '生成骨架之间初始缝隙(不等于最终拉扯弹性长度)', min: 40, max: 250, step: 2 },
     { key: 'forwardStep', label: '前探延展间隔', desc: '', min: 20, max: 200, step: 2 },
 
     { key: 'formationSpanFactor', label: '编队跨度延伸比', desc: '大组织自动更拉长前伸力', min: 0, max: 0.5, step: 0.01 },
 
-    { section: '镜头高级细项（折叠）', sectionDesc: '默认先拧上面的 3 个主旋钮。这里是高级细调，谨慎修改。', defaultOpen: false },
+    { section: '进入与慢放', sectionDesc: '点击节点进入编辑态时的时间流速和氛围渐变。' },
+    { key: 'enableClickToEditMode', label: '点击进入编辑', desc: '点中节点或连线后进入慢放编辑态。', type: 'toggle' },
+    { key: 'editTimeScale', label: '编辑慢放倍率', desc: '普通编辑态下的全局 timescale。', min: 0.01, max: 0.5, step: 0.01 },
+    { key: 'editDeleteTimeScale', label: '删除慢放倍率', desc: '右键长按删点时的更慢时流。', min: 0.01, max: 0.5, step: 0.01 },
+    { key: 'editAmbienceDamp', label: '编辑氛围阻尼', desc: '编辑态 vignette / overlay 的进出速度。', min: 0.5, max: 20, step: 0.1 },
+
+    { section: '命中与拖拽', sectionDesc: '点击节点、连线和拖拽框选的手感半径。' },
+    { key: 'editNodePickRadiusPx', label: '节点命中半径', desc: '点击节点时的拾取半径（屏幕像素）。', min: 6, max: 80, step: 1 },
+    { key: 'editLinkPickRadiusPx', label: '连线命中半径', desc: '点击连线时的拾取半径（屏幕像素）。', min: 4, max: 48, step: 1 },
+    { key: 'editNodeDragThresholdPx', label: '节点拖拽阈值', desc: '移动超过多远才从点按变成拖点。', min: 2, max: 48, step: 1 },
+    { key: 'editBoxSelectThresholdPx', label: '框选阈值', desc: '空地拖拽超过多远才开始框选。', min: 2, max: 48, step: 1 },
+
+    { section: '删除与退场', sectionDesc: '编辑态的退出距离和右键删点长按判定。' },
+    { key: 'editExitPaddingPx', label: '编辑退出缓冲', desc: '鼠标离开集群多远右键会退出编辑态。', min: 0, max: 240, step: 2 },
+    { key: 'editDeleteHoldDuration', label: '删点长按时长', desc: '右键按住多久会真正删除节点。', min: 0.08, max: 2, step: 0.01 },
+    { key: 'editDeleteHoldRadiusBonusPx', label: '删点悬停宽容', desc: '长按删点时额外增加的命中宽容半径。', min: 0, max: 32, step: 1 },
+
+    { category: '🎥 镜头与呈现' },
+
+    { section: '镜头高级细项（折叠）', sectionDesc: '默认先拧上面的镜头主旋钮。这里是高级细调。', defaultOpen: false },
     { key: 'cameraDefaultZoom', label: '默认镜头缩放', desc: '开局或重置时的默认镜头大小', min: 0.05, max: 2.4, step: 0.01 },
     { key: 'cameraWheelStep', label: '滚轮缩放步进', desc: '每个滚轮刻度让镜头缩放变化多少，指数式响应', min: 0.01, max: 0.35, step: 0.01 },
     { key: 'cameraZoomDamp', label: '贴近阻尼', desc: '滚轮把镜头往近处拉时，镜头追到目标缩放的速度', min: 0.4, max: 6, step: 0.05 },
@@ -537,7 +653,89 @@ const TUNING_DEFS = [
     { key: 'displayDamping', label: '骨架拟合插值率', desc: '越低越拖出果冻物理粘丝缓冲感', min: 1, max: 60, step: 1 },
     { key: 'pulseGlowDecay', label: '脉冲亮光淡出', desc: '-', min: 0.5, max: 10, step: 0.1 },
 
-    { category: '🧪 调试可视化' },
+    { category: '🎮 Gameplay 循环' },
+
+    { section: '局内基础', sectionDesc: '短局的能量池和开局资源。', defaultOpen: true },
+    { key: 'gameplayMaxEnergy', label: '最大能量池', desc: '玩家总能量上限。', min: 20, max: 300, step: 1 },
+    { key: 'gameplayStartEnergyRatio', label: '开局能量比例', desc: '重开或新局时，按最大能量填充多少。', min: 0.1, max: 1, step: 0.01 },
+
+    { section: '阶段缩放', sectionDesc: '对全部 stage 的目标、刷怪和节点上限做整体缩放。' },
+    { key: 'gameplayStageProgressGoalMul', label: '阶段目标倍率', desc: '统一放大或缩小各阶段 progressGoal。', min: 0.25, max: 3, step: 0.05 },
+    { key: 'gameplayStageMetabolismMul', label: '阶段代谢倍率', desc: '统一缩放各阶段基础 metabolism。', min: 0.25, max: 3, step: 0.05 },
+    { key: 'gameplayStageSpawnCapMul', label: '刷怪上限倍率', desc: '统一缩放各阶段 spawnCap。', min: 0.25, max: 3, step: 0.05 },
+    { key: 'gameplayStageSpawnDensityMul', label: '刷怪密度倍率', desc: '统一缩放各 spawn rule 的 desired / pack。', min: 0.25, max: 3, step: 0.05 },
+    { key: 'gameplayStageSpawnIntervalMul', label: '刷怪间隔倍率', desc: '统一缩放各 spawn rule 的 interval。越低越快。', min: 0.25, max: 3, step: 0.05 },
+    { key: 'gameplayStageMaxNodesBonus', label: '阶段节点上限补正', desc: '给所有阶段的 maxNodes 统一加减。', min: -12, max: 24, step: 1 },
+
+    { section: '成长经济', sectionDesc: '玩家扩编节奏和长节点后的资源回补。' },
+    { key: 'gameplayGrowthCostBase', label: '成长基础成本', desc: '第一轮成长开始的 biomass 消耗。', min: 0.5, max: 12, step: 0.1 },
+    { key: 'gameplayGrowthCostPerNode', label: '每节点成长增量', desc: '节点越多，下一次成长额外多花多少。', min: 0, max: 3, step: 0.02 },
+    { key: 'gameplayGrowthCostCap', label: '成长成本上限', desc: '单次成长的最高消耗封顶。', min: 2, max: 40, step: 0.5 },
+    { key: 'gameplayGrowthEnergyBase', label: '成长回能基础值', desc: '长出节点后立刻返还的基础能量。', min: 0, max: 20, step: 0.1 },
+    { key: 'gameplayGrowthEnergyPerNode', label: '成长回能增量', desc: '每次成长额外按节点数返还能量。', min: 0, max: 5, step: 0.05 },
+
+    { section: '碎片收益', sectionDesc: '猎物碎片对能量和 biomass 的回流。' },
+    { key: 'gameplayFragmentEnergyGain', label: '能量碎片回能', desc: '吃到 energy 碎片直接回多少能量。', min: 0, max: 20, step: 0.1 },
+    { key: 'gameplayFragmentMatterGain', label: '肉块碎片回能', desc: '吃到 flesh/meat/gore 时回多少能量。', min: 0, max: 12, step: 0.1 },
+    { key: 'gameplayFragmentEnergyBiomass', label: '能量碎片成长值', desc: 'energy 碎片会推进多少 growthBuffer。', min: 0, max: 2, step: 0.01 },
+    { key: 'gameplayFragmentMatterBiomass', label: '肉块碎片成长值', desc: '普通肉块会推进多少 growthBuffer。', min: 0, max: 2, step: 0.01 },
+
+    { section: '代谢压力', sectionDesc: '局内持续掉能量的组合公式。' },
+    { key: 'gameplayMetabolismFloor', label: '代谢保底', desc: '无论局势如何都不会低于这个耗能。', min: 0, max: 5, step: 0.05 },
+    { key: 'gameplayMetabolismNodeWeight', label: '节点耗能权重', desc: '每多一个节点追加多少代谢。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayMetabolismBurstWeight', label: '爆发耗能权重', desc: 'burstAggro 对代谢的放大。', min: 0, max: 5, step: 0.05 },
+    { key: 'gameplayMetabolismHuntWeight', label: '追猎耗能权重', desc: 'hunt 姿态对代谢的放大。', min: 0, max: 4, step: 0.05 },
+    { key: 'gameplayMetabolismExpansionWeight', label: '舒张耗能权重', desc: '集群往外舒张时追加多少代谢。', min: 0, max: 4, step: 0.05 },
+    { key: 'gameplayMetabolismObjectiveWeight', label: '目标压迫耗能', desc: 'objective 在场时额外增加多少压力。', min: 0, max: 3, step: 0.05 },
+    { key: 'gameplayMetabolismCompressionRelief', label: '收缩减负权重', desc: '压紧集群时能抵消多少代谢。', min: 0, max: 4, step: 0.05 },
+    { key: 'gameplayMetabolismPredationRelief', label: '捕食减负权重', desc: '咬住目标时能抵消多少代谢。', min: 0, max: 2, step: 0.05 },
+    { key: 'gameplayLowEnergyThreshold', label: '低能警戒阈值', desc: 'HUD 低能脉冲从哪条能量比开始亮。', min: 0.05, max: 0.8, step: 0.01 },
+    { key: 'gameplayObjectivePulseDamp', label: '目标脉冲阻尼', desc: 'objective 光环追踪的收放速度。', min: 0.2, max: 10, step: 0.1 },
+
+    { section: '阶段切换', sectionDesc: '升阶段、胜利和死亡后的资源/时长反馈。' },
+    { key: 'gameplayStageAdvanceEnergyFlat', label: '晋级固定回能', desc: '切阶段时至少返还多少能量。', min: 0, max: 80, step: 1 },
+    { key: 'gameplayStageAdvanceEnergyRatio', label: '晋级比例回能', desc: '切阶段时按最大能量返还多少比例。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayVictoryDuration', label: '胜利停留时长', desc: '最终胜利后多久自动重开。', min: 0.5, max: 15, step: 0.1 },
+    { key: 'gameplayDeathDuration', label: '死亡停留时长', desc: '死亡后多久自动重开。', min: 0.5, max: 10, step: 0.1 },
+
+    { section: '猎物强度缩放', sectionDesc: '对当前已落地的几类 prey archetype 做统一倍率调参。' },
+    { key: 'gameplayBulwarkHealthMul', label: 'Bulwark 生命倍率', desc: 'bulwark 的额外血量倍率。', min: 0.5, max: 4, step: 0.02 },
+    { key: 'gameplayWeakspotHealthMul', label: 'Weakspot 生命倍率', desc: 'weakspot 的额外血量倍率。', min: 0.5, max: 4, step: 0.02 },
+    { key: 'gameplayApexHealthMul', label: 'Apex 生命倍率', desc: 'apex 的额外血量倍率。', min: 0.5, max: 5, step: 0.02 },
+    { key: 'gameplaySchoolHealthMul', label: 'School 生命倍率', desc: 'school 的血量倍率。', min: 0.25, max: 2, step: 0.02 },
+    { key: 'gameplayObjectiveHealthMul', label: 'Objective 生命倍率', desc: 'objective 目标会再吃一层额外倍率。', min: 0.5, max: 3, step: 0.02 },
+    { key: 'gameplayBulwarkMassMul', label: 'Bulwark 质量倍率', desc: 'bulwark 的额外质量。', min: 0.5, max: 3, step: 0.02 },
+    { key: 'gameplayApexMassMul', label: 'Apex 质量倍率', desc: 'apex 的额外质量。', min: 0.5, max: 3, step: 0.02 },
+    { key: 'gameplayBulwarkExtraAnchors', label: 'Bulwark 额外锚点', desc: 'bulwark 允许多被几个节点挂住。', min: 0, max: 6, step: 1 },
+    { key: 'gameplayWeakspotExtraAnchors', label: 'Weakspot 额外锚点', desc: 'weakspot 允许多被几个节点挂住。', min: 0, max: 6, step: 1 },
+    { key: 'gameplayApexExtraAnchors', label: 'Apex 额外锚点', desc: 'apex 允许多被几个节点挂住。', min: 0, max: 8, step: 1 },
+
+    { section: '压缩 / 绕后判定', sectionDesc: '把“收缩、包围、绕后”这些姿态转成有效伤害前的访问权。' },
+    { key: 'gameplayCompressionEncircleAssist', label: '压缩包围补偿', desc: 'encircle 对 compression access 的补偿幅度。', min: 0, max: 1.2, step: 0.01 },
+    { key: 'gameplayWeakspotEncircleAssist', label: '弱点包围补偿', desc: 'encircle 对 weakspot access 的补偿幅度。', min: 0, max: 1.5, step: 0.01 },
+    { key: 'gameplayWeakspotCompressionAssist', label: '弱点压缩补偿', desc: 'compression 对 weakspot access 的补偿幅度。', min: 0, max: 1, step: 0.01 },
+
+    { section: '猎物受击乘区', sectionDesc: '不同 archetype 被咬到时的核心伤害公式。' },
+    { key: 'gameplayBulwarkBaseDamage', label: 'Bulwark 基础乘区', desc: '没压开前最低也能打进去多少。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayBulwarkCompressionDamage', label: 'Bulwark 压缩乘区', desc: 'compressionAccess 对 bulwark 的伤害贡献。', min: 0, max: 2, step: 0.01 },
+    { key: 'gameplayBulwarkEncircleDamage', label: 'Bulwark 包围乘区', desc: 'encircle 对 bulwark 的伤害贡献。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayBulwarkFeedCompressionGate', label: 'Bulwark 吞食压缩门槛', desc: 'feed 模式下，低于这个压缩度会被罚。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayBulwarkFeedPenalty', label: 'Bulwark 吞食惩罚', desc: '未压开时 feed 模式的伤害倍率。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayWeakspotBaseDamage', label: 'Weakspot 基础乘区', desc: '没打中弱点时仍保留多少伤害。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayWeakspotWeakArcDamage', label: 'Weakspot 弱点乘区', desc: 'weakAccess 对 weakspot 的伤害贡献。', min: 0, max: 2, step: 0.01 },
+    { key: 'gameplayWeakspotFeedGate', label: 'Weakspot 吞食弱点门槛', desc: 'feed 模式下低于这个 weakAccess 会被罚。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayWeakspotFeedPenalty', label: 'Weakspot 吞食惩罚', desc: '没咬到弱点时 feed 模式的伤害倍率。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayApexBaseDamage', label: 'Apex 基础乘区', desc: 'apex 最低保底伤害。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayApexCompressionDamage', label: 'Apex 压缩乘区', desc: 'compressionAccess 对 apex 的伤害贡献。', min: 0, max: 2, step: 0.01 },
+    { key: 'gameplayApexWeakspotDamage', label: 'Apex 弱点乘区', desc: 'weakAccess 对 apex 的伤害贡献。', min: 0, max: 2, step: 0.01 },
+    { key: 'gameplayApexEncircleDamage', label: 'Apex 包围乘区', desc: 'encircle 对 apex 的伤害贡献。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayApexFeedCompressionGate', label: 'Apex 吞食压缩门槛', desc: 'feed 模式对 apex 的 compression 门槛。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayApexFeedWeakGate', label: 'Apex 吞食弱点门槛', desc: 'feed 模式对 apex 的 weakAccess 门槛。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayApexFeedPenalty', label: 'Apex 吞食惩罚', desc: '门槛未达成时的 apex 伤害倍率。', min: 0, max: 1, step: 0.01 },
+    { key: 'gameplayObjectiveCutterBase', label: 'Objective 基础乘区', desc: 'objective 目标默认基础伤害倍率。', min: 0, max: 2, step: 0.01 },
+    { key: 'gameplayObjectiveCutterPerCount', label: 'Objective 刀口加成', desc: 'cutterCount 对 objective 的额外伤害贡献。', min: 0, max: 1, step: 0.01 },
+
+    { category: '🧪 调试与可视化' },
 
     { section: '大调试栏目', sectionDesc: '统一查看鼠标距离圈层、移动趋势和镜头前探。总开关关掉后，下面所有可视化都会停用。', defaultOpen: true },
     { key: 'showDebugVisuals', label: '启用调试可视化', desc: '统一开启下方所有调试图层的渲染能力', type: 'toggle' },
@@ -664,8 +862,17 @@ const TUNING_DEFAULTS = cloneTuningProfile(window.TUNING);
 // ═══════════════════════════════════════════════════════════════
 
 function buildTuningPanel() {
+    if (document.getElementById('tuning-panel')) {
+        return;
+    }
+
     // ─── 注入 CSS ─────────────────────────────────
+    const existingStyle = document.getElementById('tuning-panel-style');
+    if (existingStyle) {
+        existingStyle.remove();
+    }
     const style = document.createElement('style');
+    style.id = 'tuning-panel-style';
     style.textContent = `
         #tuning-panel {
             position: fixed;
@@ -721,6 +928,7 @@ function buildTuningPanel() {
             align-items: center;
             justify-content: space-between;
             flex-shrink: 0;
+            gap: 12px;
         }
         #tuning-header h2 {
             margin: 0;
@@ -728,6 +936,20 @@ function buildTuningPanel() {
             font-weight: 600;
             color: #36d6ff;
             letter-spacing: 1px;
+        }
+        #tuning-header .header-title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        #tuning-compare-status {
+            color: rgba(200, 223, 230, 0.68);
+            font-size: 11px;
+            line-height: 1.3;
+        }
+        #tuning-compare-status.modified {
+            color: #ffd147;
         }
         #tuning-header .header-btns {
             display: flex;
@@ -1080,7 +1302,7 @@ function buildTuningPanel() {
     // ─── 切换按钮 ──────────────────────────────────
     const toggle = document.createElement('button');
     toggle.id = 'tuning-toggle';
-    toggle.textContent = '⚙ 能力调试';
+    toggle.textContent = '⚙ 开发调参';
     toggle.addEventListener('click', () => {
         panel.classList.toggle('collapsed');
     });
@@ -1089,7 +1311,10 @@ function buildTuningPanel() {
     const header = document.createElement('div');
     header.id = 'tuning-header';
     header.innerHTML = `
-        <h2>调试面板</h2>
+        <div class="header-title-group">
+            <h2>开发调参与编辑控制</h2>
+            <div id="tuning-compare-status">正在读取基线…</div>
+        </div>
         <div class="header-btns">
             <button id="tuning-add-node" style="background: rgba(54, 214, 255, 0.12); border-color: rgba(54, 214, 255, 0.35); color: #36d6ff; padding: 4px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s;">➕ 新增节点 (E)</button>
             <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
@@ -1110,8 +1335,8 @@ function buildTuningPanel() {
     // ─── Body ─────────────────────────────────────
     const body = document.createElement('div');
     body.id = 'tuning-body';
+    const compareStatus = header.querySelector('#tuning-compare-status');
 
-    let currentSection = null;
     let currentSectionBody = null;
 
     const allRows = [];
@@ -1208,7 +1433,6 @@ function buildTuningPanel() {
 
             sectionEl.appendChild(sectionBody);
             currentCategoryBody.appendChild(sectionEl);
-            currentSection = sectionEl;
             currentSectionBody = sectionBody;
             return;
         }
@@ -1230,6 +1454,22 @@ function buildTuningPanel() {
     document.body.appendChild(panel);
     document.body.appendChild(toggle);
 
+    const updateCompareStatus = () => {
+        const modifiedCount = Object.keys(window.TUNING).reduce((count, key) => {
+            const current = window.TUNING[key];
+            const baseline = TUNING_DEFAULTS[key];
+            if (typeof current === 'number' && typeof baseline === 'number') {
+                return count + (Math.abs(current - baseline) > 0.0001 ? 1 : 0);
+            }
+            return count + (current !== baseline ? 1 : 0);
+        }, 0);
+        compareStatus.textContent = modifiedCount > 0 ? `当前相对基线改动 ${modifiedCount} 项` : '当前与本地基线一致';
+        compareStatus.classList.toggle('modified', modifiedCount > 0);
+    };
+
+    window.addEventListener('tuning:changed', updateCompareStatus);
+    updateCompareStatus();
+
     // ─── 搜索 ─────────────────────────────────────
     
     setInterval(() => {
@@ -1239,6 +1479,7 @@ function buildTuningPanel() {
                  orbRow.sync(); // sync display with current auto value
              }
         }
+        updateCompareStatus();
     }, 500);
 
     search.addEventListener('input', () => {
@@ -1269,6 +1510,7 @@ function buildTuningPanel() {
             window.TUNING[key] = TUNING_DEFAULTS[key];
         });
         allRows.forEach((row) => row.sync());
+        window.dispatchEvent(new CustomEvent('tuning:changed'));
     });
 
     document.getElementById('tuning-apply-local').addEventListener('click', () => {
@@ -1284,6 +1526,7 @@ function buildTuningPanel() {
             TUNING_DEFAULTS[key] = window.TUNING[key];
         });
         allRows.forEach((row) => row.sync());
+        window.dispatchEvent(new CustomEvent('tuning:changed'));
 
         btn.textContent = '✅ 已应用';
         setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
@@ -1360,6 +1603,7 @@ function createToggleRow(def) {
              // Game will auto-update orb count in next frame
         }
         row.classList.toggle('modified', checkbox.checked !== TUNING_DEFAULTS[def.key]);
+        window.dispatchEvent(new CustomEvent('tuning:changed'));
     });
 
     row.appendChild(info);
@@ -1426,6 +1670,7 @@ function createSliderRow(def, allRows) {
         if (manual && COMPOSITE_TUNING_MAPS[def.key]) {
             applyCompositeTuning(def.key, clamped, allRows);
         }
+        window.dispatchEvent(new CustomEvent('tuning:changed'));
     };
 
     rangeInput.addEventListener('input', () => update(rangeInput.value, true));
@@ -1441,7 +1686,7 @@ function createSliderRow(def, allRows) {
 }
 
 // ─── 启动 ──────────────────────────────────────────
-if (window.CORE_DEMO_DEBUG === true) {
+if (window.CORE_DEMO_DEBUG !== false) {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', buildTuningPanel);
     } else {
