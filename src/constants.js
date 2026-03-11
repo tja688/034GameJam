@@ -95,6 +95,246 @@ const PREY_SIZE_DEFS = {
     }
 };
 
+const PREY_ARCHETYPE_DEFS = {
+    skittish: {
+        progressValue: 1.05,
+        biomassValue: 1.12,
+        energyValue: 8.8,
+        speedMul: 1.18,
+        accelMul: 1.14,
+        fleeMul: 1.26,
+        wanderMul: 1.08,
+        armor: 0.04,
+        compressionNeed: 0,
+        encircleNeed: 0,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0,
+        weakExpose: 0.16,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    school: {
+        progressValue: 0.86,
+        biomassValue: 0.94,
+        energyValue: 7.2,
+        speedMul: 0.98,
+        accelMul: 1.02,
+        fleeMul: 0.96,
+        wanderMul: 0.78,
+        armor: 0.1,
+        compressionNeed: 0,
+        encircleNeed: 0,
+        schoolRadius: 248,
+        cohesion: 0.84,
+        alignment: 0.72,
+        separation: 0.58,
+        weakArc: 0,
+        weakExpose: 0.2,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    bulwark: {
+        progressValue: 2.65,
+        biomassValue: 2.35,
+        energyValue: 18.4,
+        speedMul: 0.72,
+        accelMul: 0.74,
+        fleeMul: 0.64,
+        wanderMul: 0.24,
+        armor: 0.72,
+        compressionNeed: 0.4,
+        encircleNeed: 0.2,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0,
+        weakExpose: 0.08,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 1.8,
+        bulwarkReleaseRate: 1.3,
+        bulwarkPulse: 1.08
+    },
+    weakspot: {
+        progressValue: 3.1,
+        biomassValue: 2.7,
+        energyValue: 22.2,
+        speedMul: 0.88,
+        accelMul: 0.92,
+        fleeMul: 0.84,
+        wanderMul: 0.36,
+        armor: 0.82,
+        compressionNeed: 0.12,
+        encircleNeed: 0.42,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0.96,
+        weakExpose: 0.12,
+        protectTurnRate: 2.7,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    apex: {
+        progressValue: 4.6,
+        biomassValue: 4.1,
+        energyValue: 34.5,
+        speedMul: 0.94,
+        accelMul: 0.96,
+        fleeMul: 0.9,
+        wanderMul: 0.18,
+        armor: 0.9,
+        compressionNeed: 0.32,
+        encircleNeed: 0.5,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0.78,
+        weakExpose: 0.1,
+        protectTurnRate: 3.2,
+        bulwarkChargeRate: 2.2,
+        bulwarkReleaseRate: 1.45,
+        bulwarkPulse: 1.24
+    }
+};
+
+const DEMO_STAGE_DEFS = [
+    {
+        id: 'forage',
+        progressGoal: 10.5,
+        maxNodes: 9,
+        metabolism: 5.1,
+        spawnCap: 20,
+        palette: {
+            arena: 0x08141c,
+            grid: 0x173643,
+            mist: 0x1c5f76,
+            pulse: 0x9defff,
+            signal: 0xf4f0d7,
+            threat: 0x7de977
+        },
+        growthSequence: ['source', 'shell-a', 'dart-a'],
+        spawnRules: [
+            { id: 'forage-runner', archetype: 'skittish', sizeKey: 'small', shape: 'triangle', desired: 7, interval: 0.56, packMin: 1, packMax: 2 },
+            { id: 'forage-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.34, packMin: 3, packMax: 4 },
+            { id: 'forage-hunter', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 1, interval: 2.9, packMin: 1, packMax: 1 }
+        ],
+        objective: {
+            id: 'forage-core',
+            archetype: 'skittish',
+            sizeKey: 'large',
+            shape: 'circle',
+            color: 0xf4f0d7,
+            energyBonus: 18,
+            biomassBonus: 3.6,
+            growthBonus: 1
+        }
+    },
+    {
+        id: 'bloom',
+        progressGoal: 18,
+        maxNodes: 13,
+        metabolism: 5.9,
+        spawnCap: 24,
+        palette: {
+            arena: 0x0b1614,
+            grid: 0x24443b,
+            mist: 0x3b7c62,
+            pulse: 0x9effcf,
+            signal: 0xffd147,
+            threat: 0xff8b73
+        },
+        growthSequence: ['shell-b', 'compressor', 'prism', 'dart-a'],
+        spawnRules: [
+            { id: 'bloom-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 1.18, packMin: 3, packMax: 5 },
+            { id: 'bloom-runner', archetype: 'skittish', sizeKey: 'small', shape: 'triangle', desired: 5, interval: 0.72, packMin: 1, packMax: 2 },
+            { id: 'bloom-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 2, interval: 2.7, packMin: 1, packMax: 1 }
+        ],
+        objective: {
+            id: 'bloom-bulwark-core',
+            archetype: 'bulwark',
+            sizeKey: 'large',
+            shape: 'square',
+            color: 0xffd147,
+            energyBonus: 20,
+            biomassBonus: 4.2,
+            growthBonus: 1
+        }
+    },
+    {
+        id: 'encircle',
+        progressGoal: 25,
+        maxNodes: 17,
+        metabolism: 6.8,
+        spawnCap: 28,
+        palette: {
+            arena: 0x130f16,
+            grid: 0x433347,
+            mist: 0x8b4868,
+            pulse: 0xffc5db,
+            signal: 0xf4f0d7,
+            threat: 0xff6d57
+        },
+        growthSequence: ['prism', 'blade', 'shell-a', 'compressor'],
+        spawnRules: [
+            { id: 'encircle-weakspot', archetype: 'weakspot', sizeKey: 'medium', shape: 'triangle', desired: 2, interval: 2.6, packMin: 1, packMax: 1 },
+            { id: 'encircle-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 2, interval: 2.9, packMin: 1, packMax: 1 },
+            { id: 'encircle-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.1, packMin: 3, packMax: 4 }
+        ],
+        objective: {
+            id: 'encircle-crown',
+            archetype: 'weakspot',
+            sizeKey: 'large',
+            shape: 'triangle',
+            color: 0xf4f0d7,
+            energyBonus: 22,
+            biomassBonus: 4.8,
+            growthBonus: 1
+        }
+    },
+    {
+        id: 'saturation',
+        progressGoal: 34,
+        maxNodes: 22,
+        metabolism: 7.8,
+        spawnCap: 34,
+        palette: {
+            arena: 0x16120d,
+            grid: 0x57422a,
+            mist: 0xd86d36,
+            pulse: 0xffd8a8,
+            signal: 0xf4f0d7,
+            threat: 0xff5663
+        },
+        growthSequence: ['blade', 'prism', 'compressor', 'shell-b', 'dart-b'],
+        spawnRules: [
+            { id: 'saturation-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 0.98, packMin: 4, packMax: 6 },
+            { id: 'saturation-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 3, interval: 2.2, packMin: 1, packMax: 1 },
+            { id: 'saturation-weakspot', archetype: 'weakspot', sizeKey: 'medium', shape: 'triangle', desired: 3, interval: 2.36, packMin: 1, packMax: 1 }
+        ],
+        objective: {
+            id: 'saturation-apex',
+            archetype: 'apex',
+            sizeKey: 'large',
+            shape: 'circle',
+            color: 0xf4f0d7,
+            energyBonus: 28,
+            biomassBonus: 6.5,
+            growthBonus: 2
+        }
+    }
+];
+
 const DEFAULT_BASE_CHAIN = [0, 2, 5, 4, 1, 7];
 
 const STORAGE_KEYS = {

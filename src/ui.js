@@ -264,7 +264,7 @@ const SceneUiMixin = {
     },
 
     showPauseMenu() {
-        if (!this.sessionStarted) {
+        if (!this.sessionStarted || !this.ui) {
             return;
         }
 
@@ -275,6 +275,9 @@ const SceneUiMixin = {
     },
 
     showMainMenu() {
+        if (!this.ui) {
+            return;
+        }
         this.exitEditMode();
         this.menuMode = 'main';
         this.paused = true;

@@ -1,70 +1,88 @@
 const SceneEnemiesMixin = {
     updateSpawns(simDt) {
-        if (this.prey.length > 48) {
+        if (this.player.dead || this.runState?.complete) {
             return;
         }
 
-        const time = this.worldTime;
-        this.spawnTimers.small -= simDt;
-        this.spawnTimers.medium -= simDt;
-        this.spawnTimers.large -= simDt;
-
-        if (this.prey.length < 5 && this.spawnTimers.small > 0.2) {
-            this.spawnTimers.small = 0.2;
+        const stage = this.getCurrentStageDef();
+        if (!stage) {
+            return;
         }
 
-        if (this.spawnTimers.small <= 0) {
-            this.spawnPreyGroup('small', Phaser.Math.Between(1, time > 14 ? 3 : 2));
-            this.spawnTimers.small = Math.max(0.28, 0.62 - Math.min(0.24, time * 0.008));
+        this.syncSpawnTimersForStage(false);
+        if (this.prey.length >= stage.spawnCap) {
+            return;
         }
 
-        if (time > 7 && this.spawnTimers.medium <= 0) {
-            this.spawnPreyGroup('medium', Phaser.Math.Between(1, time > 26 ? 2 : 1));
-            this.spawnTimers.medium = Math.max(1.35, 2.3 - Math.min(0.75, (time - 7) * 0.018));
-        }
+        stage.spawnRules.forEach((rule) => {
+            const alive = this.prey.filter((prey) => prey.spawnRuleId === rule.id && !prey.isObjective).length;
+            if (alive >= rule.desired) {
+                this.runState.spawnTimers[rule.id] = Math.min(this.runState.spawnTimers[rule.id], rule.interval * 0.5);
+                return;
+            }
 
-        if (time > 18 && this.spawnTimers.large <= 0) {
-            this.spawnPreyGroup('large', 1);
-            this.spawnTimers.large = Math.max(5.2, 7.6 - Math.min(1.6, (time - 18) * 0.035));
-        }
+            this.runState.spawnTimers[rule.id] -= simDt;
+            if (this.runState.spawnTimers[rule.id] > 0) {
+                return;
+            }
+
+            const deficit = Math.max(1, rule.desired - alive);
+            const packMin = Math.max(1, rule.packMin || 1);
+            const packMax = Math.max(packMin, Math.min(deficit, rule.packMax || packMin));
+            const count = Phaser.Math.Between(packMin, packMax);
+            this.spawnConfiguredPrey(rule, count);
+            this.runState.spawnTimers[rule.id] = rule.interval * Phaser.Math.FloatBetween(0.86, 1.14);
+        });
     },
-    spawnPreyGroup(sizeKey, count, forcedShape = null) {
+    spawnConfiguredPrey(spawnConfig, count = 1, forceObjective = false) {
+        const results = [];
+        const side = Phaser.Utils.Array.GetRandom(['left', 'right', 'top', 'bottom']);
+        const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
+        const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
+        const isHorizontal = side === 'left' || side === 'right';
+        const axisBase = isHorizontal
+            ? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight)
+            : Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
+        const groupId = count > 1 ? `${spawnConfig.id || spawnConfig.archetype}-${this.preyIdCounter}` : '';
+
         for (let i = 0; i < count; i += 1) {
-            this.prey.push(this.createPrey(sizeKey, null, null, forcedShape));
+            const spread = (i - (count - 1) * 0.5) * (spawnConfig.isObjective || forceObjective ? 42 : 64);
+            const axis = axisBase + spread + Phaser.Math.Between(-18, 18);
+            const prey = this.createPrey(spawnConfig, {
+                side,
+                axis,
+                groupId,
+                isObjective: !!(forceObjective || spawnConfig.isObjective)
+            });
+            this.prey.push(prey);
+            results.push(prey);
         }
+
+        return results;
     },
-    pickSpawnShape(sizeKey) {
-        const order = ['triangle', 'square', 'circle'];
-        if (!this.preySpawnCursor) {
-            this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
-        }
-        const cursor = this.preySpawnCursor[sizeKey] || 0;
-        const shape = order[cursor % order.length];
-        this.preySpawnCursor[sizeKey] = cursor + 1;
-        return shape;
-    },
-    createPrey(sizeKey, forcedSide = null, forcedAxis = null, forcedShape = null) {
+    createPrey(spawnConfig, options = {}) {
+        const sizeKey = spawnConfig.sizeKey || 'small';
         const sizeDef = PREY_SIZE_DEFS[sizeKey];
-        const shape = forcedShape || this.pickSpawnShape(sizeKey);
+        const shape = spawnConfig.shape || this.pickSpawnShape(sizeKey);
         const shapeDef = PREY_SHAPE_DEFS[shape];
         const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
         const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
-        const margin = 260;
-        const side = forcedSide || Phaser.Utils.Array.GetRandom(['left', 'right', 'top', 'bottom']);
+        const margin = options.isObjective ? 220 : 260;
+        const side = options.side || Phaser.Utils.Array.GetRandom(['left', 'right', 'top', 'bottom']);
         let x = 0;
         let y = 0;
 
         if (side === 'left') {
             x = this.player.centroidX - worldHalfWidth - margin;
-            y = forcedAxis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
+            y = options.axis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
         } else if (side === 'right') {
             x = this.player.centroidX + worldHalfWidth + margin;
-            y = forcedAxis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
+            y = options.axis ?? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight);
         } else if (side === 'top') {
-            x = Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
+            x = options.axis ?? Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
             y = this.player.centroidY - worldHalfHeight - margin;
         } else {
-            x = Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
+            x = options.axis ?? Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
             y = this.player.centroidY + worldHalfHeight + margin;
         }
 
@@ -72,7 +90,7 @@ const SceneEnemiesMixin = {
         const maxHealth = sizeDef.maxHealth * (shape === 'square' ? 1.12 : shape === 'triangle' ? 0.88 : 1);
         const radius = sizeDef.radius * shapeRadiusMul;
         const id = `prey-${this.preyIdCounter++}`;
-        return {
+        const prey = {
             id,
             shape,
             sizeKey,
@@ -114,89 +132,20 @@ const SceneEnemiesMixin = {
             chunkCursor: 0,
             seed: Math.random() * 10
         };
+        return this.applySpawnConfigToPrey(prey, {
+            ...spawnConfig,
+            isObjective: !!options.isObjective
+        }, options.groupId || '');
     },
-    updatePrey(simDt) {
-        for (let i = this.prey.length - 1; i >= 0; i -= 1) {
-            const prey = this.prey[i];
-            const toCenterX = prey.x - this.player.centroidX;
-            const toCenterY = prey.y - this.player.centroidY;
-            const distanceFromCenter = Math.hypot(toCenterX, toCenterY);
-            if (distanceFromCenter > 2600) {
-                this.prey.splice(i, 1);
-                continue;
-            }
-
-            const nearbyNodes = this.pickNearbyNodes(prey.x, prey.y, 6, 240 + prey.radius);
-            let fleeX = toCenterX;
-            let fleeY = toCenterY;
-            let danger = clamp(1 - (distanceFromCenter - 160) / 260, 0, 1);
-
-            nearbyNodes.forEach((node) => {
-                const dx = prey.x - node.x;
-                const dy = prey.y - node.y;
-                const distance = Math.hypot(dx, dy) || 0.0001;
-                const weight = clamp(1 - distance / (240 + prey.radius), 0, 1);
-                fleeX += dx / distance * weight * 220;
-                fleeY += dy / distance * weight * 220;
-                danger = Math.max(danger, weight);
-            });
-
-            const escape = normalize(fleeX, fleeY, Math.cos(prey.seed), Math.sin(prey.seed));
-            const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 2.4 : prey.shape === 'circle' ? 1.6 : 1.05) + prey.seed * 4.2;
-            const wobble = Math.sin(this.worldTime * (prey.shape === 'triangle' ? 7.2 : 4.6) + prey.seed) * (prey.shape === 'triangle' ? 0.74 : prey.shape === 'circle' ? 0.42 : 0.18);
-            const wander = {
-                x: Math.cos(wanderAngle + wobble),
-                y: Math.sin(wanderAngle * 0.84 - wobble)
-            };
-            const attachmentPenalty = clamp(prey.attachments.length / Math.max(prey.maxAnchors, 1), 0, 1);
-            const steer = normalize(
-                escape.x * (0.88 + danger * prey.fleeMul) + wander.x * prey.wander * (1 - attachmentPenalty * 0.72),
-                escape.y * (0.88 + danger * prey.fleeMul) + wander.y * prey.wander * (1 - attachmentPenalty * 0.72),
-                escape.x,
-                escape.y
-            );
-            const accel = prey.accel
-                * (1 + danger * 0.55 + prey.panic * 0.32)
-                * (1 - attachmentPenalty * 0.58);
-
-            prey.vx += steer.x * accel * simDt;
-            prey.vy += steer.y * accel * simDt;
-
-            if (prey.attachments.length > 0) {
-                const thrashAngle = this.worldTime * (8 + prey.rotationMul * 2.8) + prey.seed * 5.4;
-                prey.vx += Math.cos(thrashAngle) * prey.accel * 0.24 * simDt;
-                prey.vy += Math.sin(thrashAngle * 0.92) * prey.accel * 0.24 * simDt;
-                prey.spin += simDt * (6 + prey.attachments.length * 2.5);
-            }
-
-            const speedLimit = prey.speed * (1 - attachmentPenalty * 0.52 + danger * 0.18);
-            const speed = Math.hypot(prey.vx, prey.vy);
-            if (speed > speedLimit) {
-                const scale = speedLimit / Math.max(speed, 0.0001);
-                prey.vx *= scale;
-                prey.vy *= scale;
-            }
-
-            const drag = prey.attachments.length > 0 ? 2.15 : prey.shape === 'square' ? 1.32 : 0.96;
-            prey.vx *= Math.exp(-drag * simDt);
-            prey.vy *= Math.exp(-drag * simDt);
-            prey.x += prey.vx * simDt;
-            prey.y += prey.vy * simDt;
-
-            prey.hitFlash = Math.max(0, prey.hitFlash - simDt * 4.8);
-            prey.panic = Math.max(0, prey.panic - simDt * 0.72);
-            prey.wound = Math.max(0, prey.wound - simDt * 0.34);
-            prey.shudder = Math.max(0, prey.shudder - simDt * 1.9);
-            prey.spin *= Math.exp(-2.4 * simDt);
-            prey.pulse += simDt * (2.4 + prey.pulseMul * 1.8 + danger * 1.2 + attachmentPenalty * 1.5);
-            prey.displayX = damp(prey.displayX, prey.x, 18, simDt);
-            prey.displayY = damp(prey.displayY, prey.y, 18, simDt);
-            const heading = Math.atan2(
-                prey.vy || Math.sin(wanderAngle),
-                prey.vx || Math.cos(wanderAngle)
-            );
-            prey.displayRotation = dampAngle(prey.displayRotation, heading + prey.spin * 0.02, 12, simDt);
+    pickSpawnShape(sizeKey) {
+        const order = ['triangle', 'square', 'circle'];
+        if (!this.preySpawnCursor) {
+            this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
         }
+        const cursor = this.preySpawnCursor[sizeKey] || 0;
+        const shape = order[cursor % order.length];
+        this.preySpawnCursor[sizeKey] = cursor + 1;
+        return shape;
     },
     pickNearestNode(x, y) {
         let best = null;
@@ -229,10 +178,184 @@ const SceneEnemiesMixin = {
         candidates.sort((a, b) => a.distanceSq - b.distanceSq);
         return candidates.slice(0, limit).map((entry) => entry.node);
     },
+    pickNearbyPrey(target, radius = 220, limit = 6) {
+        const radiusSq = radius * radius;
+        const matches = [];
+        this.prey.forEach((prey) => {
+            if (prey.id === target.id) {
+                return;
+            }
+            const dx = prey.x - target.x;
+            const dy = prey.y - target.y;
+            const distanceSq = dx * dx + dy * dy;
+            if (distanceSq > radiusSq) {
+                return;
+            }
+            matches.push({ prey, distanceSq });
+        });
+        matches.sort((a, b) => a.distanceSq - b.distanceSq);
+        return matches.slice(0, limit).map((entry) => entry.prey);
+    },
+    updatePrey(simDt) {
+        for (let i = this.prey.length - 1; i >= 0; i -= 1) {
+            const prey = this.prey[i];
+            const toCenterX = prey.x - this.player.centroidX;
+            const toCenterY = prey.y - this.player.centroidY;
+            const distanceFromCenter = Math.hypot(toCenterX, toCenterY);
+            if (distanceFromCenter > 3200) {
+                this.prey.splice(i, 1);
+                continue;
+            }
+
+            const nearbyNodes = this.pickNearbyNodes(prey.x, prey.y, 6, 240 + prey.radius + (prey.isObjective ? 60 : 0));
+            const nearbyPrey = prey.schoolRadius > 0 ? this.pickNearbyPrey(prey, prey.schoolRadius, 6) : [];
+            let fleeX = toCenterX;
+            let fleeY = toCenterY;
+            let danger = clamp(1 - (distanceFromCenter - 160) / 260, 0, 1);
+
+            nearbyNodes.forEach((node) => {
+                const dx = prey.x - node.x;
+                const dy = prey.y - node.y;
+                const distance = Math.hypot(dx, dy) || 0.0001;
+                const weight = clamp(1 - distance / (240 + prey.radius), 0, 1);
+                fleeX += dx / distance * weight * 220;
+                fleeY += dy / distance * weight * 220;
+                danger = Math.max(danger, weight);
+            });
+
+            const escape = normalize(fleeX, fleeY, Math.cos(prey.seed), Math.sin(prey.seed));
+            const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 2.4 : prey.shape === 'circle' ? 1.6 : 1.05) + prey.seed * 4.2;
+            const wobble = Math.sin(this.worldTime * (prey.shape === 'triangle' ? 7.2 : 4.6) + prey.seed) * (prey.shape === 'triangle' ? 0.74 : prey.shape === 'circle' ? 0.42 : 0.18);
+            const wander = {
+                x: Math.cos(wanderAngle + wobble),
+                y: Math.sin(wanderAngle * 0.84 - wobble)
+            };
+            const attachmentPenalty = clamp(prey.attachments.length / Math.max(prey.maxAnchors, 1), 0, 1);
+
+            let schoolX = 0;
+            let schoolY = 0;
+            if (nearbyPrey.length > 0 && prey.schoolCohesion > 0) {
+                let cohesionX = 0;
+                let cohesionY = 0;
+                let alignX = 0;
+                let alignY = 0;
+                let separationX = 0;
+                let separationY = 0;
+                nearbyPrey.forEach((other) => {
+                    cohesionX += other.x;
+                    cohesionY += other.y;
+                    alignX += other.vx;
+                    alignY += other.vy;
+                    const dx = prey.x - other.x;
+                    const dy = prey.y - other.y;
+                    const distance = Math.hypot(dx, dy) || 0.0001;
+                    const avoid = clamp(1 - distance / Math.max(32, prey.schoolRadius * 0.42), 0, 1);
+                    separationX += dx / distance * avoid;
+                    separationY += dy / distance * avoid;
+                });
+                cohesionX = cohesionX / nearbyPrey.length - prey.x;
+                cohesionY = cohesionY / nearbyPrey.length - prey.y;
+                schoolX += cohesionX * prey.schoolCohesion * (1 - danger * 0.72);
+                schoolY += cohesionY * prey.schoolCohesion * (1 - danger * 0.72);
+                schoolX += alignX * prey.schoolAlignment * 0.02;
+                schoolY += alignY * prey.schoolAlignment * 0.02;
+                schoolX += separationX * prey.schoolSeparation * (0.54 + danger * 0.62);
+                schoolY += separationY * prey.schoolSeparation * (0.54 + danger * 0.62);
+            }
+
+            if ((prey.archetype === 'weakspot' || prey.archetype === 'apex') && prey.weakArc > 0) {
+                const threatAngle = Math.atan2(this.player.centroidY - prey.y, this.player.centroidX - prey.x);
+                const sway = Math.sin(this.worldTime * (1.8 + prey.rotationMul * 0.16) + prey.seed * 3.4) * 0.22;
+                prey.weakAngle = dampAngle(prey.weakAngle, threatAngle + Math.PI + sway, prey.protectTurnRate || 2.4, simDt);
+            }
+
+            if ((prey.archetype === 'bulwark' || prey.archetype === 'apex') && prey.bulwarkChargeRate > 0) {
+                prey.pushCharge = clamp(
+                    prey.pushCharge + (danger * prey.bulwarkChargeRate - (prey.bulwarkReleaseRate || 1) * 0.45) * simDt,
+                    0,
+                    1.4
+                );
+                prey.guardPulse = Math.max(0, (prey.guardPulse || 0) - simDt * 2.1);
+                if (danger > 0.58 && prey.pushCharge > 0.95 && prey.guardPulse <= 0.05) {
+                    prey.guardPulse = prey.bulwarkPulse || 1;
+                    prey.pushCharge *= 0.42;
+                    this.createRing(prey.x, prey.y, prey.radius + 22, prey.signalColor || prey.color, 0.14, 2);
+                }
+            } else {
+                prey.guardPulse = Math.max(0, (prey.guardPulse || 0) - simDt * 1.8);
+                prey.pushCharge = Math.max(0, (prey.pushCharge || 0) - simDt * 1.2);
+            }
+
+            let strafeX = 0;
+            let strafeY = 0;
+            if (prey.archetype === 'weakspot' || prey.archetype === 'apex') {
+                const side = Math.sin(this.worldTime * 1.7 + prey.seed * 2.4) >= 0 ? 1 : -1;
+                strafeX = Math.cos(prey.weakAngle + side * Math.PI * 0.5);
+                strafeY = Math.sin(prey.weakAngle + side * Math.PI * 0.5);
+            }
+
+            const steer = normalize(
+                escape.x * (prey.archetype === 'bulwark' ? 0.58 : prey.archetype === 'apex' ? 0.72 : 0.88 + danger * prey.fleeMul)
+                    + wander.x * prey.wander * (1 - attachmentPenalty * 0.72)
+                    + schoolX * (prey.archetype === 'school' ? 0.016 : 0.008)
+                    + strafeX * (prey.archetype === 'weakspot' ? 0.52 : prey.archetype === 'apex' ? 0.32 : 0),
+                escape.y * (prey.archetype === 'bulwark' ? 0.58 : prey.archetype === 'apex' ? 0.72 : 0.88 + danger * prey.fleeMul)
+                    + wander.y * prey.wander * (1 - attachmentPenalty * 0.72)
+                    + schoolY * (prey.archetype === 'school' ? 0.016 : 0.008)
+                    + strafeY * (prey.archetype === 'weakspot' ? 0.52 : prey.archetype === 'apex' ? 0.32 : 0),
+                escape.x,
+                escape.y
+            );
+            const accel = prey.accel
+                * (1 + danger * 0.55 + prey.panic * 0.32 + (prey.isObjective ? 0.18 : 0))
+                * (1 - attachmentPenalty * 0.58);
+
+            prey.vx += steer.x * accel * simDt;
+            prey.vy += steer.y * accel * simDt;
+
+            if (prey.attachments.length > 0) {
+                const thrashAngle = this.worldTime * (8 + prey.rotationMul * 2.8) + prey.seed * 5.4;
+                prey.vx += Math.cos(thrashAngle) * prey.accel * 0.24 * simDt;
+                prey.vy += Math.sin(thrashAngle * 0.92) * prey.accel * 0.24 * simDt;
+                prey.spin += simDt * (6 + prey.attachments.length * 2.5);
+            }
+
+            const speedLimit = prey.speed
+                * (1 - attachmentPenalty * 0.52 + danger * 0.18 + (prey.isObjective ? 0.08 : 0))
+                * ((prey.guardPulse || 0) > 0.2 ? 0.9 : 1);
+            const speed = Math.hypot(prey.vx, prey.vy);
+            if (speed > speedLimit) {
+                const scale = speedLimit / Math.max(speed, 0.0001);
+                prey.vx *= scale;
+                prey.vy *= scale;
+            }
+
+            const drag = prey.attachments.length > 0 ? 2.15 : prey.shape === 'square' ? 1.32 : 0.96;
+            prey.vx *= Math.exp(-drag * simDt);
+            prey.vy *= Math.exp(-drag * simDt);
+            prey.x += prey.vx * simDt;
+            prey.y += prey.vy * simDt;
+
+            prey.hitFlash = Math.max(0, prey.hitFlash - simDt * 4.8);
+            prey.panic = Math.max(0, prey.panic - simDt * 0.72);
+            prey.wound = Math.max(0, prey.wound - simDt * 0.34);
+            prey.shudder = Math.max(0, prey.shudder - simDt * 1.9);
+            prey.spin *= Math.exp(-2.4 * simDt);
+            prey.objectiveGlow = Math.max(0, (prey.objectiveGlow || 0) - simDt * 0.18);
+            prey.pulse += simDt * (2.4 + prey.pulseMul * 1.8 + danger * 1.2 + attachmentPenalty * 1.5 + (prey.isObjective ? 1.6 : 0));
+            prey.displayX = damp(prey.displayX, prey.x, 18, simDt);
+            prey.displayY = damp(prey.displayY, prey.y, 18, simDt);
+            const heading = Math.atan2(
+                prey.vy || Math.sin(wanderAngle),
+                prey.vx || Math.cos(wanderAngle)
+            );
+            prey.displayRotation = dampAngle(prey.displayRotation, heading + prey.spin * 0.02, 12, simDt);
+        }
+    },
     resolvePreyNodeCollisions() {
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
-            const candidates = this.pickNearbyNodes(prey.x, prey.y, 6, prey.radius + 126);
+            const candidates = this.pickNearbyNodes(prey.x, prey.y, 6, prey.radius + 126 + ((prey.guardPulse || 0) > 0.1 ? 24 : 0));
             if (candidates.length === 0) {
                 const nearest = this.pickNearestNode(prey.x, prey.y);
                 if (nearest) {
@@ -259,12 +382,22 @@ const SceneEnemiesMixin = {
                 const nx = dx / distance;
                 const ny = dy / distance;
                 const existingAttachment = this.findPredationAttachment(prey, node.index);
-                const preyPush = existingAttachment ? 0.12 : 0.62;
-                const nodePush = existingAttachment ? 0.08 : 0.24;
+                const guardPush = Math.max(0, prey.guardPulse || 0);
+                const preyPush = existingAttachment ? 0.12 : guardPush > 0.08 ? 0.8 : 0.62;
+                const nodePush = existingAttachment ? 0.08 : guardPush > 0.08 ? 0.42 : 0.24;
                 prey.x += nx * overlap * preyPush;
                 prey.y += ny * overlap * preyPush;
                 node.x -= nx * overlap * nodePush;
                 node.y -= ny * overlap * nodePush;
+
+                if (guardPush > 0.08 && !existingAttachment) {
+                    const repel = overlap * (18 + guardPush * 34);
+                    node.vx -= nx * repel / Math.max(node.mass, 0.1);
+                    node.vy -= ny * repel / Math.max(node.mass, 0.1);
+                    prey.vx += nx * repel * 0.18 / Math.max(prey.mass, 0.1);
+                    prey.vy += ny * repel * 0.18 / Math.max(prey.mass, 0.1);
+                    this.damagePlayer(guardPush * 0.3, nx, ny, repel, node);
+                }
 
                 const impactScale = clamp(
                     (Math.hypot(node.vx, node.vy) + Math.max(0, node.predationWindow || 0) * 150 + overlap * 24) / 220,
@@ -284,5 +417,5 @@ const SceneEnemiesMixin = {
                 }
             }
         }
-    },
+    }
 };

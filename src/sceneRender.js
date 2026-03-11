@@ -32,8 +32,25 @@ const SceneRenderMixin = {
     drawWorld(g) {
         const width = this.cameraRig.viewportWidth;
         const height = this.cameraRig.viewportHeight;
-        g.fillStyle(COLORS.arena, 0.96);
+        const palette = this.getRunPalette ? this.getRunPalette() : {
+            arena: COLORS.arena,
+            grid: COLORS.grid,
+            mist: COLORS.link,
+            pulse: COLORS.pulse,
+            signal: COLORS.core,
+            threat: COLORS.health
+        };
+        const centerX = width * 0.5;
+        const centerY = height * 0.5;
+        const objective = this.getObjectivePrey ? this.getObjectivePrey() : null;
+        const objectivePulse = clamp(this.runState?.objectivePulse || 0, 0, 1);
+        const stageFlash = clamp(this.runState?.stageFlash || 0, 0, 1.8);
+        g.fillStyle(palette.arena, 0.98);
         g.fillRect(0, 0, width, height);
+        g.fillStyle(palette.mist, 0.08 + stageFlash * 0.04);
+        g.fillCircle(centerX + this.cameraRig.compositionX * 0.16, centerY + this.cameraRig.compositionY * 0.16, Math.max(width, height) * 0.58);
+        g.fillStyle(palette.signal, 0.035 + clamp(this.runState?.energyPulse || 0, 0, 1) * 0.05);
+        g.fillCircle(centerX, centerY, Math.max(width, height) * 0.22);
 
         const worldLeft = this.cameraRig.x - width * 0.5 / this.cameraRig.zoom;
         const worldRight = this.cameraRig.x + width * 0.5 / this.cameraRig.zoom;
@@ -43,7 +60,7 @@ const SceneRenderMixin = {
         const startX = Math.floor(worldLeft / gridSize) * gridSize;
         const startY = Math.floor(worldTop / gridSize) * gridSize;
 
-        g.lineStyle(1, COLORS.grid, 0.48);
+        g.lineStyle(1, palette.grid, 0.42 + stageFlash * 0.06);
         for (let x = startX; x <= worldRight; x += gridSize) {
             const screen = this.worldToScreen(x, 0);
             g.lineBetween(screen.x, 0, screen.x, height);
@@ -53,6 +70,12 @@ const SceneRenderMixin = {
             g.lineBetween(0, screen.y, width, screen.y);
         }
 
+        if (objective) {
+            const objectivePos = this.worldToScreen(objective.displayX, objective.displayY);
+            g.fillStyle(palette.signal, 0.04 + objectivePulse * 0.06);
+            g.fillCircle(objectivePos.x, objectivePos.y, clamp((objective.radius * 3.8 + objectivePulse * 22) * this.cameraRig.zoom, 42, 180));
+        }
+
         const feastGlow = clamp(this.player.feastGlow || 0, 0, 1.2);
         const huntGlow = clamp(this.player.predationPressure || 0, 0, 1);
         if (feastGlow > 0.01) {
@@ -60,7 +83,11 @@ const SceneRenderMixin = {
             g.fillRect(0, 0, width, height);
         }
         if (huntGlow > 0.01) {
-            g.fillStyle(COLORS.pulse, huntGlow * 0.025);
+            g.fillStyle(palette.pulse, huntGlow * 0.03);
+            g.fillRect(0, 0, width, height);
+        }
+        if ((this.runState?.lowEnergyPulse || 0) > 0.01) {
+            g.fillStyle(COLORS.health, (this.runState.lowEnergyPulse || 0) * 0.035);
             g.fillRect(0, 0, width, height);
         }
     },
@@ -94,7 +121,9 @@ const SceneRenderMixin = {
             const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * prey.shudder * 3.2 * this.cameraRig.zoom;
             const pulseScale = 1
                 + Math.sin(prey.pulse) * (prey.shape === 'circle' ? 0.08 : 0.04)
-                + prey.wound * 0.05;
+                + prey.wound * 0.05
+                + (prey.guardPulse || 0) * 0.08
+                + (prey.isObjective ? 0.06 : 0);
             const baseSize = prey.radius * 2 * pulseScale * this.cameraRig.zoom;
             const size = clamp(baseSize, 12, prey.sizeKey === 'large' ? 120 : 86);
             const x = position.x + shakeX;
@@ -102,6 +131,10 @@ const SceneRenderMixin = {
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
 
             drawShape(g, prey.shape, x + 3, y + 4, size * 1.06, COLORS.shadow, 0.42, prey.displayRotation);
+            if ((prey.guardPulse || 0) > 0.04) {
+                g.lineStyle(clamp((2 + prey.guardPulse * 3) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
+                g.strokeCircle(x, y, size * 0.66);
+            }
             if (prey.wound > 0.02) {
                 drawShape(g, prey.shape, x, y, size * (1.02 + prey.wound * 0.06), COLORS.gore, 0.18 + prey.wound * 0.3, prey.displayRotation);
             }
@@ -118,9 +151,20 @@ const SceneRenderMixin = {
                     prey.displayRotation + prey.spin * 0.02
                 );
             }
+            if (prey.weakArc > 0) {
+                const weakSpotX = x + Math.cos(prey.weakAngle) * size * 0.18;
+                const weakSpotY = y + Math.sin(prey.weakAngle) * size * 0.18;
+                drawShape(g, 'circle', weakSpotX, weakSpotY, size * 0.22, prey.signalColor || COLORS.core, 0.18 + clamp(prey.exposed || 0, 0, 1) * 0.24, 0);
+            }
             if (prey.attachments.length > 0) {
                 g.lineStyle(clamp((1.2 + prey.attachments.length * 0.4) * this.cameraRig.zoom, 1, 4), COLORS.pulse, 0.18 + prey.attachments.length * 0.04);
                 g.strokeCircle(x, y, size * 0.32);
+            }
+            if (prey.isObjective) {
+                g.lineStyle(clamp((2.2 + Math.sin(this.worldTime * 5 + prey.seed) * 0.4) * this.cameraRig.zoom, 1, 5), prey.signalColor || COLORS.core, 0.34 + clamp(this.runState?.objectivePulse || 0, 0, 1) * 0.24);
+                g.strokeCircle(x, y, size * 0.86);
+                g.lineStyle(clamp(1.6 * this.cameraRig.zoom, 1, 3), COLORS.core, 0.2 + (prey.objectiveGlow || 0) * 0.16);
+                g.strokeCircle(x, y, size * 0.56);
             }
         });
     },
@@ -151,13 +195,22 @@ const SceneRenderMixin = {
         });
     },
     drawFormation(g) {
+        const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
+        const energyRatio = this.getEnergyRatio ? this.getEnergyRatio() : 1;
+        const growthPulse = clamp(this.runState?.growthPulse || 0, 0, 1);
+        const victoryPulse = clamp(this.player.victoryPulse || 0, 0, 1);
+        if (energyRatio > 0.02 || growthPulse > 0.02 || victoryPulse > 0.02) {
+            const center = this.worldToScreen(this.player.centroidX, this.player.centroidY);
+            g.fillStyle(palette.pulse, 0.03 + energyRatio * 0.03 + victoryPulse * 0.05);
+            g.fillCircle(center.x, center.y, clamp((this.getFormationSpan() * (1.18 + growthPulse * 0.08) + 60) * this.cameraRig.zoom, 32, 220));
+        }
         this.links.forEach((link) => {
             const render = this.getLinkRenderPoints(link);
             const from = this.worldToScreen(render.fromX, render.fromY);
             const to = this.worldToScreen(render.toX, render.toY);
             const rigidityWidth = link.rigidity === 'rigid' ? 0.9 : link.rigidity === 'flex' ? -0.35 : 0.15;
             const width = clamp(((link.kind === 'support' ? 1.4 : 2.1) + rigidityWidth + link.tension * (link.kind === 'support' ? 8 : 12)) * this.cameraRig.zoom, 1, 9);
-            const color = link.samePolarity ? COLORS.link : COLORS.pulse;
+            const color = link.samePolarity ? COLORS.link : palette.pulse;
             const baseAlpha = link.samePolarity
                 ? (link.kind === 'support' ? 0.3 : 0.52)
                 : (link.kind === 'support' ? 0.54 : 0.76);
@@ -190,7 +243,7 @@ const SceneRenderMixin = {
 
             const glowRadius = clamp((18 + node.pulseGlow * 10) * this.cameraRig.zoom, 10, 28);
             if (node.pulseGlow > 0) {
-                g.lineStyle(3, COLORS.pulse, node.pulseGlow * 0.9);
+                g.lineStyle(3, palette.pulse, node.pulseGlow * 0.9);
                 g.strokeCircle(nodePos.x, nodePos.y, glowRadius);
             }
 
@@ -202,10 +255,10 @@ const SceneRenderMixin = {
             let size = clamp(30 * this.cameraRig.zoom, 14, 28);
             let rotation = Number.isFinite(node.displayAngle) ? node.displayAngle : Math.atan2(node.vy, node.vx);
             if (node.shape === 'circle') {
-                const pulse = 1 + Math.sin(this.worldTime * 9 + node.order * 1.7) * 0.1 * (0.6 + node.feedPulse);
+                const pulse = 1 + Math.sin(this.worldTime * 9 + node.order * 1.7) * 0.1 * (0.6 + node.feedPulse + growthPulse * 0.4 + victoryPulse * 0.8);
                 size *= pulse;
             } else if (node.shape === 'square') {
-                size *= 1 + node.biteGlow * 0.08;
+                size *= 1 + node.biteGlow * 0.08 + victoryPulse * 0.04;
             } else {
                 size *= 1 + node.hookTension * 0.1;
                 if (node.hookTension > 0.02) {
@@ -232,26 +285,78 @@ const SceneRenderMixin = {
     drawHud(g) {
         const left = 22;
         const top = 22;
-        const barWidth = 180;
-        const feast = clamp(this.player.feast || 0, 0, 1);
-        const pressure = clamp(this.player.predationPressure || 0, 0, 1);
-        const escalation = clamp(this.worldTime / 90, 0, 1);
-        g.fillStyle(COLORS.shadow, 0.3);
-        g.fillRect(left, top, barWidth, 12);
-        g.fillStyle(COLORS.circle, 0.88);
-        g.fillRect(left, top, barWidth * feast, 12);
-        g.fillStyle(COLORS.shadow, 0.28);
-        g.fillRect(left, top + 18, barWidth, 8);
-        g.fillStyle(COLORS.square, 0.86);
-        g.fillRect(left, top + 18, barWidth * pressure, 8);
-        g.fillStyle(COLORS.shadow, 0.28);
-        g.fillRect(left, top + 32, barWidth, 6);
-        g.fillStyle(COLORS.triangle, 0.88);
-        g.fillRect(left, top + 32, barWidth * escalation, 6);
+        const barWidth = 196;
+        const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core, threat: COLORS.health };
+        const energy = this.getEnergyRatio ? this.getEnergyRatio() : 0;
+        const growth = this.getGrowthRatio ? this.getGrowthRatio() : 0;
+        const progress = this.getStageProgressRatio ? this.getStageProgressRatio() : 0;
+        const predation = clamp(this.player.predationPressure || 0, 0, 1);
+        const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
+        const objectivePulse = clamp(this.runState?.objectivePulse || 0, 0, 1);
+
+        g.fillStyle(COLORS.shadow, 0.36);
+        g.fillRoundedRect(left - 4, top - 6, barWidth + 8, 58, 12);
+        g.fillStyle(COLORS.shadow, 0.42);
+        g.fillRoundedRect(left, top, barWidth, 14, 7);
+        g.fillRoundedRect(left, top + 20, barWidth, 9, 5);
+        g.fillRoundedRect(left, top + 35, barWidth, 7, 4);
+
+        g.fillStyle(lowEnergy > 0.08 ? COLORS.health : palette.signal, 0.9);
+        g.fillRoundedRect(left, top, barWidth * energy, 14, 7);
+        g.fillStyle(palette.pulse, 0.84);
+        g.fillRoundedRect(left, top + 20, barWidth * growth, 9, 5);
+        g.fillStyle(palette.threat, 0.88);
+        g.fillRoundedRect(left, top + 35, barWidth * predation, 7, 4);
+
+        g.lineStyle(2, palette.signal, 0.3 + objectivePulse * 0.22);
+        g.strokeRoundedRect(left - 4, top - 6, barWidth + 8, 58, 12);
+
+        const stageCount = this.getStageCount ? this.getStageCount() : 4;
+        const stageIndex = clamp(this.runState?.stageIndex || 0, 0, stageCount - 1);
+        const pipSpacing = 34;
+        const pipStartX = this.scale.width - 30 - pipSpacing * (stageCount - 1);
+        const pipY = 34;
+        for (let i = 0; i < stageCount; i += 1) {
+            const x = pipStartX + i * pipSpacing;
+            const filled = i < stageIndex;
+            const active = i === stageIndex;
+            const alpha = filled ? 0.92 : active ? 0.72 : 0.22;
+            const radius = active ? 9 : 7;
+            g.lineStyle(2, palette.signal, alpha);
+            g.strokeCircle(x, pipY, radius + (active ? objectivePulse * 2.4 : 0));
+            if (filled || active) {
+                g.fillStyle(filled ? palette.signal : palette.pulse, active ? 0.32 + progress * 0.4 : 0.48);
+                g.fillCircle(x, pipY, radius - 2 + (active ? progress * 1.4 : 0));
+            }
+            if (i < stageCount - 1) {
+                g.lineStyle(2, palette.grid || COLORS.grid, 0.28);
+                g.lineBetween(x + radius + 6, pipY, x + pipSpacing - radius - 6, pipY);
+            }
+        }
+
+        const centerX = this.scale.width * 0.5;
+        const bottomY = this.scale.height - 38;
+        const phaseColor = this.getDrivePhaseColor(this.intent.pointerDrivePhase || this.intent.burstPhase);
+        const centerCompression = clamp(this.intent.centerCompression || 0, 0, 1);
+        g.lineStyle(2, phaseColor, 0.54 + clamp(this.intent.burstAggro || 0, 0, 1) * 0.28);
+        g.strokeCircle(centerX, bottomY, 16 + centerCompression * 10);
+        g.lineStyle(2, palette.signal, 0.16 + objectivePulse * 0.22);
+        g.strokeCircle(centerX, bottomY, 28 + objectivePulse * 4);
 
         if (this.menuMode === 'pause') {
             g.fillStyle(0x000000, 0.18);
             g.fillRect(0, 0, this.scale.width, this.scale.height);
+        }
+        if (this.player.dead) {
+            g.fillStyle(COLORS.shadow, 0.34);
+            g.fillRect(0, 0, this.scale.width, this.scale.height);
+            g.lineStyle(3, COLORS.health, 0.26 + clamp(this.player.deathTimer / 2.6, 0, 1) * 0.32);
+            g.strokeCircle(this.scale.width * 0.5, this.scale.height * 0.5, 52 + clamp(1 - this.player.deathTimer / 2.6, 0, 1) * 120);
+        } else if (this.runState?.complete) {
+            g.fillStyle(palette.signal, 0.04 + clamp(this.player.victoryPulse || 0, 0, 1) * 0.08);
+            g.fillRect(0, 0, this.scale.width, this.scale.height);
+            g.lineStyle(4, palette.signal, 0.38 + clamp(this.player.victoryPulse || 0, 0, 1) * 0.22);
+            g.strokeCircle(this.scale.width * 0.5, this.scale.height * 0.5, 80 + clamp(1 - this.runState.completeTimer / 5.5, 0, 1) * 180);
         }
     },
     drawEditOverlay(g) {

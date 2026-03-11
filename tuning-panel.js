@@ -1436,9 +1436,11 @@ function createSliderRow(def, allRows) {
 }
 
 // ─── 启动 ──────────────────────────────────────────
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', buildTuningPanel);
-} else {
-    buildTuningPanel();
+if (window.CORE_DEMO_DEBUG === true) {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', buildTuningPanel);
+    } else {
+        buildTuningPanel();
+    }
 }
 

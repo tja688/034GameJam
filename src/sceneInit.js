@@ -100,10 +100,11 @@ const SceneInitMixin = {
             heading: -Math.PI * 0.5,
             health: 100,
             maxHealth: 100,
+            maxEnergy: 100,
             shield: 0,
             shieldTimer: 0,
             mass: 1,
-            energy: 0,
+            energy: 78,
             guard: 0,
             overload: 0,
             echo: 0,
@@ -114,6 +115,12 @@ const SceneInitMixin = {
             feast: 0,
             feastGlow: 0,
             predationPressure: 0,
+            growthBuffer: 0,
+            nextGrowthCost: 3.2,
+            metabolism: 0,
+            energyFlash: 0,
+            stagePulse: 0,
+            victoryPulse: 0,
             dead: false,
             deathTimer: 0,
             pulseRunners: [this.createPulseRunner()],
@@ -334,10 +341,14 @@ const SceneInitMixin = {
         this.clusterVolume = this.createDefaultClusterVolumeState();
         this.burstDrive = this.createDefaultBurstDriveState();
         this.poolNodes = this.createPoolNodesFromLibrary();
+        this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
         this.links = [];
         this.rebuildFormation(true);
+        if (typeof this.resetRunProgression === 'function') {
+            this.resetRunProgression();
+        }
         this.expandHoldTimer = 0;
         this.expandAddCount = 0;
         this.nextExpandThreshold = 0;
@@ -346,7 +357,7 @@ const SceneInitMixin = {
     update(_, deltaMs) {
         const frameDt = Math.min(deltaMs, 33) / 1000;
 
-        if (Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
+        if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
             if (this.menuMode === 'pause') {
                 this.resumeGame();
                 return;
@@ -385,7 +396,7 @@ const SceneInitMixin = {
             return;
         }
 
-        if (!this.player.dead && !this.player.edit.active) {
+        if (this.isDebugToolsEnabled() && !this.player.dead && !this.player.edit.active) {
             if (Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
                 this.addDebugNode();
                 this.expandHoldTimer = 0;
@@ -421,8 +432,14 @@ const SceneInitMixin = {
             this.updatePrey(simDt);
             this.resolvePreyNodeCollisions();
             this.updatePredation(simDt);
+            if (typeof this.updateRunState === 'function') {
+                this.updateRunState(simDt);
+            }
             this.updateEffects(simDt);
         } else {
+            if (typeof this.updateRunState === 'function') {
+                this.updateRunState(frameDt);
+            }
             this.updateEffects(frameDt);
         }
 

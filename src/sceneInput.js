@@ -607,8 +607,9 @@ const SceneInputMixin = {
         return state;
     },
     readIntent(frameDt = 1 / 60) {
-        const moveX = this.player.edit.active ? 0 : (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
-        const moveY = this.player.edit.active ? 0 : (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0);
+        const allowKeyboardDrive = this.isDebugToolsEnabled() && !this.player.edit.active;
+        const moveX = allowKeyboardDrive ? (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0) : 0;
+        const moveY = allowKeyboardDrive ? (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0) : 0;
         const move = normalize(moveX, moveY);
 
         const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
@@ -713,6 +714,9 @@ const SceneInputMixin = {
         const edit = this.player.edit;
 
         if (!edit.active) {
+            if (!this.isDebugToolsEnabled()) {
+                return;
+            }
             if (hitNode || hitLink) {
                 this.enterEditMode();
             }
@@ -935,17 +939,17 @@ const SceneInputMixin = {
             }
         }
     },
-    addDebugNode() {
+    addDebugNode(options = {}) {
         const T = window.TUNING || {};
         const maxNodes = T.maxNodeCount ?? 96;
         if (this.poolNodes.length >= maxNodes) {
-            return;
+            return false;
         }
 
         const expansion = this.getExpansionDirection();
         const entries = this.getActiveTopologyEntries();
         const anchor = this.pickExpansionAnchor(entries, expansion.local);
-        const template = Phaser.Utils.Array.GetRandom(NODE_LIBRARY);
+        const template = options.template || Phaser.Utils.Array.GetRandom(NODE_LIBRARY);
         const index = this.poolNodes.length;
         this.poolNodes.push({
             ...template,
@@ -979,14 +983,13 @@ const SceneInputMixin = {
         neighborIndices.forEach((neighborIndex, neighborOrder) => {
             this.addTopologyEdge(index, neighborIndex, neighborOrder === 0 ? 'spine' : 'support');
         });
-        this.player.energy = 0;
-        this.player.guard = 0;
-        this.player.overload = 0;
-        this.player.echo = 0;
-        this.player.tempoBoost = 0;
-        this.player.stability = 0.35;
-        this.player.turnAssist = 0;
+        if (!options.silent) {
+            this.player.tempoBoost = 0;
+            this.player.stability = 0.35;
+            this.player.turnAssist = 0;
+        }
         this.rebuildFormation();
         this.resetPulseFlow();
+        return true;
     },
 };

@@ -14,7 +14,7 @@ const SceneSaveLoadMixin = {
     buildSaveData() {
         this.rebalancePulseRunners();
         return {
-            version: 3,
+            version: 4,
             savedAt: Date.now(),
             baseChain: [...this.baseChain],
             camera: {
@@ -27,6 +27,7 @@ const SceneSaveLoadMixin = {
                 heading: this.player.heading,
                 health: this.player.health,
                 maxHealth: this.player.maxHealth,
+                maxEnergy: this.player.maxEnergy,
                 shield: this.player.shield,
                 shieldTimer: this.player.shieldTimer,
                 mass: this.player.mass,
@@ -41,6 +42,12 @@ const SceneSaveLoadMixin = {
                 feast: this.player.feast,
                 feastGlow: this.player.feastGlow,
                 predationPressure: this.player.predationPressure,
+                growthBuffer: this.player.growthBuffer,
+                nextGrowthCost: this.player.nextGrowthCost,
+                metabolism: this.player.metabolism,
+                energyFlash: this.player.energyFlash,
+                stagePulse: this.player.stagePulse,
+                victoryPulse: this.player.victoryPulse,
                 dead: this.player.dead,
                 deathTimer: this.player.deathTimer,
                 pulseRunners: cloneData(this.player.pulseRunners || []),
@@ -52,6 +59,7 @@ const SceneSaveLoadMixin = {
                     edges: cloneData(this.player.topology?.edges || [])
                 }
             },
+            runState: cloneData(this.runState || {}),
             poolNodes: this.poolNodes.map((node) => ({
                 index: node.index,
                 id: node.id,
@@ -141,6 +149,7 @@ const SceneSaveLoadMixin = {
             ...node,
             index: Number.isInteger(node.index) ? node.index : index
         }));
+        this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
         const T = window.TUNING || {};
         const savedCameraZoom = clamp(
             getFiniteNumber(data.camera?.zoom, this.cameraRig.manualZoom),
@@ -158,6 +167,7 @@ const SceneSaveLoadMixin = {
             heading: getFiniteNumber(data.player.heading, this.player.heading),
             health: getFiniteNumber(data.player.health, this.player.health),
             maxHealth: getFiniteNumber(data.player.maxHealth, this.player.maxHealth),
+            maxEnergy: getFiniteNumber(data.player.maxEnergy, this.player.maxEnergy || 100),
             shield: getFiniteNumber(data.player.shield, this.player.shield),
             shieldTimer: getFiniteNumber(data.player.shieldTimer, this.player.shieldTimer),
             mass: getFiniteNumber(data.player.mass, this.player.mass),
@@ -172,6 +182,12 @@ const SceneSaveLoadMixin = {
             feast: getFiniteNumber(data.player.feast, this.player.feast),
             feastGlow: getFiniteNumber(data.player.feastGlow, this.player.feastGlow),
             predationPressure: getFiniteNumber(data.player.predationPressure, this.player.predationPressure),
+            growthBuffer: getFiniteNumber(data.player.growthBuffer, this.player.growthBuffer),
+            nextGrowthCost: getFiniteNumber(data.player.nextGrowthCost, this.player.nextGrowthCost),
+            metabolism: getFiniteNumber(data.player.metabolism, this.player.metabolism),
+            energyFlash: getFiniteNumber(data.player.energyFlash, this.player.energyFlash),
+            stagePulse: getFiniteNumber(data.player.stagePulse, this.player.stagePulse),
+            victoryPulse: getFiniteNumber(data.player.victoryPulse, this.player.victoryPulse),
             dead: !!data.player.dead,
             deathTimer: getFiniteNumber(data.player.deathTimer, this.player.deathTimer),
             pulseRunners: Array.isArray(data.player.pulseRunners) && data.player.pulseRunners.length > 0
@@ -193,6 +209,9 @@ const SceneSaveLoadMixin = {
             },
             edit: this.createDefaultEditState()
         });
+        if (this.runState) {
+            Object.assign(this.runState, cloneData(data.runState || {}));
+        }
 
         this.activeNodes = [];
         this.links = [];

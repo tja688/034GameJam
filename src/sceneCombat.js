@@ -427,6 +427,7 @@ const SceneCombatMixin = {
 
         const resistance = prey.sizeKey === 'large' ? 1.48 : prey.sizeKey === 'medium' ? 1.08 : 0.76;
         amount /= resistance;
+        amount *= this.getPreyDamageMultiplier(prey, node, attachment, pressure);
 
         const biteDir = normalize(
             node.attackDirX || (prey.x - node.x),
@@ -515,6 +516,9 @@ const SceneCombatMixin = {
             node.hookTension = Math.max(node.hookTension || 0, attachment.mode === 'hook' ? 1.02 : 0.46);
             node.spinVelocity = Math.max(node.spinVelocity || 0, attachment.mode === 'grind' ? 22 : 0);
             node.biteGlow = Math.max(node.biteGlow || 0, 1);
+        }
+        if (typeof this.onPreyDevoured === 'function') {
+            this.onPreyDevoured(prey, node, attachment);
         }
     },
     spawnFragmentBurst(x, y, options = {}) {
@@ -612,6 +616,9 @@ const SceneCombatMixin = {
         node.biteGlow = Math.max(node.biteGlow || 0, 0.78);
         this.bumpFeastMeter(fragment.kind === 'energy' ? 0.08 : 0.04);
         this.createRing(node.x, node.y, 16 + fragment.size * 2.1, COLORS.energy, 0.08, 2);
+        if (typeof this.absorbFragment === 'function') {
+            this.absorbFragment(fragment);
+        }
     },
     bumpFeastMeter(amount) {
         this.player.feast = clamp((this.player.feast || 0) + amount * 0.75, 0, 1.3);
@@ -623,6 +630,9 @@ const SceneCombatMixin = {
         }
         node.vx -= dirX * push * 0.2;
         node.vy -= dirY * push * 0.2;
+        if (typeof this.applyEnergyDelta === 'function') {
+            this.applyEnergyDelta(-Math.max(0.12, amount * 2.2));
+        }
         this.createRing(node.x, node.y, 28, COLORS.health, 0.14, 2);
     },
 };
