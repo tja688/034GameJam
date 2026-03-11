@@ -38,6 +38,9 @@ const SceneSaveLoadMixin = {
                 agitation: this.player.agitation,
                 stability: this.player.stability,
                 turnAssist: this.player.turnAssist,
+                feast: this.player.feast,
+                feastGlow: this.player.feastGlow,
+                predationPressure: this.player.predationPressure,
                 dead: this.player.dead,
                 deathTimer: this.player.deathTimer,
                 pulseRunners: cloneData(this.player.pulseRunners || []),
@@ -77,7 +80,20 @@ const SceneSaveLoadMixin = {
                 attackTimer: node.attackTimer,
                 attackDirX: node.attackDirX,
                 attackDirY: node.attackDirY,
-                attackDamage: node.attackDamage
+                attackDamage: node.attackDamage,
+                displayAngle: node.displayAngle,
+                spinVelocity: node.spinVelocity,
+                feedPulse: node.feedPulse,
+                hookTension: node.hookTension,
+                biteGlow: node.biteGlow,
+                predationWindow: node.predationWindow,
+                predationMode: node.predationMode,
+                gripPower: node.gripPower,
+                cutPower: node.cutPower,
+                suctionPower: node.suctionPower,
+                chewInterval: node.chewInterval,
+                attachedPreyId: node.attachedPreyId,
+                attachedPreyCount: node.attachedPreyCount
             })),
             summary: {
                 nodeCount: this.activeNodes.length,
@@ -110,10 +126,11 @@ const SceneSaveLoadMixin = {
         this.timeScaleFactor = 1;
         this.worldTime = 0;
         this.effects = [];
-        this.projectiles = [];
-        this.echoQueue = [];
-        this.enemies = [];
+        this.fragments = [];
+        this.prey = [];
         this.spawnTimers = this.createDefaultSpawnTimers();
+        this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
+        this.preyIdCounter = 1;
         this.baseChain = [...savedBaseChain];
         this.player = this.createDefaultPlayer(chain);
         this.intent = this.createDefaultIntent();
@@ -152,6 +169,9 @@ const SceneSaveLoadMixin = {
             agitation: getFiniteNumber(data.player.agitation, this.player.agitation),
             stability: getFiniteNumber(data.player.stability, this.player.stability),
             turnAssist: getFiniteNumber(data.player.turnAssist, this.player.turnAssist),
+            feast: getFiniteNumber(data.player.feast, this.player.feast),
+            feastGlow: getFiniteNumber(data.player.feastGlow, this.player.feastGlow),
+            predationPressure: getFiniteNumber(data.player.predationPressure, this.player.predationPressure),
             dead: !!data.player.dead,
             deathTimer: getFiniteNumber(data.player.deathTimer, this.player.deathTimer),
             pulseRunners: Array.isArray(data.player.pulseRunners) && data.player.pulseRunners.length > 0
@@ -207,6 +227,19 @@ const SceneSaveLoadMixin = {
             node.attackDirX = getFiniteNumber(savedNode.attackDirX, node.attackDirX);
             node.attackDirY = getFiniteNumber(savedNode.attackDirY, node.attackDirY);
             node.attackDamage = getFiniteNumber(savedNode.attackDamage, node.attackDamage);
+            node.displayAngle = getFiniteNumber(savedNode.displayAngle, node.displayAngle);
+            node.spinVelocity = getFiniteNumber(savedNode.spinVelocity, node.spinVelocity);
+            node.feedPulse = getFiniteNumber(savedNode.feedPulse, node.feedPulse);
+            node.hookTension = getFiniteNumber(savedNode.hookTension, node.hookTension);
+            node.biteGlow = getFiniteNumber(savedNode.biteGlow, node.biteGlow);
+            node.predationWindow = getFiniteNumber(savedNode.predationWindow, node.predationWindow);
+            node.predationMode = typeof savedNode.predationMode === 'string' ? savedNode.predationMode : node.predationMode;
+            node.gripPower = getFiniteNumber(savedNode.gripPower, node.gripPower);
+            node.cutPower = getFiniteNumber(savedNode.cutPower, node.cutPower);
+            node.suctionPower = getFiniteNumber(savedNode.suctionPower, node.suctionPower);
+            node.chewInterval = getFiniteNumber(savedNode.chewInterval, node.chewInterval);
+            node.attachedPreyId = typeof savedNode.attachedPreyId === 'string' ? savedNode.attachedPreyId : node.attachedPreyId;
+            node.attachedPreyCount = getFiniteNumber(savedNode.attachedPreyCount, node.attachedPreyCount);
         });
 
         this.computeCentroid();

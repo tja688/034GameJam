@@ -16,10 +16,11 @@ const SceneRenderMixin = {
         const g = this.graphics;
         g.clear();
         this.drawWorld(g);
-        this.drawEffects(g);
-        this.drawEnemies(g);
-        this.drawProjectiles(g);
+        this.drawFragments(g);
+        this.drawPrey(g);
+        this.drawPredationLinks(g);
         this.drawFormation(g);
+        this.drawEffects(g);
         if (this.player.edit.active || this.player.edit.ambience > 0.01) {
             this.drawEditOverlay(g);
         }
@@ -51,6 +52,17 @@ const SceneRenderMixin = {
             const screen = this.worldToScreen(0, y);
             g.lineBetween(0, screen.y, width, screen.y);
         }
+
+        const feastGlow = clamp(this.player.feastGlow || 0, 0, 1.2);
+        const huntGlow = clamp(this.player.predationPressure || 0, 0, 1);
+        if (feastGlow > 0.01) {
+            g.fillStyle(COLORS.gore, 0.04 + feastGlow * 0.05);
+            g.fillRect(0, 0, width, height);
+        }
+        if (huntGlow > 0.01) {
+            g.fillStyle(COLORS.pulse, huntGlow * 0.025);
+            g.fillRect(0, 0, width, height);
+        }
     },
     drawEffects(g) {
         this.effects.forEach((effect) => {
@@ -60,26 +72,82 @@ const SceneRenderMixin = {
             g.strokeCircle(position.x, position.y, effect.radius * this.cameraRig.zoom + (1 - alpha) * 18);
         });
     },
-    drawEnemies(g) {
-        this.enemies.forEach((enemy) => {
-            const position = this.worldToScreen(enemy.x, enemy.y);
-            const size = clamp(enemy.radius * this.cameraRig.zoom * 2, 12, 42);
-            const color = enemy.hitFlash > 0 ? COLORS.pulse : enemy.color;
-            drawShape(g, enemy.shape, position.x, position.y, size, color, 0.94, Math.atan2(enemy.vy, enemy.vx));
+    drawFragments(g) {
+        this.fragments.forEach((fragment) => {
+            const position = this.worldToScreen(fragment.x, fragment.y);
+            const alpha = clamp(fragment.life / fragment.total, 0, 1) * (fragment.collectible ? 0.96 : 0.8);
+            const pulse = fragment.kind === 'energy'
+                ? 1 + Math.sin(this.worldTime * 10 + fragment.pulse) * 0.14
+                : 1;
+            const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 14);
+            if (fragment.kind === 'energy') {
+                g.lineStyle(1.5, COLORS.core, alpha * 0.32);
+                g.strokeCircle(position.x, position.y, size + 2);
+            }
+            drawShape(g, fragment.shape, position.x, position.y, size * 2, fragment.color, alpha, fragment.rotation);
         });
     },
-    drawProjectiles(g) {
-        this.projectiles.forEach((projectile) => {
-            const position = this.worldToScreen(projectile.x, projectile.y);
-            g.lineStyle(2, projectile.color, projectile.alpha * 0.55);
-            g.lineBetween(
-                position.x - projectile.dirX * 12 * this.cameraRig.zoom,
-                position.y - projectile.dirY * 12 * this.cameraRig.zoom,
-                position.x + projectile.dirX * 12 * this.cameraRig.zoom,
-                position.y + projectile.dirY * 12 * this.cameraRig.zoom
-            );
-            g.fillStyle(projectile.color, projectile.alpha);
-            g.fillCircle(position.x, position.y, clamp(projectile.radius * this.cameraRig.zoom, 3, 7));
+    drawPrey(g) {
+        this.prey.forEach((prey) => {
+            const position = this.worldToScreen(prey.displayX, prey.displayY);
+            const shakeX = Math.cos(prey.pulse * 1.7 + prey.seed) * prey.shudder * 3.2 * this.cameraRig.zoom;
+            const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * prey.shudder * 3.2 * this.cameraRig.zoom;
+            const pulseScale = 1
+                + Math.sin(prey.pulse) * (prey.shape === 'circle' ? 0.08 : 0.04)
+                + prey.wound * 0.05;
+            const baseSize = prey.radius * 2 * pulseScale * this.cameraRig.zoom;
+            const size = clamp(baseSize, 12, prey.sizeKey === 'large' ? 120 : 86);
+            const x = position.x + shakeX;
+            const y = position.y + shakeY;
+            const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
+
+            drawShape(g, prey.shape, x + 3, y + 4, size * 1.06, COLORS.shadow, 0.42, prey.displayRotation);
+            if (prey.wound > 0.02) {
+                drawShape(g, prey.shape, x, y, size * (1.02 + prey.wound * 0.06), COLORS.gore, 0.18 + prey.wound * 0.3, prey.displayRotation);
+            }
+            drawShape(g, prey.shape, x, y, size, color, 0.95, prey.displayRotation);
+            if (prey.exposed > 0.03) {
+                drawShape(
+                    g,
+                    prey.shape,
+                    x,
+                    y,
+                    size * (0.38 + prey.exposed * 0.22),
+                    prey.shape === 'circle' ? COLORS.energy : COLORS.core,
+                    0.14 + prey.exposed * 0.42,
+                    prey.displayRotation + prey.spin * 0.02
+                );
+            }
+            if (prey.attachments.length > 0) {
+                g.lineStyle(clamp((1.2 + prey.attachments.length * 0.4) * this.cameraRig.zoom, 1, 4), COLORS.pulse, 0.18 + prey.attachments.length * 0.04);
+                g.strokeCircle(x, y, size * 0.32);
+            }
+        });
+    },
+    drawPredationLinks(g) {
+        this.prey.forEach((prey) => {
+            (prey.attachments || []).forEach((attachment) => {
+                const node = this.activeNodes.find((entry) => entry.index === attachment.nodeIndex);
+                if (!node) {
+                    return;
+                }
+                const nodePos = this.worldToScreen(node.displayX, node.displayY);
+                const preyPos = this.worldToScreen(prey.displayX, prey.displayY);
+                const attachX = lerp(nodePos.x, preyPos.x, 0.32);
+                const attachY = lerp(nodePos.y, preyPos.y, 0.32);
+                const color = attachment.mode === 'hook'
+                    ? COLORS.triangle
+                    : attachment.mode === 'grind'
+                        ? COLORS.square
+                        : COLORS.circle;
+                const width = clamp((1.8 + attachment.depth * 4.2) * this.cameraRig.zoom, 1, 6);
+                g.lineStyle(width, color, 0.26 + attachment.depth * 0.44);
+                g.lineBetween(nodePos.x, nodePos.y, attachX, attachY);
+                g.lineStyle(Math.max(1, width * 0.58), COLORS.pulse, 0.16 + attachment.depth * 0.28);
+                g.lineBetween(attachX, attachY, preyPos.x, preyPos.y);
+                g.fillStyle(color, 0.82);
+                g.fillCircle(attachX, attachY, clamp((3 + attachment.depth * 3) * this.cameraRig.zoom, 2, 5));
+            });
         });
     },
     drawFormation(g) {
@@ -126,29 +194,60 @@ const SceneRenderMixin = {
                 g.strokeCircle(nodePos.x, nodePos.y, glowRadius);
             }
 
-            const size = clamp(30 * this.cameraRig.zoom, 14, 28);
-            drawShape(g, node.shape, nodePos.x, nodePos.y, size, node.color, 0.96, Math.atan2(node.vy, node.vx));
+            if (node.biteGlow > 0.01) {
+                g.lineStyle(clamp((2.2 + node.biteGlow * 1.6) * this.cameraRig.zoom, 1, 4), node.color, node.biteGlow * 0.5);
+                g.strokeCircle(nodePos.x, nodePos.y, clamp((16 + node.biteGlow * 10) * this.cameraRig.zoom, 8, 26));
+            }
+
+            let size = clamp(30 * this.cameraRig.zoom, 14, 28);
+            let rotation = Number.isFinite(node.displayAngle) ? node.displayAngle : Math.atan2(node.vy, node.vx);
+            if (node.shape === 'circle') {
+                const pulse = 1 + Math.sin(this.worldTime * 9 + node.order * 1.7) * 0.1 * (0.6 + node.feedPulse);
+                size *= pulse;
+            } else if (node.shape === 'square') {
+                size *= 1 + node.biteGlow * 0.08;
+            } else {
+                size *= 1 + node.hookTension * 0.1;
+                if (node.hookTension > 0.02) {
+                    drawShape(
+                        g,
+                        node.shape,
+                        nodePos.x + (node.attackDirX || 0) * 8 * this.cameraRig.zoom,
+                        nodePos.y + (node.attackDirY || 0) * 8 * this.cameraRig.zoom,
+                        size * (1 + node.hookTension * 0.08),
+                        node.color,
+                        0.18 + node.hookTension * 0.16,
+                        rotation
+                    );
+                }
+            }
+
+            drawShape(g, node.shape, nodePos.x, nodePos.y, size, node.color, 0.96, rotation);
+            if (node.shape === 'circle' && node.feedPulse > 0.02) {
+                g.fillStyle(COLORS.core, 0.18 + node.feedPulse * 0.14);
+                g.fillCircle(nodePos.x, nodePos.y, clamp(size * 0.18, 2, 7));
+            }
         });
     },
     drawHud(g) {
         const left = 22;
         const top = 22;
-        const healthWidth = 180;
-        const healthRatio = clamp(this.player.health / this.player.maxHealth, 0, 1);
-        const shieldRatio = clamp(this.player.shield / 16, 0, 1);
-
+        const barWidth = 180;
+        const feast = clamp(this.player.feast || 0, 0, 1);
+        const pressure = clamp(this.player.predationPressure || 0, 0, 1);
+        const escalation = clamp(this.worldTime / 90, 0, 1);
         g.fillStyle(COLORS.shadow, 0.3);
-        g.fillRect(left, top, healthWidth, 16);
-        g.fillStyle(COLORS.health, 0.9);
-        g.fillRect(left, top, healthWidth * healthRatio, 16);
-        g.fillStyle(COLORS.shield, 0.85);
-        g.fillRect(left, top + 20, healthWidth * shieldRatio, 8);
-
-        const pressure = clamp(this.worldTime / 120, 0, 1);
+        g.fillRect(left, top, barWidth, 12);
+        g.fillStyle(COLORS.circle, 0.88);
+        g.fillRect(left, top, barWidth * feast, 12);
         g.fillStyle(COLORS.shadow, 0.28);
-        g.fillRect(left, top + 40, healthWidth, 6);
-        g.fillStyle(COLORS.inverse, 0.78);
-        g.fillRect(left, top + 40, healthWidth * pressure, 6);
+        g.fillRect(left, top + 18, barWidth, 8);
+        g.fillStyle(COLORS.square, 0.86);
+        g.fillRect(left, top + 18, barWidth * pressure, 8);
+        g.fillStyle(COLORS.shadow, 0.28);
+        g.fillRect(left, top + 32, barWidth, 6);
+        g.fillStyle(COLORS.triangle, 0.88);
+        g.fillRect(left, top + 32, barWidth * escalation, 6);
 
         if (this.menuMode === 'pause') {
             g.fillStyle(0x000000, 0.18);

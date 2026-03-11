@@ -10,6 +10,14 @@ function damp(current, target, rate, dt) {
     return Phaser.Math.Linear(current, target, 1 - Math.exp(-rate * dt));
 }
 
+function lerpAngle(current, target, t) {
+    return current + Phaser.Math.Angle.Wrap(target - current) * t;
+}
+
+function dampAngle(current, target, rate, dt) {
+    return lerpAngle(current, target, 1 - Math.exp(-rate * dt));
+}
+
 function normalize(x, y, fallbackX = 0, fallbackY = 0) {
     const length = Math.hypot(x, y);
     if (length < 0.0001) {

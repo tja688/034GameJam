@@ -111,6 +111,9 @@ const SceneInitMixin = {
             agitation: 0,
             stability: 0.35,
             turnAssist: 0,
+            feast: 0,
+            feastGlow: 0,
+            predationPressure: 0,
             dead: false,
             deathTimer: 0,
             pulseRunners: [this.createPulseRunner()],
@@ -308,7 +311,7 @@ const SceneInitMixin = {
         };
     },
     createDefaultSpawnTimers() {
-        return { swarm: 0.35, stinger: 8, brute: 46, flank: 21 };
+        return { small: 0.32, medium: 2.5, large: 8.5 };
     },
     createPoolNodesFromLibrary() {
         return NODE_LIBRARY.map((node, index) => ({ ...node, index }));
@@ -319,10 +322,11 @@ const SceneInitMixin = {
         this.timeScaleFactor = 1;
         this.worldTime = 0;
         this.effects = [];
-        this.projectiles = [];
-        this.echoQueue = [];
-        this.enemies = [];
+        this.fragments = [];
+        this.prey = [];
         this.spawnTimers = this.createDefaultSpawnTimers();
+        this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
+        this.preyIdCounter = 1;
         this.baseChain = [...DEFAULT_BASE_CHAIN];
         this.player = this.createDefaultPlayer();
         this.intent = this.createDefaultIntent();
@@ -417,11 +421,10 @@ const SceneInitMixin = {
             this.updatePulse(simDt);
             this.updateFormation(simDt);
             this.updatePlayerState(simDt);
-            this.updateEchoes(simDt);
-            this.updateProjectiles(simDt);
             this.updateSpawns(simDt);
-            this.updateEnemies(simDt);
-            this.resolveEnemyNodeCollisions();
+            this.updatePrey(simDt);
+            this.resolvePreyNodeCollisions();
+            this.updatePredation(simDt);
             this.updateEffects(simDt);
         } else {
             this.updateEffects(frameDt);
@@ -651,6 +654,20 @@ const SceneInitMixin = {
             node.displayAnchorY = damp(node.displayAnchorY, node.anchorY, dd, frameDt);
             node.pulseGlow = Math.max(0, node.pulseGlow - frameDt * pgd);
             node.attackTimer = Math.max(0, node.attackTimer - frameDt);
+            node.predationWindow = Math.max(0, node.predationWindow - frameDt);
+            node.spinVelocity = Math.max(0, node.spinVelocity - frameDt * 18);
+            node.feedPulse = Math.max(0, node.feedPulse - frameDt * 1.6);
+            node.hookTension = Math.max(0, node.hookTension - frameDt * 2.8);
+            node.biteGlow = Math.max(0, node.biteGlow - frameDt * 2.2);
+            const facingX = node.shape === 'triangle'
+                ? (node.attackDirX || node.vx || Math.cos(this.player.heading))
+                : (node.vx || node.attackDirX || Math.cos(this.player.heading));
+            const facingY = node.shape === 'triangle'
+                ? (node.attackDirY || node.vy || Math.sin(this.player.heading))
+                : (node.vy || node.attackDirY || Math.sin(this.player.heading));
+            const targetAngle = Math.atan2(facingY, facingX) + (node.shape === 'square' ? (node.spinVelocity || 0) * 0.035 : 0);
+            const currentAngle = Number.isFinite(node.displayAngle) ? node.displayAngle : targetAngle;
+            node.displayAngle = dampAngle(currentAngle, targetAngle, 16, frameDt);
         });
     },
 };

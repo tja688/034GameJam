@@ -5,13 +5,18 @@ const COLORS = {
     arena: 0x0d1e28,
     grid: 0x183242,
     pulse: 0xf4f0d7,
-    base: 0x36d6ff,
-    inverse: 0xff5d49,
+    base: 0x7de977,
+    inverse: 0xff6d57,
     shield: 0xfff4bf,
     health: 0xff5663,
-    swarm: 0x98ff4d,
-    stinger: 0xffd147,
-    brute: 0xffffff,
+    triangle: 0xffd147,
+    square: 0xff5d49,
+    circle: 0x7de977,
+    flesh: 0xff8b73,
+    meat: 0xffb39d,
+    gore: 0xff6c5e,
+    energy: 0xf1ffd2,
+    core: 0xf6f2df,
     shadow: 0x02070b,
     link: 0x4fa9c6
 };
@@ -31,21 +36,63 @@ const PARTIAL_MESH_RULES = {
     deleteHoldDuration: 0.72
 };
 
+const NODE_COLORS_BY_SHAPE = {
+    triangle: COLORS.triangle,
+    square: COLORS.square,
+    circle: COLORS.circle
+};
+
 const NODE_LIBRARY = [
-    { id: 'source', shape: 'circle', polarity: 'base', role: 'source', color: COLORS.base },
-    { id: 'compressor', shape: 'circle', polarity: 'inverse', role: 'compressor', color: COLORS.inverse },
-    { id: 'shell-a', shape: 'square', polarity: 'base', role: 'shell', color: COLORS.base },
-    { id: 'shell-b', shape: 'square', polarity: 'base', role: 'shell', color: COLORS.base },
-    { id: 'prism', shape: 'square', polarity: 'inverse', role: 'prism', color: COLORS.inverse },
-    { id: 'dart-a', shape: 'triangle', polarity: 'base', role: 'dart', color: COLORS.base },
-    { id: 'dart-b', shape: 'triangle', polarity: 'base', role: 'dart', color: COLORS.base },
-    { id: 'blade', shape: 'triangle', polarity: 'inverse', role: 'blade', color: COLORS.inverse }
+    { id: 'source', shape: 'circle', polarity: 'base', role: 'source', color: NODE_COLORS_BY_SHAPE.circle },
+    { id: 'compressor', shape: 'circle', polarity: 'inverse', role: 'compressor', color: NODE_COLORS_BY_SHAPE.circle },
+    { id: 'shell-a', shape: 'square', polarity: 'base', role: 'shell', color: NODE_COLORS_BY_SHAPE.square },
+    { id: 'shell-b', shape: 'square', polarity: 'base', role: 'shell', color: NODE_COLORS_BY_SHAPE.square },
+    { id: 'prism', shape: 'square', polarity: 'inverse', role: 'prism', color: NODE_COLORS_BY_SHAPE.square },
+    { id: 'dart-a', shape: 'triangle', polarity: 'base', role: 'dart', color: NODE_COLORS_BY_SHAPE.triangle },
+    { id: 'dart-b', shape: 'triangle', polarity: 'base', role: 'dart', color: NODE_COLORS_BY_SHAPE.triangle },
+    { id: 'blade', shape: 'triangle', polarity: 'inverse', role: 'blade', color: NODE_COLORS_BY_SHAPE.triangle }
 ];
 
-const ENEMY_DEFS = {
-    swarm: { color: COLORS.swarm, radius: 18, maxHealth: 12, speed: 86, accel: 170, mass: 0.9, touchDamage: 8, push: 70, shape: 'circle' },
-    stinger: { color: COLORS.stinger, radius: 16, maxHealth: 8, speed: 118, accel: 190, mass: 0.75, touchDamage: 12, push: 88, shape: 'triangle' },
-    brute: { color: COLORS.brute, radius: 28, maxHealth: 40, speed: 52, accel: 96, mass: 2.4, touchDamage: 18, push: 124, shape: 'square' }
+const PREY_SHAPE_DEFS = {
+    triangle: { color: COLORS.triangle, speedMul: 1.16, accelMul: 1.18, massMul: 0.84, wander: 0.92, fleeMul: 1.16, pulseMul: 0.86, rotationMul: 1.28, yieldMul: 0.9 },
+    square: { color: COLORS.square, speedMul: 0.82, accelMul: 0.78, massMul: 1.28, wander: 0.36, fleeMul: 0.8, pulseMul: 0.74, rotationMul: 0.62, yieldMul: 1.16 },
+    circle: { color: COLORS.circle, speedMul: 0.94, accelMul: 0.92, massMul: 1.02, wander: 0.58, fleeMul: 0.96, pulseMul: 1.28, rotationMul: 0.84, yieldMul: 1.02 }
+};
+
+const PREY_SIZE_DEFS = {
+    small: {
+        radius: 18,
+        maxHealth: 14,
+        speed: 118,
+        accel: 184,
+        mass: 0.72,
+        maxAnchors: 1,
+        chunkBurst: 3,
+        yield: 1.1,
+        breakBias: 1.34
+    },
+    medium: {
+        radius: 28,
+        maxHealth: 42,
+        speed: 84,
+        accel: 132,
+        mass: 1.7,
+        maxAnchors: 3,
+        chunkBurst: 6,
+        yield: 2.6,
+        breakBias: 1
+    },
+    large: {
+        radius: 42,
+        maxHealth: 104,
+        speed: 52,
+        accel: 94,
+        mass: 3.8,
+        maxAnchors: 5,
+        chunkBurst: 10,
+        yield: 4.9,
+        breakBias: 0.76
+    }
 };
 
 const DEFAULT_BASE_CHAIN = [0, 2, 5, 4, 1, 7];

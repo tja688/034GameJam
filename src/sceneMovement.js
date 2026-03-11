@@ -55,7 +55,20 @@ const SceneMovementMixin = {
                 attackTimer: existing ? existing.attackTimer : 0,
                 attackDirX: existing ? existing.attackDirX : 0,
                 attackDirY: existing ? existing.attackDirY : -1,
-                attackDamage: existing ? existing.attackDamage : 0
+                attackDamage: existing ? existing.attackDamage : 0,
+                displayAngle: existing ? existing.displayAngle : -Math.PI * 0.5,
+                spinVelocity: existing ? existing.spinVelocity : 0,
+                feedPulse: existing ? existing.feedPulse : 0,
+                hookTension: existing ? existing.hookTension : 0,
+                biteGlow: existing ? existing.biteGlow : 0,
+                predationWindow: existing ? existing.predationWindow : 0,
+                predationMode: existing ? existing.predationMode : '',
+                gripPower: existing ? existing.gripPower : 0,
+                cutPower: existing ? existing.cutPower : 0,
+                suctionPower: existing ? existing.suctionPower : 0,
+                chewInterval: existing ? existing.chewInterval : 0.1,
+                attachedPreyId: existing ? existing.attachedPreyId : '',
+                attachedPreyCount: existing ? existing.attachedPreyCount : 0
             };
         });
 
@@ -485,36 +498,30 @@ const SceneMovementMixin = {
             this.player.stability = Math.min(1.3, this.player.stability + 0.12);
         }
 
-        const T = window.TUNING || {};
         switch (node.role) {
             case 'source':
-                this.player.energy = Math.min(3, this.player.energy + 1);
                 this.player.stability = Math.min(1.2, this.player.stability + 0.08);
-                this.plantNode(node, { forwardBase: T.plantSourceForward ?? 78, sideBase: T.plantSourceSide ?? 88, stance: (T.plantSourceStance ?? 0.36) * edge.stance, strength: (T.plantSourceStrength ?? 260) * edge.stability, reachScale: edge.reach });
+                this.pulseFeed(node, edge, 'source');
                 break;
             case 'compressor':
-                this.player.energy = Math.min(3, this.player.energy + 1);
-                this.player.overload = Math.min(3, this.player.overload + 1);
                 this.player.tempoBoost = clamp(this.player.tempoBoost + 0.5, 0, 1);
                 this.player.agitation = clamp(this.player.agitation + 0.2, 0, 2);
-                this.plantNode(node, { forwardBase: T.plantCompressorForward ?? 92, sideBase: T.plantCompressorSide ?? 62, stance: (T.plantCompressorStance ?? 0.28) * edge.stance, strength: T.plantCompressorStrength ?? 320, reachScale: edge.reach * 1.06 });
+                this.pulseFeed(node, edge, 'compressor');
                 break;
             case 'shell':
-                this.player.guard = Math.min(2, this.player.guard + 1);
                 this.player.stability = Math.min(1.4, this.player.stability + 0.18);
                 this.player.turnAssist = Math.max(this.player.turnAssist, 0.18);
-                this.plantNode(node, { forwardBase: T.plantShellForward ?? 52, sideBase: T.plantShellSide ?? 146, stance: (T.plantShellStance ?? 0.5) * edge.stance, strength: (T.plantShellStrength ?? 420) * edge.stability, reachScale: edge.reach * 0.94, flowBias: T.plantShellFlowBias ?? 0.68, aimBias: T.plantShellAimBias ?? 0.32 });
+                this.performGrind(node, edge, 'shell');
                 break;
             case 'prism':
-                this.player.echo = 1;
                 this.player.turnAssist = Math.min(1.2, this.player.turnAssist + 0.45);
-                this.plantNode(node, { forwardBase: T.plantPrismForward ?? 86, sideBase: T.plantPrismSide ?? 134, stance: (T.plantPrismStance ?? 0.4) * edge.stance, strength: T.plantPrismStrength ?? 360, reachScale: edge.reach, flowBias: T.plantPrismFlowBias ?? 0.3, aimBias: T.plantPrismAimBias ?? 0.7 });
+                this.performGrind(node, edge, 'prism');
                 break;
             case 'dart':
-                this.fireVolley(node, edge);
+                this.performHookStrike(node, edge, 'dart');
                 break;
             case 'blade':
-                this.performSlash(node, edge);
+                this.performHookStrike(node, edge, 'blade');
                 break;
             default:
                 break;
@@ -739,6 +746,8 @@ const SceneMovementMixin = {
         this.player.agitation = Math.max(0, this.player.agitation - simDt * (T.agitationDecay ?? 0.9));
         this.player.turnAssist = Math.max(0, this.player.turnAssist - simDt * (T.turnAssistDecay ?? 1.8));
         this.player.stability = Math.max(T.stabilityMin ?? 0.3, this.player.stability - simDt * (T.stabilityDecay ?? 0.4));
+        this.player.feast = Math.max(0, (this.player.feast || 0) - simDt * 0.28);
+        this.player.feastGlow = Math.max(0, (this.player.feastGlow || 0) - simDt * 0.55);
         if (this.player.shieldTimer <= 0) {
             this.player.shield = 0;
         }

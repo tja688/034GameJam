@@ -1,69 +1,55 @@
-
-
 const SceneEnemiesMixin = {
     updateSpawns(simDt) {
-        if (this.enemies.length > 90) {
+        if (this.prey.length > 48) {
             return;
         }
 
         const time = this.worldTime;
-        this.spawnTimers.swarm -= simDt;
-        this.spawnTimers.stinger -= simDt;
-        this.spawnTimers.brute -= simDt;
-        this.spawnTimers.flank -= simDt;
+        this.spawnTimers.small -= simDt;
+        this.spawnTimers.medium -= simDt;
+        this.spawnTimers.large -= simDt;
 
-        if (time < 20) {
-            if (this.spawnTimers.swarm <= 0) {
-                this.spawnEnemyGroup('swarm', Phaser.Math.Between(1, 2));
-                this.spawnTimers.swarm = Math.max(0.8, 1.14 - time * 0.012);
-            }
-            return;
+        if (this.prey.length < 5 && this.spawnTimers.small > 0.2) {
+            this.spawnTimers.small = 0.2;
         }
 
-        if (time < 45) {
-            if (this.spawnTimers.swarm <= 0) {
-                this.spawnEnemyGroup('swarm', Phaser.Math.Between(2, 3));
-                this.spawnTimers.swarm = 0.78;
-            }
-            if (this.spawnTimers.stinger <= 0) {
-                this.spawnEnemyGroup('stinger', 1);
-                this.spawnTimers.stinger = 5.1;
-            }
-            return;
+        if (this.spawnTimers.small <= 0) {
+            this.spawnPreyGroup('small', Phaser.Math.Between(1, time > 14 ? 3 : 2));
+            this.spawnTimers.small = Math.max(0.28, 0.62 - Math.min(0.24, time * 0.008));
         }
 
-        if (this.spawnTimers.swarm <= 0) {
-            this.spawnEnemyGroup('swarm', Phaser.Math.Between(2, 4));
-            this.spawnTimers.swarm = Math.max(0.48, 0.72 - (time - 45) * 0.002);
+        if (time > 7 && this.spawnTimers.medium <= 0) {
+            this.spawnPreyGroup('medium', Phaser.Math.Between(1, time > 26 ? 2 : 1));
+            this.spawnTimers.medium = Math.max(1.35, 2.3 - Math.min(0.75, (time - 7) * 0.018));
         }
-        if (this.spawnTimers.stinger <= 0) {
-            this.spawnEnemyGroup('stinger', Phaser.Math.Between(1, 2));
-            this.spawnTimers.stinger = 4.2;
-        }
-        if (this.spawnTimers.brute <= 0) {
-            this.spawnEnemyGroup('brute', 1);
-            this.spawnTimers.brute = 12;
-        }
-        if (this.spawnTimers.flank <= 0) {
-            this.spawnFlankWave();
-            this.spawnTimers.flank = 20;
+
+        if (time > 18 && this.spawnTimers.large <= 0) {
+            this.spawnPreyGroup('large', 1);
+            this.spawnTimers.large = Math.max(5.2, 7.6 - Math.min(1.6, (time - 18) * 0.035));
         }
     },
-    spawnEnemyGroup(type, count) {
+    spawnPreyGroup(sizeKey, count, forcedShape = null) {
         for (let i = 0; i < count; i += 1) {
-            this.enemies.push(this.createEnemy(type));
+            this.prey.push(this.createPrey(sizeKey, null, null, forcedShape));
         }
     },
-    spawnFlankWave() {
-        const yOffset = Phaser.Math.Between(-220, 220);
-        this.enemies.push(this.createEnemy('stinger', 'left', this.player.centroidY + yOffset));
-        this.enemies.push(this.createEnemy('stinger', 'right', this.player.centroidY - yOffset));
+    pickSpawnShape(sizeKey) {
+        const order = ['triangle', 'square', 'circle'];
+        if (!this.preySpawnCursor) {
+            this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
+        }
+        const cursor = this.preySpawnCursor[sizeKey] || 0;
+        const shape = order[cursor % order.length];
+        this.preySpawnCursor[sizeKey] = cursor + 1;
+        return shape;
     },
-    createEnemy(type, forcedSide = null, forcedAxis = null) {
-        const definition = ENEMY_DEFS[type];
+    createPrey(sizeKey, forcedSide = null, forcedAxis = null, forcedShape = null) {
+        const sizeDef = PREY_SIZE_DEFS[sizeKey];
+        const shape = forcedShape || this.pickSpawnShape(sizeKey);
+        const shapeDef = PREY_SHAPE_DEFS[shape];
         const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
         const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
-        const margin = 220;
+        const margin = 260;
         const side = forcedSide || Phaser.Utils.Array.GetRandom(['left', 'right', 'top', 'bottom']);
         let x = 0;
         let y = 0;
@@ -82,110 +68,134 @@ const SceneEnemiesMixin = {
             y = this.player.centroidY + worldHalfHeight + margin;
         }
 
+        const shapeRadiusMul = shape === 'triangle' ? 0.92 : shape === 'square' ? 1.06 : 1;
+        const maxHealth = sizeDef.maxHealth * (shape === 'square' ? 1.12 : shape === 'triangle' ? 0.88 : 1);
+        const radius = sizeDef.radius * shapeRadiusMul;
+        const id = `prey-${this.preyIdCounter++}`;
         return {
-            type,
-            shape: definition.shape,
-            color: definition.color,
+            id,
+            shape,
+            sizeKey,
+            color: shapeDef.color,
             x,
             y,
+            displayX: x,
+            displayY: y,
             vx: 0,
             vy: 0,
-            radius: definition.radius,
-            maxHealth: definition.maxHealth,
-            health: definition.maxHealth,
-            speed: definition.speed,
-            accel: definition.accel,
-            mass: definition.mass,
-            touchDamage: definition.touchDamage,
-            push: definition.push,
+            radius,
+            baseRadius: radius,
+            maxHealth,
+            health: maxHealth,
+            speed: sizeDef.speed * shapeDef.speedMul,
+            accel: sizeDef.accel * shapeDef.accelMul,
+            mass: sizeDef.mass * shapeDef.massMul,
+            maxAnchors: sizeDef.maxAnchors + (shape === 'square' ? 1 : 0),
+            chunkBurst: sizeDef.chunkBurst,
+            yield: sizeDef.yield * shapeDef.yieldMul,
+            wander: shapeDef.wander,
+            fleeMul: shapeDef.fleeMul,
+            pulseMul: shapeDef.pulseMul,
+            rotationMul: shapeDef.rotationMul,
+            displayRotation: Math.random() * Math.PI * 2,
+            pulse: Math.random() * Math.PI * 2,
+            spin: 0,
             hitFlash: 0,
-            attackCooldown: Phaser.Math.FloatBetween(0.08, 0.3),
-            slashCooldown: 0,
-            state: 'approach',
-            stateTimer: 0,
+            panic: 0,
+            wound: 0,
+            shudder: 0,
+            exposed: sizeKey === 'small' ? 0.36 : 0.08,
+            attachments: [],
+            chunkThresholds: sizeKey === 'small'
+                ? [0.52]
+                : sizeKey === 'medium'
+                    ? [0.82, 0.56, 0.28]
+                    : [0.88, 0.7, 0.48, 0.24],
+            chunkCursor: 0,
             seed: Math.random() * 10
         };
     },
-    updateEnemies(simDt) {
-        for (let i = this.enemies.length - 1; i >= 0; i -= 1) {
-            const enemy = this.enemies[i];
-            const targetNode = this.pickNearestNode(enemy.x, enemy.y);
-            const chaseX = targetNode ? targetNode.x : this.player.centroidX;
-            const chaseY = targetNode ? targetNode.y : this.player.centroidY;
-            const toTarget = normalize(chaseX - enemy.x, chaseY - enemy.y, 1, 0);
-
-            enemy.hitFlash = Math.max(0, enemy.hitFlash - simDt * 4.2);
-            enemy.attackCooldown = Math.max(0, enemy.attackCooldown - simDt);
-            enemy.slashCooldown = Math.max(0, enemy.slashCooldown - simDt);
-
-            if (enemy.type === 'swarm') {
-                const orbit = Math.sin(this.worldTime * 2.1 + enemy.seed) * 0.38;
-                const steer = normalize(toTarget.x - toTarget.y * orbit, toTarget.y + toTarget.x * orbit, toTarget.x, toTarget.y);
-                enemy.vx += steer.x * enemy.accel * simDt;
-                enemy.vy += steer.y * enemy.accel * simDt;
-            } else if (enemy.type === 'stinger') {
-                this.updateStinger(enemy, toTarget, chaseX, chaseY, simDt);
-            } else {
-                enemy.vx += toTarget.x * enemy.accel * simDt;
-                enemy.vy += toTarget.y * enemy.accel * simDt;
+    updatePrey(simDt) {
+        for (let i = this.prey.length - 1; i >= 0; i -= 1) {
+            const prey = this.prey[i];
+            const toCenterX = prey.x - this.player.centroidX;
+            const toCenterY = prey.y - this.player.centroidY;
+            const distanceFromCenter = Math.hypot(toCenterX, toCenterY);
+            if (distanceFromCenter > 2600) {
+                this.prey.splice(i, 1);
+                continue;
             }
 
-            const speed = Math.hypot(enemy.vx, enemy.vy);
-            if (speed > enemy.speed) {
-                const scale = enemy.speed / speed;
-                enemy.vx *= scale;
-                enemy.vy *= scale;
+            const nearbyNodes = this.pickNearbyNodes(prey.x, prey.y, 6, 240 + prey.radius);
+            let fleeX = toCenterX;
+            let fleeY = toCenterY;
+            let danger = clamp(1 - (distanceFromCenter - 160) / 260, 0, 1);
+
+            nearbyNodes.forEach((node) => {
+                const dx = prey.x - node.x;
+                const dy = prey.y - node.y;
+                const distance = Math.hypot(dx, dy) || 0.0001;
+                const weight = clamp(1 - distance / (240 + prey.radius), 0, 1);
+                fleeX += dx / distance * weight * 220;
+                fleeY += dy / distance * weight * 220;
+                danger = Math.max(danger, weight);
+            });
+
+            const escape = normalize(fleeX, fleeY, Math.cos(prey.seed), Math.sin(prey.seed));
+            const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 2.4 : prey.shape === 'circle' ? 1.6 : 1.05) + prey.seed * 4.2;
+            const wobble = Math.sin(this.worldTime * (prey.shape === 'triangle' ? 7.2 : 4.6) + prey.seed) * (prey.shape === 'triangle' ? 0.74 : prey.shape === 'circle' ? 0.42 : 0.18);
+            const wander = {
+                x: Math.cos(wanderAngle + wobble),
+                y: Math.sin(wanderAngle * 0.84 - wobble)
+            };
+            const attachmentPenalty = clamp(prey.attachments.length / Math.max(prey.maxAnchors, 1), 0, 1);
+            const steer = normalize(
+                escape.x * (0.88 + danger * prey.fleeMul) + wander.x * prey.wander * (1 - attachmentPenalty * 0.72),
+                escape.y * (0.88 + danger * prey.fleeMul) + wander.y * prey.wander * (1 - attachmentPenalty * 0.72),
+                escape.x,
+                escape.y
+            );
+            const accel = prey.accel
+                * (1 + danger * 0.55 + prey.panic * 0.32)
+                * (1 - attachmentPenalty * 0.58);
+
+            prey.vx += steer.x * accel * simDt;
+            prey.vy += steer.y * accel * simDt;
+
+            if (prey.attachments.length > 0) {
+                const thrashAngle = this.worldTime * (8 + prey.rotationMul * 2.8) + prey.seed * 5.4;
+                prey.vx += Math.cos(thrashAngle) * prey.accel * 0.24 * simDt;
+                prey.vy += Math.sin(thrashAngle * 0.92) * prey.accel * 0.24 * simDt;
+                prey.spin += simDt * (6 + prey.attachments.length * 2.5);
             }
 
-            enemy.vx *= Math.exp(-(enemy.type === 'brute' ? 0.4 : 1.1) * simDt);
-            enemy.vy *= Math.exp(-(enemy.type === 'brute' ? 0.4 : 1.1) * simDt);
-            enemy.x += enemy.vx * simDt;
-            enemy.y += enemy.vy * simDt;
-        }
-    },
-    updateStinger(enemy, toTarget, targetX, targetY, simDt) {
-        const distance = Math.hypot(targetX - enemy.x, targetY - enemy.y);
-
-        if (enemy.state === 'approach') {
-            const orbit = Math.sin(this.worldTime * 3 + enemy.seed) * 0.6;
-            const steer = normalize(toTarget.x - toTarget.y * orbit, toTarget.y + toTarget.x * orbit, toTarget.x, toTarget.y);
-            enemy.vx += steer.x * enemy.accel * simDt;
-            enemy.vy += steer.y * enemy.accel * simDt;
-            if (distance < 170) {
-                enemy.state = 'windup';
-                enemy.stateTimer = 0.32;
+            const speedLimit = prey.speed * (1 - attachmentPenalty * 0.52 + danger * 0.18);
+            const speed = Math.hypot(prey.vx, prey.vy);
+            if (speed > speedLimit) {
+                const scale = speedLimit / Math.max(speed, 0.0001);
+                prey.vx *= scale;
+                prey.vy *= scale;
             }
-            return;
-        }
 
-        if (enemy.state === 'windup') {
-            enemy.stateTimer -= simDt;
-            enemy.vx *= Math.exp(-6 * simDt);
-            enemy.vy *= Math.exp(-6 * simDt);
-            if (enemy.stateTimer <= 0) {
-                const lead = normalize(targetX - enemy.x, targetY - enemy.y, toTarget.x, toTarget.y);
-                enemy.vx = lead.x * 300;
-                enemy.vy = lead.y * 300;
-                enemy.state = 'dash';
-                enemy.stateTimer = 0.22;
-            }
-            return;
-        }
+            const drag = prey.attachments.length > 0 ? 2.15 : prey.shape === 'square' ? 1.32 : 0.96;
+            prey.vx *= Math.exp(-drag * simDt);
+            prey.vy *= Math.exp(-drag * simDt);
+            prey.x += prey.vx * simDt;
+            prey.y += prey.vy * simDt;
 
-        if (enemy.state === 'dash') {
-            enemy.stateTimer -= simDt;
-            if (enemy.stateTimer <= 0) {
-                enemy.state = 'recover';
-                enemy.stateTimer = 0.48;
-            }
-            return;
-        }
-
-        enemy.stateTimer -= simDt;
-        enemy.vx *= Math.exp(-4 * simDt);
-        enemy.vy *= Math.exp(-4 * simDt);
-        if (enemy.stateTimer <= 0) {
-            enemy.state = 'approach';
+            prey.hitFlash = Math.max(0, prey.hitFlash - simDt * 4.8);
+            prey.panic = Math.max(0, prey.panic - simDt * 0.72);
+            prey.wound = Math.max(0, prey.wound - simDt * 0.34);
+            prey.shudder = Math.max(0, prey.shudder - simDt * 1.9);
+            prey.spin *= Math.exp(-2.4 * simDt);
+            prey.pulse += simDt * (2.4 + prey.pulseMul * 1.8 + danger * 1.2 + attachmentPenalty * 1.5);
+            prey.displayX = damp(prey.displayX, prey.x, 18, simDt);
+            prey.displayY = damp(prey.displayY, prey.y, 18, simDt);
+            const heading = Math.atan2(
+                prey.vy || Math.sin(wanderAngle),
+                prey.vx || Math.cos(wanderAngle)
+            );
+            prey.displayRotation = dampAngle(prey.displayRotation, heading + prey.spin * 0.02, 12, simDt);
         }
     },
     pickNearestNode(x, y) {
@@ -219,43 +229,60 @@ const SceneEnemiesMixin = {
         candidates.sort((a, b) => a.distanceSq - b.distanceSq);
         return candidates.slice(0, limit).map((entry) => entry.node);
     },
-    resolveEnemyNodeCollisions() {
-        this.enemies.forEach((enemy) => {
-            const candidates = this.pickNearbyNodes(enemy.x, enemy.y, 4, enemy.radius + 104);
+    resolvePreyNodeCollisions() {
+        for (let i = this.prey.length - 1; i >= 0; i -= 1) {
+            const prey = this.prey[i];
+            const candidates = this.pickNearbyNodes(prey.x, prey.y, 6, prey.radius + 126);
             if (candidates.length === 0) {
-                const focus = this.pickNearestNode(enemy.x, enemy.y);
-                if (focus) {
-                    candidates.push(focus);
+                const nearest = this.pickNearestNode(prey.x, prey.y);
+                if (nearest) {
+                    candidates.push(nearest);
                 }
             }
             if (candidates.length === 0) {
-                return;
+                continue;
             }
 
-            candidates.forEach((node) => {
-                const dx = enemy.x - node.x;
-                const dy = enemy.y - node.y;
+            for (let j = 0; j < candidates.length; j += 1) {
+                if (!this.prey.includes(prey)) {
+                    break;
+                }
+                const node = candidates[j];
+                const dx = prey.x - node.x;
+                const dy = prey.y - node.y;
                 const distance = Math.hypot(dx, dy) || 0.0001;
-                const overlap = enemy.radius + 22 - distance;
+                const overlap = prey.radius + this.getNodeContactRadius(node) - distance;
                 if (overlap <= 0) {
-                    return;
+                    continue;
                 }
 
                 const nx = dx / distance;
                 const ny = dy / distance;
-                enemy.x += nx * overlap * 0.72;
-                enemy.y += ny * overlap * 0.72;
-                node.x -= nx * overlap * 0.22;
-                node.y -= ny * overlap * 0.22;
+                const existingAttachment = this.findPredationAttachment(prey, node.index);
+                const preyPush = existingAttachment ? 0.12 : 0.62;
+                const nodePush = existingAttachment ? 0.08 : 0.24;
+                prey.x += nx * overlap * preyPush;
+                prey.y += ny * overlap * preyPush;
+                node.x -= nx * overlap * nodePush;
+                node.y -= ny * overlap * nodePush;
 
-                if (node.attackTimer > 0) {
-                    this.damageEnemy(enemy, node.attackDamage, 170, node.attackDirX || nx, node.attackDirY || ny, node.color);
+                const impactScale = clamp(
+                    (Math.hypot(node.vx, node.vy) + Math.max(0, node.predationWindow || 0) * 150 + overlap * 24) / 220,
+                    0,
+                    2
+                );
+                this.tryLatchPrey(prey, node, nx, ny, impactScale);
+                if (!this.prey.includes(prey)) {
+                    break;
                 }
-                if (enemy.attackCooldown <= 0) {
-                    this.damagePlayer(enemy.touchDamage, nx, ny, enemy.push, node);
-                    enemy.attackCooldown = enemy.type === 'brute' ? 0.92 : 0.56;
+
+                if (!existingAttachment && prey.attachments.length === 0) {
+                    prey.vx += nx * overlap * 10 / Math.max(prey.mass, 0.1);
+                    prey.vy += ny * overlap * 10 / Math.max(prey.mass, 0.1);
+                    node.vx -= nx * overlap * 8 / Math.max(node.mass, 0.1);
+                    node.vy -= ny * overlap * 8 / Math.max(node.mass, 0.1);
                 }
-            });
-        });
+            }
+        }
     },
 };

@@ -327,9 +327,9 @@ const TUNING_DEFS = [
     { key: 'feelCameraBreathing', label: '视野呼吸感', desc: '控制默认视野、缩放上下限、构图留白和整体空间感', min: 0, max: 1, step: 0.01 },
 
     { section: '模式与意图控制', sectionDesc: '移动模式与玩家意图的驱动逻辑' },
-    { key: 'legacyAllNodesMove', label: '全节点主动移动（关=仅蓝色驱动）', desc: '默认开启。关闭后只保留蓝色节点的主动移动与牵引', type: 'toggle' },
+    { key: 'legacyAllNodesMove', label: '全节点主动移动', desc: '默认开启。关闭后只保留主驱节点的主动移动与牵引', type: 'toggle' },
     { key: 'enableUpgradedIntentDrive', label: '升级版意图驱动', desc: '默认关闭。开启后按规模放大前压范围与推进强度', type: 'toggle' },
-    { key: 'splitPolarityIntentDrive', label: '红蓝分驱（红=WASD，蓝=鼠标）', desc: '红优先键盘，蓝优先鼠标，强化分工感', type: 'toggle' },
+    { key: 'splitPolarityIntentDrive', label: '极性分驱', desc: '不同极性的节点读取不同的意图权重，强化内部器官分工感', type: 'toggle' },
     { key: 'enableBurstIntentDrive', label: '阶段爆发意图', desc: '根据鼠标与质心的真实世界距离、外甩趋势和指针速度，进入追击/爆发节奏', type: 'toggle' },
     { key: 'intentChaosDegree', label: '意图混沌度 (Hot值)', desc: '为脉冲冲刺增添随机偏移、抖动与独立性', min: 0.0, max: 1.5, step: 0.05 },
 
@@ -454,8 +454,8 @@ const TUNING_DEFS = [
     { key: 'rigidStretchSlack', label: '3级: 零容忍', desc: '越级逼近0，毫无松弛感', min: 0, max: 20, step: 0.5 },
     { key: 'rigidPbdWeight', label: '3级: 强制保形', desc: '位置解算绝对主导地位', min: 0.5, max: 5, step: 0.05 },
 
-    { section: '异色混合连线', sectionDesc: '红蓝混合组装时的节点相性差异' },
-    { key: 'inversePolarityStiffnessMul', label: '互斥极性刚度', desc: '红蓝节点的连线会更松弛软塌', min: 0, max: 1.5, step: 0.01 },
+    { section: '异极混合连线', sectionDesc: '不同极性的节点混编时的结构相性差异' },
+    { key: 'inversePolarityStiffnessMul', label: '异极刚度', desc: '异极节点的连线会更松弛软塌', min: 0, max: 1.5, step: 0.01 },
     { key: 'inversePolarityDampingMul', label: '互斥极性阻尼', desc: '更易发生非同频震荡', min: 0, max: 1.5, step: 0.01 },
     { key: 'samePolarityRestMul', label: '同相长度拓展', desc: '同型组网的距离调节', min: 0.5, max: 2.0, step: 0.01 },
     { key: 'inversePolarityRestMul', label: '排斥长度拓展', desc: '异极性结构之间撑得更开', min: 0.5, max: 2.0, step: 0.01 },
