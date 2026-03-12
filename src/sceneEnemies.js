@@ -39,6 +39,12 @@ const SceneEnemiesMixin = {
         if (!forceReset && this.prey.length > 0) {
             return;
         }
+        if (!this.getRunTuningToggle?.('gameplayPreySpawnEnabled', true)) {
+            return;
+        }
+        if (!this.getRunTuningToggle?.('gameplayPreyInitialSpawnEnabled', true)) {
+            return;
+        }
         const stage = this.getCurrentStageDef();
         if (!stage) {
             return;
@@ -50,6 +56,9 @@ const SceneEnemiesMixin = {
     },
     updateSpawns(simDt) {
         if (this.player.dead || this.runState?.complete) {
+            return;
+        }
+        if (!this.getRunTuningToggle?.('gameplayPreySpawnEnabled', true)) {
             return;
         }
 
@@ -341,7 +350,7 @@ const SceneEnemiesMixin = {
                 if (danger > 0.58 && prey.pushCharge > 0.95 && prey.guardPulse <= 0.05) {
                     prey.guardPulse = prey.bulwarkPulse || 1;
                     prey.pushCharge *= 0.42;
-                    this.createRing(prey.x, prey.y, prey.radius + 22, prey.signalColor || prey.color, 0.14, 2);
+                    this.createRing(prey.x, prey.y, prey.radius + 22, prey.signalColor || prey.color, 0.14, 2, 'prey-guard');
                 }
             } else {
                 prey.guardPulse = Math.max(0, (prey.guardPulse || 0) - simDt * 1.8);

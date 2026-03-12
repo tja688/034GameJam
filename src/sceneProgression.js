@@ -588,13 +588,19 @@ const SceneProgressionMixin = {
                 0.16,
                 'growth'
             );
-            this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 28, this.getRunPalette().pulse, 0.18, 2);
+            this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 28, this.getRunPalette().pulse, 0.18, 2, 'player-growth');
         }
         return grown;
     },
     spawnStageObjective() {
         const stage = this.getCurrentStageDef();
         if (!stage?.objective || this.runState.objectiveSpawned || typeof this.spawnConfiguredPrey !== 'function') {
+            return null;
+        }
+        if (!this.getRunTuningToggle?.('gameplayPreySpawnEnabled', true)) {
+            return null;
+        }
+        if (!this.getRunTuningToggle?.('gameplayPreyObjectiveSpawnEnabled', true)) {
             return null;
         }
 
@@ -611,7 +617,7 @@ const SceneProgressionMixin = {
         this.runState.objectiveId = objective.id;
         this.runState.objectivePulse = 1;
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.8);
-        this.createRing(objective.x, objective.y, objective.radius + 34, stage.palette.signal, 0.28, 3);
+        this.createRing(objective.x, objective.y, objective.radius + 34, stage.palette.signal, 0.28, 3, 'objective-spawn');
         return objective;
     },
     advanceStage() {
@@ -638,7 +644,7 @@ const SceneProgressionMixin = {
             0.42,
             'stage'
         );
-        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3);
+        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3, 'stage-advance');
     },
     triggerVictory() {
         if (this.runState.complete) {
@@ -653,7 +659,7 @@ const SceneProgressionMixin = {
         this.prey = [];
         this.applyEnergyDelta(this.player.maxEnergy, 0.6, 'victory');
         this.player.victoryPulse = 1;
-        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 84, this.getRunPalette().signal, 0.36, 4);
+        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 84, this.getRunPalette().signal, 0.36, 4, 'player-victory');
     },
     triggerPlayerDeath(reason = 'starved') {
         if (this.player.dead) {
@@ -672,7 +678,7 @@ const SceneProgressionMixin = {
             node.vx += dir.x * (42 + node.order * 8);
             node.vy += dir.y * (42 + node.order * 8);
         });
-        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 38, COLORS.health, 0.24, 3);
+        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 38, COLORS.health, 0.24, 3, 'player-death');
     },
     updateRunState(simDt) {
         this.ensureRunProgressionState();

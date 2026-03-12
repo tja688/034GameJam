@@ -8,7 +8,13 @@ class CoreDemoScene extends Phaser.Scene {
         window.activeScene = this;
         ensureGameUiStyles();
         this.cameras.main.setBackgroundColor(COLORS.background);
+        this.graphicsWorld = this.add.graphics();
+        this.graphicsWorld.setDepth(0);
         this.graphics = this.add.graphics();
+        this.graphics.setDepth(20);
+        this.graphicsHud = this.add.graphics();
+        this.graphicsHud.setDepth(40);
+        this.initBakedSpriteRenderer?.();
         this.input.mouse?.disableContextMenu();
         this.scale.on('resize', this.handleResize, this);
         this.keys = this.input.keyboard.addKeys({

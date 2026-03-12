@@ -1,8 +1,207 @@
 
 
 const SceneRenderMixin = {
-    createRing(x, y, radius, color, life, thickness) {
-        this.effects.push({ type: 'ring', x, y, radius, color, life, total: life, thickness });
+    createRing(x, y, radius, color, life, thickness, meta = null) {
+        const ringMeta = typeof meta === 'string'
+            ? { source: meta }
+            : meta && typeof meta === 'object'
+                ? meta
+                : {};
+        this.effects.push({
+            type: 'ring',
+            x,
+            y,
+            radius,
+            color,
+            life,
+            total: life,
+            thickness,
+            source: ringMeta.source || 'generic'
+        });
+    },
+    isGraphicsToggleEnabled(key, fallback = true) {
+        return !this.getRunTuningToggle || this.getRunTuningToggle(key, fallback);
+    },
+    isDeathGraphicsClusterEnabled() {
+        return this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true);
+    },
+    isEffectVisible(effect) {
+        if (!this.isGraphicsToggleEnabled('graphicsRenderEffectsEnabled', true)) {
+            return false;
+        }
+        if (effect.type !== 'ring') {
+            return true;
+        }
+        if (!this.isGraphicsToggleEnabled('graphicsRenderRingEffectsEnabled', true)) {
+            return false;
+        }
+        switch (effect.source) {
+            case 'prey-death':
+                return this.isDeathGraphicsClusterEnabled()
+                    && this.isGraphicsToggleEnabled('graphicsRenderPreyDeathRingsVisible', true);
+            case 'prey-guard':
+                return this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true)
+                    && this.isGraphicsToggleEnabled('graphicsRenderPreyGuardRingsVisible', true);
+            case 'player-growth':
+            case 'objective-spawn':
+            case 'stage-advance':
+            case 'player-victory':
+            case 'player-death':
+                return this.isGraphicsToggleEnabled('graphicsRenderProgressionRingsVisible', true);
+            default:
+                return true;
+        }
+    },
+    initBakedSpriteRenderer() {
+        if (this.bakedSpriteRendererInitialized) {
+            return;
+        }
+        this.buildBakedRenderTextures();
+        this.bakedSpriteMetrics = {
+            shapeLogicalSize: 100,
+            ringLogicalRadius: 50,
+            lineLogicalLength: 100,
+            lineLogicalThickness: 6
+        };
+        this.bakedSpriteLayers = {
+            fragments: this.add.layer().setDepth(6),
+            prey: this.add.layer().setDepth(8),
+            predation: this.add.layer().setDepth(10),
+            effects: this.add.layer().setDepth(30)
+        };
+        this.bakedSpritePools = {
+            fragments: { layer: this.bakedSpriteLayers.fragments, sprites: [], cursor: 0 },
+            prey: { layer: this.bakedSpriteLayers.prey, sprites: [], cursor: 0 },
+            predation: { layer: this.bakedSpriteLayers.predation, sprites: [], cursor: 0 },
+            effects: { layer: this.bakedSpriteLayers.effects, sprites: [], cursor: 0 }
+        };
+        this.bakedSpriteRendererInitialized = true;
+    },
+    buildBakedRenderTextures() {
+        const textureDefs = [
+            { key: 'baked-shape-circle', width: 128, height: 128, draw: (g) => drawShape(g, 'circle', 64, 64, 100, 0xffffff, 1, 0) },
+            { key: 'baked-shape-square', width: 128, height: 128, draw: (g) => drawShape(g, 'square', 64, 64, 100, 0xffffff, 1, 0) },
+            { key: 'baked-shape-triangle', width: 128, height: 128, draw: (g) => drawShape(g, 'triangle', 64, 64, 100, 0xffffff, 1, 0) },
+            {
+                key: 'baked-ring-circle',
+                width: 128,
+                height: 128,
+                draw: (g) => {
+                    g.lineStyle(8, 0xffffff, 1);
+                    g.strokeCircle(64, 64, 50);
+                }
+            },
+            {
+                key: 'baked-line-core',
+                width: 128,
+                height: 16,
+                draw: (g) => {
+                    g.fillStyle(0xffffff, 1);
+                    g.fillRect(14, 5, 100, 6);
+                }
+            }
+        ];
+        const scratch = this.add.graphics();
+        scratch.setVisible(false);
+        textureDefs.forEach((def) => {
+            if (this.textures.exists(def.key)) {
+                return;
+            }
+            scratch.clear();
+            def.draw(scratch);
+            scratch.generateTexture(def.key, def.width, def.height);
+        });
+        scratch.destroy();
+    },
+    getBakedShapeTexture(shape) {
+        return shape === 'square'
+            ? 'baked-shape-square'
+            : shape === 'triangle'
+                ? 'baked-shape-triangle'
+                : 'baked-shape-circle';
+    },
+    beginBakedSpriteFrame(enabled) {
+        this.initBakedSpriteRenderer();
+        Object.values(this.bakedSpritePools || {}).forEach((pool) => {
+            pool.cursor = 0;
+            if (!enabled) {
+                pool.sprites.forEach((sprite) => {
+                    sprite.setVisible(false);
+                });
+            }
+        });
+    },
+    endBakedSpriteFrame(enabled) {
+        Object.values(this.bakedSpritePools || {}).forEach((pool) => {
+            for (let i = enabled ? pool.cursor : 0; i < pool.sprites.length; i += 1) {
+                pool.sprites[i].setVisible(false);
+            }
+        });
+    },
+    acquireBakedSprite(poolName, textureKey) {
+        const pool = this.bakedSpritePools?.[poolName];
+        if (!pool) {
+            return null;
+        }
+        let sprite = pool.sprites[pool.cursor];
+        if (!sprite) {
+            sprite = this.add.image(0, 0, textureKey);
+            sprite.setVisible(false);
+            sprite.setOrigin(0.5, 0.5);
+            pool.layer.add(sprite);
+            pool.sprites.push(sprite);
+        }
+        pool.cursor += 1;
+        if (sprite.texture?.key !== textureKey) {
+            sprite.setTexture(textureKey);
+        }
+        sprite.setVisible(true);
+        sprite.setAlpha(1);
+        sprite.setScale(1);
+        sprite.setRotation(0);
+        sprite.clearTint();
+        return sprite;
+    },
+    stampBakedShape(poolName, shape, x, y, size, color, alpha, rotation = 0) {
+        const sprite = this.acquireBakedSprite(poolName, this.getBakedShapeTexture(shape));
+        if (!sprite) {
+            return;
+        }
+        const scale = size / this.bakedSpriteMetrics.shapeLogicalSize;
+        sprite.setPosition(x, y);
+        sprite.setScale(scale);
+        sprite.setRotation(rotation);
+        sprite.setTint(color);
+        sprite.setAlpha(alpha);
+    },
+    stampBakedRing(poolName, x, y, radius, color, alpha) {
+        const sprite = this.acquireBakedSprite(poolName, 'baked-ring-circle');
+        if (!sprite) {
+            return;
+        }
+        const scale = radius / this.bakedSpriteMetrics.ringLogicalRadius;
+        sprite.setPosition(x, y);
+        sprite.setScale(scale);
+        sprite.setTint(color);
+        sprite.setAlpha(alpha);
+    },
+    stampBakedLine(poolName, ax, ay, bx, by, width, color, alpha) {
+        const length = Math.hypot(bx - ax, by - ay);
+        if (length <= 0.0001) {
+            return;
+        }
+        const sprite = this.acquireBakedSprite(poolName, 'baked-line-core');
+        if (!sprite) {
+            return;
+        }
+        sprite.setPosition((ax + bx) * 0.5, (ay + by) * 0.5);
+        sprite.setScale(
+            length / this.bakedSpriteMetrics.lineLogicalLength,
+            width / this.bakedSpriteMetrics.lineLogicalThickness
+        );
+        sprite.setRotation(Math.atan2(by - ay, bx - ax));
+        sprite.setTint(color);
+        sprite.setAlpha(alpha);
     },
     addScreenShake(worldAmount = 0, hudAmount = worldAmount) {
         if (!this.cameraRig) {
@@ -32,22 +231,253 @@ const SceneRenderMixin = {
         }
     },
     render() {
-        const g = this.graphics;
-        g.clear();
+        const useBakedSpriteRenderer = this.isGraphicsToggleEnabled('graphicsUseBakedSpriteRenderer', true);
+        const worldGraphics = this.graphicsWorld || this.graphics;
+        const midGraphics = this.graphics;
+        const hudGraphics = this.graphicsHud || midGraphics;
+        worldGraphics?.clear();
+        if (midGraphics && midGraphics !== worldGraphics) {
+            midGraphics.clear();
+        }
+        if (hudGraphics && hudGraphics !== midGraphics && hudGraphics !== worldGraphics) {
+            hudGraphics.clear();
+        }
         this.buildRenderCaches();
-        this.drawWorld(g);
-        this.drawFragments(g);
-        this.drawPrey(g);
-        this.drawPredationLinks(g);
-        this.drawFormation(g);
-        this.drawEffects(g);
-        if (this.player.edit.active || this.player.edit.ambience > 0.01) {
-            this.drawEditOverlay(g);
+        this.beginBakedSpriteFrame(useBakedSpriteRenderer);
+        if (this.isGraphicsToggleEnabled('graphicsRenderWorldEnabled', true)) {
+            this.drawWorld(worldGraphics);
         }
-        if (window.TUNING && window.TUNING.showDebugVisuals) {
-            this.drawDebugOverlays(g);
+        if (this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true)
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyFragmentsEnabled', true)) {
+            if (useBakedSpriteRenderer) {
+                this.renderFragmentsSprites();
+            } else {
+                this.drawFragments(midGraphics);
+            }
         }
-        this.drawHud(g);
+        if (this.isGraphicsToggleEnabled('graphicsRenderPreyEnabled', true)) {
+            if (useBakedSpriteRenderer) {
+                this.renderPreySprites();
+            } else {
+                this.drawPrey(midGraphics);
+            }
+        }
+        if (this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true)
+            && this.isGraphicsToggleEnabled('graphicsRenderPredationLinksEnabled', true)) {
+            if (useBakedSpriteRenderer) {
+                this.renderPredationLinkSprites();
+            } else {
+                this.drawPredationLinks(midGraphics);
+            }
+        }
+        if (this.isGraphicsToggleEnabled('graphicsRenderFormationEnabled', true)) {
+            this.drawFormation(midGraphics);
+        }
+        if (this.isGraphicsToggleEnabled('graphicsRenderEffectsEnabled', true)) {
+            if (useBakedSpriteRenderer) {
+                this.renderEffectSprites();
+            } else {
+                this.drawEffects(midGraphics);
+            }
+        }
+        if ((this.player.edit.active || this.player.edit.ambience > 0.01)
+            && this.isGraphicsToggleEnabled('graphicsRenderEditOverlayEnabled', true)) {
+            this.drawEditOverlay(midGraphics);
+        }
+        if (window.TUNING && window.TUNING.showDebugVisuals
+            && this.isGraphicsToggleEnabled('graphicsRenderDebugOverlayEnabled', true)) {
+            this.drawDebugOverlays(midGraphics);
+        }
+        if (this.isGraphicsToggleEnabled('graphicsRenderHudEnabled', true)) {
+            this.drawHud(hudGraphics);
+        }
+        this.endBakedSpriteFrame(useBakedSpriteRenderer);
+    },
+    renderEffectSprites() {
+        this.effects.forEach((effect) => {
+            if (!this.isEffectVisible(effect)) {
+                return;
+            }
+            const position = this.worldToScreen(effect.x, effect.y);
+            const radius = effect.radius * this.cameraRig.zoom + (1 - clamp(effect.life / effect.total, 0, 1)) * 18;
+            if (!this.isScreenCircleVisible(position.x, position.y, radius + 18, 8)) {
+                return;
+            }
+            const alpha = clamp(effect.life / effect.total, 0, 1) * 0.9;
+            this.stampBakedRing('effects', position.x, position.y, radius, effect.color, alpha);
+        });
+    },
+    renderFragmentsSprites() {
+        if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
+            return;
+        }
+        const drawTrails = this.isGraphicsToggleEnabled('graphicsRenderFragmentTrailsEnabled', true);
+        const drawBodies = this.isGraphicsToggleEnabled('graphicsRenderFragmentBodiesEnabled', true);
+        if (!drawTrails && !drawBodies) {
+            return;
+        }
+        this.fragments.forEach((fragment) => {
+            const position = this.worldToScreen(fragment.x, fragment.y);
+            const alpha = clamp(fragment.life / fragment.total, 0, 1) * (fragment.collectible ? 0.96 : 0.8);
+            const pulse = fragment.kind === 'energy'
+                ? 1 + Math.sin(this.worldTime * 10 + fragment.pulse) * 0.14
+                : 1;
+            const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 20);
+            if (!this.isScreenCircleVisible(position.x, position.y, size * 2, 18)) {
+                return;
+            }
+            const trailX = position.x - fragment.vx * 0.016 * this.cameraRig.zoom;
+            const trailY = position.y - fragment.vy * 0.016 * this.cameraRig.zoom;
+            if (drawTrails) {
+                this.stampBakedLine('fragments', trailX, trailY, position.x, position.y, Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
+                if (fragment.kind === 'energy') {
+                    this.stampBakedRing('fragments', position.x, position.y, size + 2, COLORS.core, alpha * 0.32);
+                }
+            }
+            if (drawBodies) {
+                this.stampBakedShape('fragments', fragment.shape, position.x, position.y, size * 2, fragment.color, alpha, fragment.rotation);
+            }
+        });
+    },
+    renderPreySprites() {
+        const drawBaseShapes = this.isGraphicsToggleEnabled('graphicsRenderPreyBaseShapesEnabled', true);
+        const drawSignals = this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true);
+        const drawDamageOverlays = this.isDeathGraphicsClusterEnabled()
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyDamageOverlaysEnabled', true);
+        const drawAttachmentMarks = this.isDeathGraphicsClusterEnabled()
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyAttachmentMarksEnabled', true);
+        const drawAttachmentHalo = this.isDeathGraphicsClusterEnabled()
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyAttachmentHaloEnabled', true);
+        if (!drawBaseShapes && !drawSignals && !drawDamageOverlays && !drawAttachmentMarks && !drawAttachmentHalo) {
+            return;
+        }
+        this.prey.forEach((prey) => {
+            const position = this.worldToScreen(prey.displayX, prey.displayY);
+            const healthRatio = clamp(prey.health / Math.max(prey.maxHealth, 1), 0, 1);
+            const carve = clamp(prey.carve || 0, 0, 2);
+            const gorePulse = clamp(prey.gorePulse || 0, 0, 2);
+            const devourGlow = clamp(prey.devourGlow || 0, 0, 2);
+            const shakeX = Math.cos(prey.pulse * 1.7 + prey.seed) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
+            const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
+            const pulseScale = 1
+                + Math.sin(prey.pulse) * (prey.shape === 'circle' ? 0.08 : 0.04)
+                + prey.wound * 0.08
+                + carve * 0.04
+                + (prey.guardPulse || 0) * 0.08
+                + (prey.isObjective ? 0.06 : 0);
+            const chewShrink = 1 - (1 - healthRatio) * (prey.sizeKey === 'large' ? 0.1 : prey.sizeKey === 'medium' ? 0.06 : 0.03);
+            const baseSize = prey.radius * 2 * pulseScale * chewShrink * this.cameraRig.zoom;
+            const size = clamp(baseSize, 14, prey.sizeKey === 'large' ? 220 : prey.sizeKey === 'medium' ? 156 : 118);
+            const x = position.x + shakeX;
+            const y = position.y + shakeY;
+            if (!this.isScreenCircleVisible(x, y, size * 1.2, 20)) {
+                return;
+            }
+            const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
+            if (drawBaseShapes) {
+                this.stampBakedShape('prey', prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
+                this.stampBakedShape('prey', prey.shape, x, y, size, color, 0.95, prey.displayRotation);
+            }
+            if (drawDamageOverlays && prey.sizeKey !== 'small') {
+                this.stampBakedShape('prey', prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
+            }
+            if (drawSignals && (prey.guardPulse || 0) > 0.04) {
+                this.stampBakedRing('prey', x, y, size * 0.66, prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
+            }
+            if (drawDamageOverlays && prey.wound > 0.02) {
+                this.stampBakedShape('prey', prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);
+            }
+            if (drawDamageOverlays && devourGlow > 0.02) {
+                this.stampBakedShape('prey', prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03);
+            }
+            if (drawDamageOverlays && prey.exposed > 0.03) {
+                this.stampBakedShape(
+                    'prey',
+                    prey.shape,
+                    x,
+                    y,
+                    size * (0.38 + prey.exposed * 0.22),
+                    prey.shape === 'circle' ? COLORS.energy : COLORS.core,
+                    0.14 + prey.exposed * 0.42,
+                    prey.displayRotation + prey.spin * 0.02
+                );
+            }
+            if (drawAttachmentMarks && prey.attachments.length > 0) {
+                (prey.attachments || []).forEach((attachment) => {
+                    const node = this.activeNodeIndexMap?.get(attachment.nodeIndex);
+                    const angle = node
+                        ? Math.atan2(node.displayY - prey.displayY, node.displayX - prey.displayX)
+                        : attachment.phase || 0;
+                    const biteX = x + Math.cos(angle) * size * (0.24 + attachment.depth * 0.08);
+                    const biteY = y + Math.sin(angle) * size * (0.24 + attachment.depth * 0.08);
+                    const biteShape = attachment.mode === 'hook'
+                        ? 'triangle'
+                        : attachment.mode === 'grind'
+                            ? 'square'
+                            : 'circle';
+                    const biteColor = attachment.mode === 'feed' ? COLORS.energy : COLORS.gore;
+                    this.stampBakedShape('prey', 'circle', biteX, biteY, size * (0.18 + attachment.depth * 0.14), COLORS.shadow, 0.22 + attachment.depth * 0.32, angle);
+                    this.stampBakedShape(
+                        'prey',
+                        biteShape,
+                        biteX - Math.cos(angle) * size * 0.04,
+                        biteY - Math.sin(angle) * size * 0.04,
+                        size * (0.12 + attachment.depth * 0.12),
+                        biteColor,
+                        0.18 + attachment.depth * 0.26 + devourGlow * 0.06,
+                        angle
+                    );
+                });
+            }
+            if (drawSignals && prey.weakArc > 0) {
+                const weakSpotX = x + Math.cos(prey.weakAngle) * size * 0.18;
+                const weakSpotY = y + Math.sin(prey.weakAngle) * size * 0.18;
+                this.stampBakedShape('prey', 'circle', weakSpotX, weakSpotY, size * 0.22, prey.signalColor || COLORS.core, 0.18 + clamp(prey.exposed || 0, 0, 1) * 0.24, 0);
+            }
+            if (drawAttachmentHalo && prey.attachments.length > 0) {
+                this.stampBakedRing('prey', x, y, size * 0.32, COLORS.pulse, 0.2 + prey.attachments.length * 0.05 + gorePulse * 0.06);
+            }
+            if (drawSignals && prey.isObjective) {
+                this.stampBakedRing('prey', x, y, size * 0.86, prey.signalColor || COLORS.core, 0.34 + clamp(this.runState?.objectivePulse || 0, 0, 1) * 0.24);
+                this.stampBakedRing('prey', x, y, size * 0.56, COLORS.core, 0.2 + (prey.objectiveGlow || 0) * 0.16);
+            }
+        });
+    },
+    renderPredationLinkSprites() {
+        const drawLines = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkLinesEnabled', true);
+        const drawDots = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkDotsEnabled', true);
+        if (!drawLines && !drawDots) {
+            return;
+        }
+        this.prey.forEach((prey) => {
+            (prey.attachments || []).forEach((attachment) => {
+                const node = this.activeNodeIndexMap?.get(attachment.nodeIndex);
+                if (!node) {
+                    return;
+                }
+                const nodePos = this.worldToScreen(node.displayX, node.displayY);
+                const preyPos = this.worldToScreen(prey.displayX, prey.displayY);
+                if (!this.isScreenCircleVisible(nodePos.x, nodePos.y, 10, 12) && !this.isScreenCircleVisible(preyPos.x, preyPos.y, 10, 12)) {
+                    return;
+                }
+                const attachX = lerp(nodePos.x, preyPos.x, 0.32);
+                const attachY = lerp(nodePos.y, preyPos.y, 0.32);
+                const color = attachment.mode === 'hook'
+                    ? COLORS.triangle
+                    : attachment.mode === 'grind'
+                        ? COLORS.square
+                        : COLORS.circle;
+                const width = clamp((2.2 + attachment.depth * 5.2 + (prey.gorePulse || 0) * 0.8) * this.cameraRig.zoom, 1, 8);
+                if (drawLines) {
+                    this.stampBakedLine('predation', nodePos.x, nodePos.y, attachX, attachY, width, color, 0.28 + attachment.depth * 0.48 + (prey.gorePulse || 0) * 0.08);
+                    this.stampBakedLine('predation', attachX, attachY, preyPos.x, preyPos.y, Math.max(1, width * 0.58), COLORS.pulse, 0.2 + attachment.depth * 0.3 + (prey.devourGlow || 0) * 0.06);
+                }
+                if (drawDots) {
+                    this.stampBakedShape('predation', 'circle', attachX, attachY, clamp((3 + attachment.depth * 3) * this.cameraRig.zoom, 2, 5) * 2, color, 0.82, 0);
+                    this.stampBakedShape('predation', 'circle', preyPos.x, preyPos.y, clamp((2 + attachment.depth * 2.4) * this.cameraRig.zoom, 1, 4) * 2, COLORS.core, 0.12 + attachment.depth * 0.14, 0);
+                }
+            });
+        });
     },
     drawWorld(g) {
         const width = this.cameraRig.viewportWidth;
@@ -126,6 +556,9 @@ const SceneRenderMixin = {
     },
     drawEffects(g) {
         this.effects.forEach((effect) => {
+            if (!this.isEffectVisible(effect)) {
+                return;
+            }
             const position = this.worldToScreen(effect.x, effect.y);
             const radius = effect.radius * this.cameraRig.zoom + 18;
             if (!this.isScreenCircleVisible(position.x, position.y, radius, 8)) {
@@ -140,6 +573,11 @@ const SceneRenderMixin = {
         if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             return;
         }
+        const drawTrails = this.isGraphicsToggleEnabled('graphicsRenderFragmentTrailsEnabled', true);
+        const drawBodies = this.isGraphicsToggleEnabled('graphicsRenderFragmentBodiesEnabled', true);
+        if (!drawTrails && !drawBodies) {
+            return;
+        }
         this.fragments.forEach((fragment) => {
             const position = this.worldToScreen(fragment.x, fragment.y);
             const alpha = clamp(fragment.life / fragment.total, 0, 1) * (fragment.collectible ? 0.96 : 0.8);
@@ -152,16 +590,31 @@ const SceneRenderMixin = {
             }
             const trailX = position.x - fragment.vx * 0.016 * this.cameraRig.zoom;
             const trailY = position.y - fragment.vy * 0.016 * this.cameraRig.zoom;
-            g.lineStyle(Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
-            g.lineBetween(trailX, trailY, position.x, position.y);
-            if (fragment.kind === 'energy') {
-                g.lineStyle(1.5, COLORS.core, alpha * 0.32);
-                g.strokeCircle(position.x, position.y, size + 2);
+            if (drawTrails) {
+                g.lineStyle(Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
+                g.lineBetween(trailX, trailY, position.x, position.y);
+                if (fragment.kind === 'energy') {
+                    g.lineStyle(1.5, COLORS.core, alpha * 0.32);
+                    g.strokeCircle(position.x, position.y, size + 2);
+                }
             }
-            drawShape(g, fragment.shape, position.x, position.y, size * 2, fragment.color, alpha, fragment.rotation);
+            if (drawBodies) {
+                drawShape(g, fragment.shape, position.x, position.y, size * 2, fragment.color, alpha, fragment.rotation);
+            }
         });
     },
     drawPrey(g) {
+        const drawBaseShapes = this.isGraphicsToggleEnabled('graphicsRenderPreyBaseShapesEnabled', true);
+        const drawSignals = this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true);
+        const drawDamageOverlays = this.isDeathGraphicsClusterEnabled()
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyDamageOverlaysEnabled', true);
+        const drawAttachmentMarks = this.isDeathGraphicsClusterEnabled()
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyAttachmentMarksEnabled', true);
+        const drawAttachmentHalo = this.isDeathGraphicsClusterEnabled()
+            && this.isGraphicsToggleEnabled('graphicsRenderPreyAttachmentHaloEnabled', true);
+        if (!drawBaseShapes && !drawSignals && !drawDamageOverlays && !drawAttachmentMarks && !drawAttachmentHalo) {
+            return;
+        }
         this.prey.forEach((prey) => {
             const position = this.worldToScreen(prey.displayX, prey.displayY);
             const healthRatio = clamp(prey.health / Math.max(prey.maxHealth, 1), 0, 1);
@@ -186,22 +639,24 @@ const SceneRenderMixin = {
             }
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
 
-            drawShape(g, prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
-            if (prey.sizeKey !== 'small') {
+            if (drawBaseShapes) {
+                drawShape(g, prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
+                drawShape(g, prey.shape, x, y, size, color, 0.95, prey.displayRotation);
+            }
+            if (drawDamageOverlays && prey.sizeKey !== 'small') {
                 drawShape(g, prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
             }
-            if ((prey.guardPulse || 0) > 0.04) {
+            if (drawSignals && (prey.guardPulse || 0) > 0.04) {
                 g.lineStyle(clamp((2 + prey.guardPulse * 3) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
                 g.strokeCircle(x, y, size * 0.66);
             }
-            if (prey.wound > 0.02) {
+            if (drawDamageOverlays && prey.wound > 0.02) {
                 drawShape(g, prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);
             }
-            if (devourGlow > 0.02) {
+            if (drawDamageOverlays && devourGlow > 0.02) {
                 drawShape(g, prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03);
             }
-            drawShape(g, prey.shape, x, y, size, color, 0.95, prey.displayRotation);
-            if (prey.exposed > 0.03) {
+            if (drawDamageOverlays && prey.exposed > 0.03) {
                 drawShape(
                     g,
                     prey.shape,
@@ -213,7 +668,7 @@ const SceneRenderMixin = {
                     prey.displayRotation + prey.spin * 0.02
                 );
             }
-            if (prey.attachments.length > 0) {
+            if (drawAttachmentMarks && prey.attachments.length > 0) {
                 (prey.attachments || []).forEach((attachment) => {
                     const node = this.activeNodeIndexMap?.get(attachment.nodeIndex);
                     const angle = node
@@ -240,16 +695,16 @@ const SceneRenderMixin = {
                     );
                 });
             }
-            if (prey.weakArc > 0) {
+            if (drawSignals && prey.weakArc > 0) {
                 const weakSpotX = x + Math.cos(prey.weakAngle) * size * 0.18;
                 const weakSpotY = y + Math.sin(prey.weakAngle) * size * 0.18;
                 drawShape(g, 'circle', weakSpotX, weakSpotY, size * 0.22, prey.signalColor || COLORS.core, 0.18 + clamp(prey.exposed || 0, 0, 1) * 0.24, 0);
             }
-            if (prey.attachments.length > 0) {
+            if (drawAttachmentHalo && prey.attachments.length > 0) {
                 g.lineStyle(clamp((1.6 + prey.attachments.length * 0.52) * this.cameraRig.zoom, 1, 5), COLORS.pulse, 0.2 + prey.attachments.length * 0.05 + gorePulse * 0.06);
                 g.strokeCircle(x, y, size * 0.32);
             }
-            if (prey.isObjective) {
+            if (drawSignals && prey.isObjective) {
                 g.lineStyle(clamp((2.2 + Math.sin(this.worldTime * 5 + prey.seed) * 0.4) * this.cameraRig.zoom, 1, 5), prey.signalColor || COLORS.core, 0.34 + clamp(this.runState?.objectivePulse || 0, 0, 1) * 0.24);
                 g.strokeCircle(x, y, size * 0.86);
                 g.lineStyle(clamp(1.6 * this.cameraRig.zoom, 1, 3), COLORS.core, 0.2 + (prey.objectiveGlow || 0) * 0.16);
@@ -258,6 +713,11 @@ const SceneRenderMixin = {
         });
     },
     drawPredationLinks(g) {
+        const drawLines = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkLinesEnabled', true);
+        const drawDots = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkDotsEnabled', true);
+        if (!drawLines && !drawDots) {
+            return;
+        }
         this.prey.forEach((prey) => {
             (prey.attachments || []).forEach((attachment) => {
                 const node = this.activeNodeIndexMap?.get(attachment.nodeIndex);
@@ -277,14 +737,18 @@ const SceneRenderMixin = {
                         ? COLORS.square
                         : COLORS.circle;
                 const width = clamp((2.2 + attachment.depth * 5.2 + (prey.gorePulse || 0) * 0.8) * this.cameraRig.zoom, 1, 8);
-                g.lineStyle(width, color, 0.28 + attachment.depth * 0.48 + (prey.gorePulse || 0) * 0.08);
-                g.lineBetween(nodePos.x, nodePos.y, attachX, attachY);
-                g.lineStyle(Math.max(1, width * 0.58), COLORS.pulse, 0.2 + attachment.depth * 0.3 + (prey.devourGlow || 0) * 0.06);
-                g.lineBetween(attachX, attachY, preyPos.x, preyPos.y);
-                g.fillStyle(color, 0.82);
-                g.fillCircle(attachX, attachY, clamp((3 + attachment.depth * 3) * this.cameraRig.zoom, 2, 5));
-                g.fillStyle(COLORS.core, 0.12 + attachment.depth * 0.14);
-                g.fillCircle(preyPos.x, preyPos.y, clamp((2 + attachment.depth * 2.4) * this.cameraRig.zoom, 1, 4));
+                if (drawLines) {
+                    g.lineStyle(width, color, 0.28 + attachment.depth * 0.48 + (prey.gorePulse || 0) * 0.08);
+                    g.lineBetween(nodePos.x, nodePos.y, attachX, attachY);
+                    g.lineStyle(Math.max(1, width * 0.58), COLORS.pulse, 0.2 + attachment.depth * 0.3 + (prey.devourGlow || 0) * 0.06);
+                    g.lineBetween(attachX, attachY, preyPos.x, preyPos.y);
+                }
+                if (drawDots) {
+                    g.fillStyle(color, 0.82);
+                    g.fillCircle(attachX, attachY, clamp((3 + attachment.depth * 3) * this.cameraRig.zoom, 2, 5));
+                    g.fillStyle(COLORS.core, 0.12 + attachment.depth * 0.14);
+                    g.fillCircle(preyPos.x, preyPos.y, clamp((2 + attachment.depth * 2.4) * this.cameraRig.zoom, 1, 4));
+                }
             });
         });
     },
