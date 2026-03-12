@@ -496,7 +496,7 @@ function loadRepoTuningProfile() {
 
     try {
         const request = new XMLHttpRequest();
-        request.open('GET', TUNING_PROFILE_PATH, false);
+        request.open('GET', `${TUNING_PROFILE_PATH}?_ts=${Date.now()}`, false);
         request.send(null);
 
         const readable = request.status === 200 || (request.status === 0 && !!request.responseText);
