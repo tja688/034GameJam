@@ -258,8 +258,8 @@ const SceneUiMixin = {
             this.ui.title.textContent = '主菜单';
             this.ui.subtitle.textContent = hasSession
                 ? '当前局仍保留在内存里。可以继续当前局，或者重新开始新局。'
-                : '开始新局，或读取本地单通道存档继续。';
-            this.ui.hint.textContent = '单通道存档只保存玩家状态、节点与连线等结构数据，不包含调参本地应用配置。';
+                : '开始新局，或读取 JSON 单通道存档继续。';
+            this.ui.hint.textContent = '单通道存档写入 save-slot.json；调参配置写入 tuning-profile.json。';
         } else {
             this.ui.overlay.classList.add('hidden');
         }

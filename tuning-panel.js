@@ -4,7 +4,9 @@
  * ═══════════════════════════════════════════════════════════════ */
 
 const TUNING_PROFILE_PATH = 'tuning-profile.json';
-const TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
+const LEGACY_TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
+const DEV_WRITE_JSON_ENDPOINT = '/__api/write-json';
+const DEV_WRITE_PING_ENDPOINT = '/__api/ping';
 
 const TUNING_FALLBACKS = {
     // ─── 移动能力对比 ─────────────────────────────
@@ -514,42 +516,98 @@ function serializeTuningProfile(profile = window.TUNING) {
     return JSON.stringify(sanitizeTuningProfile(profile), null, 2);
 }
 
-function loadPersistedTuningProfile() {
+function hasDevWriteApi() {
+    const protocol = window.location?.protocol || '';
+    if (protocol !== 'http:' && protocol !== 'https:') {
+        return false;
+    }
+
     try {
-        const raw = window.localStorage.getItem(TUNING_STORAGE_KEY);
+        const request = new XMLHttpRequest();
+        request.open('GET', DEV_WRITE_PING_ENDPOINT, false);
+        request.send(null);
+        return request.status === 200;
+    } catch (error) {
+        return false;
+    }
+}
+const DEV_WRITE_API_AVAILABLE = hasDevWriteApi();
+
+function readLegacyLocalTuningProfile() {
+    try {
+        const raw = window.localStorage?.getItem(LEGACY_TUNING_STORAGE_KEY);
         if (!raw) {
-            return false;
+            return null;
         }
 
         const saved = JSON.parse(raw);
         if (!saved || typeof saved !== 'object') {
-            return false;
+            return null;
         }
 
-        Object.keys(window.TUNING).forEach((key) => {
-            if (Object.prototype.hasOwnProperty.call(saved, key)) {
-                window.TUNING[key] = saved[key];
-            }
-        });
-        return true;
+        return sanitizeTuningProfile(saved);
     } catch (error) {
-        console.warn('加载本地调参配置失败:', error);
-        return false;
+        console.warn('读取历史本地调参失败，将忽略该数据:', error);
+        return null;
     }
 }
 
-function savePersistedTuningProfile(profile = window.TUNING) {
+function clearLegacyLocalTuningProfile() {
     try {
-        window.localStorage.setItem(TUNING_STORAGE_KEY, serializeTuningProfile(profile));
+        window.localStorage?.removeItem(LEGACY_TUNING_STORAGE_KEY);
+    } catch (error) {
+        console.warn('清理历史本地调参失败，可忽略:', error);
+    }
+}
+
+async function writeTuningProfileToRepo(profile = window.TUNING) {
+    const protocol = window.location?.protocol || '';
+    if (protocol === 'file:') {
+        console.warn('当前为 file:// 模式，无法写回 tuning-profile.json，请使用一键启动脚本。');
+        return false;
+    }
+    if (!DEV_WRITE_API_AVAILABLE) {
+        console.warn('当前服务器不支持写回 API，请使用 start-dev 脚本启动。');
+        return false;
+    }
+
+    try {
+        const response = await fetch(DEV_WRITE_JSON_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file: TUNING_PROFILE_PATH,
+                data: sanitizeTuningProfile(profile)
+            })
+        });
+        if (!response.ok) {
+            return false;
+        }
         return true;
     } catch (error) {
-        console.warn('保存本地调参配置失败:', error);
+        console.warn('写入仓库调参配置失败:', error);
         return false;
     }
 }
 
 window.TUNING = loadRepoTuningProfile();
-loadPersistedTuningProfile();
+const legacyTuningProfile = readLegacyLocalTuningProfile();
+if (legacyTuningProfile) {
+    Object.keys(window.TUNING).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(legacyTuningProfile, key)) {
+            window.TUNING[key] = legacyTuningProfile[key];
+        }
+    });
+
+    writeTuningProfileToRepo(window.TUNING).then((ok) => {
+        if (ok) {
+            clearLegacyLocalTuningProfile();
+            console.info('已将历史本地调参迁移到 tuning-profile.json，并清理 localStorage 旧数据。');
+        } else {
+            console.warn('检测到历史本地调参，但自动迁移到 tuning-profile.json 失败；可在面板点击“写入 JSON”重试。');
+        }
+    });
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  参数定义表：key → { label, desc, min, max, step, section }
@@ -1205,7 +1263,7 @@ function applyCompositeTuning(masterKey, value, allRows = []) {
 
 
 // ═══════════════════════════════════════════════════════════════
-//  当前默认基线：优先使用本地已应用配置，否则回退到 tuning-profile.json
+//  当前默认基线：来自 tuning-profile.json（含一次性历史迁移结果）
 // ═══════════════════════════════════════════════════════════════
 const TUNING_DEFAULTS = cloneTuningProfile(window.TUNING);
 
@@ -1705,7 +1763,7 @@ function buildTuningPanel() {
         </div>
         <div class="header-btns">
             <button id="tuning-add-node" style="background: rgba(54, 214, 255, 0.12); border-color: rgba(54, 214, 255, 0.35); color: #36d6ff; padding: 4px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s;">➕ 新增节点 (E)</button>
-            <button class="apply-btn" id="tuning-apply-local">应用到本地</button>
+            <button class="apply-btn" id="tuning-write-json">写入 JSON</button>
             <button class="export-btn" id="tuning-copy-json">📋 复制 JSON</button>
             <button class="export-btn" id="tuning-export">📋 复制差异</button>
             <button id="tuning-reset-all">🔄 全部重置</button>
@@ -1729,17 +1787,8 @@ function buildTuningPanel() {
 
     const allRows = [];
     
-    // UI State Persistence
-    const UI_STATE_KEY = 'bio-core-tuning-ui-state';
-    let uiState = { categories: {}, sections: {} };
-    try {
-        const stored = window.localStorage.getItem(UI_STATE_KEY);
-        if (stored) uiState = { categories: {}, sections: {}, ...JSON.parse(stored) };
-    } catch(e) {}
-    
-    const saveUiState = () => {
-        try { window.localStorage.setItem(UI_STATE_KEY, JSON.stringify(uiState)); } catch(e) {}
-    };
+    const uiState = { categories: {}, sections: {} };
+    const saveUiState = () => {};
 
     let currentCategoryBody = body; // default to body if no category
 
@@ -1843,6 +1892,12 @@ function buildTuningPanel() {
     document.body.appendChild(toggle);
 
     const updateCompareStatus = () => {
+        if (!DEV_WRITE_API_AVAILABLE) {
+            compareStatus.textContent = '当前是只读模式，请用 start-dev 启动';
+            compareStatus.classList.add('modified');
+            return;
+        }
+
         const modifiedCount = Object.keys(window.TUNING).reduce((count, key) => {
             const current = window.TUNING[key];
             const baseline = TUNING_DEFAULTS[key];
@@ -1851,7 +1906,7 @@ function buildTuningPanel() {
             }
             return count + (current !== baseline ? 1 : 0);
         }, 0);
-        compareStatus.textContent = modifiedCount > 0 ? `当前相对基线改动 ${modifiedCount} 项` : '当前与本地基线一致';
+        compareStatus.textContent = modifiedCount > 0 ? `当前相对基线改动 ${modifiedCount} 项` : '当前与 JSON 基线一致';
         compareStatus.classList.toggle('modified', modifiedCount > 0);
     };
 
@@ -1902,12 +1957,16 @@ function buildTuningPanel() {
         window.dispatchEvent(new CustomEvent('tuning:changed'));
     });
 
-    document.getElementById('tuning-apply-local').addEventListener('click', () => {
-        const btn = document.getElementById('tuning-apply-local');
-        const ok = savePersistedTuningProfile();
+    document.getElementById('tuning-write-json').addEventListener('click', async () => {
+        const btn = document.getElementById('tuning-write-json');
+        btn.disabled = true;
+        const ok = await writeTuningProfileToRepo();
         if (!ok) {
-            btn.textContent = '保存失败';
-            setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
+            btn.textContent = '写入失败';
+            setTimeout(() => {
+                btn.textContent = '写入 JSON';
+                btn.disabled = false;
+            }, 1500);
             return;
         }
 
@@ -1916,9 +1975,13 @@ function buildTuningPanel() {
         });
         allRows.forEach((row) => row.sync());
         window.dispatchEvent(new CustomEvent('tuning:changed'));
+        clearLegacyLocalTuningProfile();
 
-        btn.textContent = '✅ 已应用';
-        setTimeout(() => { btn.textContent = '应用到本地'; }, 1500);
+        btn.textContent = '✅ 已写入';
+        setTimeout(() => {
+            btn.textContent = '写入 JSON';
+            btn.disabled = false;
+        }, 1500);
     });
 
     document.getElementById('tuning-copy-json').addEventListener('click', () => {

@@ -117,7 +117,7 @@ const SceneSaveLoadMixin = {
 
         const ok = writeStoredJson(STORAGE_KEYS.saveSlot, this.buildSaveData());
         this.refreshMenuState();
-        this.showToast(ok ? '单通道存档已保存。' : '保存失败，无法写入本地存储。', !ok);
+        this.showToast(ok ? '单通道存档已写入 save-slot.json。' : '保存失败，无法写入 save-slot.json（请用 start-dev 启动）。', !ok);
         return ok;
     },
     applySaveData(data) {

@@ -20,6 +20,18 @@
 
 ---
 
+## 开发入口（固定）
+
+请统一使用仓库根目录的一键脚本启动，避免 `file://` 直开产生行为偏差：
+
+- Windows 双击：`start-dev.bat`
+- PowerShell：`./start-dev.ps1`
+
+脚本会固定打开 `http://127.0.0.1:4173/index.html`，并启动 `tools/dev_server.py`。  
+该服务器同时提供静态资源与 JSON 写回 API（用于调参写盘与单槽存档写盘）。
+
+---
+
 ## 一、先读这四条
 
 ### 1. 当前项目的真正核心
@@ -256,10 +268,17 @@
 
 ```text
 /
+├── start-dev.bat
+├── start-dev.ps1
 ├── index.html
 ├── tuning-profile.json
+├── save-slot.json
 ├── tuning-panel.js
 ├── README.md
+├── vendor/
+│   └── phaser.min.js
+├── tools/
+    └── dev_server.py
 └── src/
     ├── constants.js
     ├── utils.js
@@ -284,6 +303,7 @@
 
 - 页面入口
 - 定义脚本加载顺序
+- 加载本地 `vendor/phaser.min.js`（避免 CDN 波动）
 - 挂载浮动“新增节点”按钮
 - 通过 `window.CORE_DEMO_DEBUG !== false` 控制开发态入口是否默认显示
 
@@ -299,14 +319,13 @@
 - 负责：
   - fallback 默认值
   - 仓库基线加载
-  - 本地持久化覆盖
+  - 历史本地调参一次性迁移
   - 调参项定义表
   - 主 feel 组合旋钮
   - 分类折叠 UI
   - 差异导出
   - 完整 JSON 导出
-  - “应用到本地”并重置比对基线
-  - 调参分类状态持久化
+  - “写入 JSON”并重置比对基线
 
 #### `src/constants.js`
 
@@ -319,7 +338,8 @@
 
 #### `src/storage.js`
 
-- `localStorage` 读写封装
+- `save-slot.json` 文件读写封装（经 `tools/dev_server.py` API）
+- 历史 localStorage 单槽数据自动迁移
 - 保存时间格式化
 
 #### `src/ui.js`
@@ -1200,12 +1220,11 @@ window.CORE_DEMO_DEBUG = false
 
 - 搜索参数
 - 分类折叠
-- 节折叠状态持久化
 - 单项重置
 - 全部重置到当前基线
 - 复制完整 JSON
 - 复制差异 JSON
-- 应用到本地并持久化
+- 写入 `tuning-profile.json`
 - 当前相对基线改动计数
 - 浮动新增节点入口
 
@@ -1214,13 +1233,13 @@ window.CORE_DEMO_DEBUG = false
 当前调参基线顺序是：
 
 1. 先载入 `tuning-profile.json`
-2. 再用本地 `localStorage` 覆盖
+2. 如果检测到历史 localStorage 调参，仅做一次迁移并写回 `tuning-profile.json`
 3. 然后把结果快照为当前比对基线 `TUNING_DEFAULTS`
 
 这意味着：
 
-- “复制差异”比较的是“当前值 vs 当前本地基线”
-- “应用到本地”会把当前值写入本地，并把它设为新的比对基线
+- “复制差异”比较的是“当前值 vs 当前 JSON 基线”
+- “写入 JSON”会把当前值写入 `tuning-profile.json`，并把它设为新的比对基线
 
 ### 7. `file://` 行为
 
@@ -1228,6 +1247,7 @@ window.CORE_DEMO_DEBUG = false
 
 - 不会去同步 XHR 读取仓库 `tuning-profile.json`
 - 会直接回退到 fallback，避免浏览器 CORS 噪音
+- 也无法把改动写回 JSON（需要通过 `start-dev` 脚本启动本地服务）
 
 ### 8. 编辑态
 
