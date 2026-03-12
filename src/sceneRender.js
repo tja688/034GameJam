@@ -130,14 +130,15 @@ const SceneRenderMixin = {
             initialized: false,
             seed: Math.random() * Math.PI * 2,
             container: null,
-            shadowSegments: [],
-            trackSegments: [],
-            ghostSegments: [],
-            glowSegments: [],
-            fillSegments: [],
-            flashSegments: [],
-            growthSegments: [],
-            overloadStrips: [],
+            shadowStrip: null,
+            trackStrip: null,
+            ghostStrip: null,
+            glowStrip: null,
+            fillStrip: null,
+            flashStrip: null,
+            growthStrip: null,
+            overloadStrip: null,
+            overloadFlashStrip: null,
             displayLength: 0,
             displayEnergy: 0,
             displayGhost: 0,
@@ -147,6 +148,21 @@ const SceneRenderMixin = {
             overloadPulse: 0,
             growthKick: 0,
             biomassPulse: 0,
+            impulseIndex: 0,
+            swayX: 0,
+            swayXVelocity: 0,
+            swayY: 0,
+            swayYVelocity: 0,
+            rotation: 0,
+            rotationVelocity: 0,
+            lengthPush: 0,
+            lengthVelocity: 0,
+            thicknessPush: 0,
+            thicknessVelocity: 0,
+            fillLift: 0,
+            fillLiftVelocity: 0,
+            tipLift: 0,
+            tipLiftVelocity: 0,
             metrics: {
                 visible: false,
                 centerX: 0,
@@ -185,31 +201,15 @@ const SceneRenderMixin = {
 
         state.container = this.add.layer();
         state.container.setDepth(39);
-
-        for (let i = 0; i < 3; i += 1) {
-            state.shadowSegments.push(this.createLivingEnergyBarStrip(state));
-        }
-        for (let i = 0; i < 3; i += 1) {
-            state.trackSegments.push(this.createLivingEnergyBarStrip(state));
-        }
-        for (let i = 0; i < 3; i += 1) {
-            state.ghostSegments.push(this.createLivingEnergyBarStrip(state));
-        }
-        for (let i = 0; i < 3; i += 1) {
-            state.glowSegments.push(this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD));
-        }
-        for (let i = 0; i < 3; i += 1) {
-            state.fillSegments.push(this.createLivingEnergyBarStrip(state));
-        }
-        for (let i = 0; i < 3; i += 1) {
-            state.flashSegments.push(this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD));
-        }
-        for (let i = 0; i < 3; i += 1) {
-            state.growthSegments.push(this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD));
-        }
-        for (let i = 0; i < 2; i += 1) {
-            state.overloadStrips.push(this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD));
-        }
+        state.shadowStrip = this.createLivingEnergyBarStrip(state);
+        state.trackStrip = this.createLivingEnergyBarStrip(state);
+        state.ghostStrip = this.createLivingEnergyBarStrip(state);
+        state.glowStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
+        state.fillStrip = this.createLivingEnergyBarStrip(state);
+        state.flashStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
+        state.growthStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
+        state.overloadStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
+        state.overloadFlashStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
 
         state.initialized = true;
         state.container.setVisible(false);
@@ -228,6 +228,21 @@ const SceneRenderMixin = {
         state.overloadPulse = 0;
         state.growthKick = 0;
         state.biomassPulse = 0;
+        state.impulseIndex = 0;
+        state.swayX = 0;
+        state.swayXVelocity = 0;
+        state.swayY = 0;
+        state.swayYVelocity = 0;
+        state.rotation = 0;
+        state.rotationVelocity = 0;
+        state.lengthPush = 0;
+        state.lengthVelocity = 0;
+        state.thicknessPush = 0;
+        state.thicknessVelocity = 0;
+        state.fillLift = 0;
+        state.fillLiftVelocity = 0;
+        state.tipLift = 0;
+        state.tipLiftVelocity = 0;
         if (state.container) {
             state.container.setVisible(false);
         }
@@ -235,32 +250,40 @@ const SceneRenderMixin = {
     },
     emitLivingEnergyBarEvent(type, magnitude = 0, meta = null) {
         const state = this.ensureLivingEnergyBarState();
-        const amount = Math.max(0, magnitude || 0);
         const payload = meta && typeof meta === 'object' ? meta : {};
+        const amount = Math.max(0, magnitude || 0);
         if (type === 'loss') {
-            state.lossPulse = Math.max(state.lossPulse, amount);
+            const lossAmount = payload.source === 'pulse' ? amount * 0.26 : amount;
+            state.lossPulse = Math.max(state.lossPulse, lossAmount);
+            this.applyLivingEnergyBarImpulse(state, type, lossAmount, payload);
             return;
         }
         if (type === 'gain') {
             state.gainPulse = Math.max(state.gainPulse, amount);
             state.biomassPulse = Math.max(state.biomassPulse, amount * 0.42);
+            this.applyLivingEnergyBarImpulse(state, type, amount, payload);
             if (payload.overflow > 0 || payload.wasFull) {
-                state.overloadPulse = Math.max(state.overloadPulse, amount + payload.overflow * 0.5);
+                const overloadAmount = amount + payload.overflow * 0.5;
+                state.overloadPulse = Math.max(state.overloadPulse, overloadAmount);
+                this.applyLivingEnergyBarImpulse(state, 'overload', overloadAmount, payload);
             }
             return;
         }
         if (type === 'overload') {
             state.overloadPulse = Math.max(state.overloadPulse, amount);
             state.gainPulse = Math.max(state.gainPulse, amount * 0.4);
+            this.applyLivingEnergyBarImpulse(state, type, amount, payload);
             return;
         }
         if (type === 'growth') {
             state.growthKick = Math.max(state.growthKick, amount);
             state.biomassPulse = Math.max(state.biomassPulse, amount * 0.5);
+            this.applyLivingEnergyBarImpulse(state, type, amount, payload);
             return;
         }
         if (type === 'biomass') {
             state.biomassPulse = Math.max(state.biomassPulse, amount);
+            this.applyLivingEnergyBarImpulse(state, type, amount, payload);
         }
     },
     getLivingEnergyBarCapacityRatio() {
@@ -297,6 +320,81 @@ const SceneRenderMixin = {
         sprite.setRotation(rotation);
         sprite.setTint(color);
         sprite.setAlpha(alpha);
+    },
+    stepLivingEnergyBarSpring(state, key, velocityKey, stiffness, damping, frameDt) {
+        if (!state || frameDt <= 0) {
+            return;
+        }
+        const value = state[key] || 0;
+        const velocity = state[velocityKey] || 0;
+        const nextVelocity = (velocity - value * stiffness * frameDt) * Math.exp(-damping * frameDt);
+        state[velocityKey] = nextVelocity;
+        state[key] = value + nextVelocity * frameDt;
+    },
+    applyLivingEnergyBarImpulse(state, type, magnitude = 0, meta = null) {
+        if (!state || magnitude <= 0.0001) {
+            return;
+        }
+        state.impulseIndex = (state.impulseIndex || 0) + 1;
+        const payload = meta && typeof meta === 'object' ? meta : {};
+        const phase = state.impulseIndex * 12.9898 + state.seed * 37.719;
+        const lateralBias = clamp(
+            Math.sin(phase) * 0.68 + Math.sin(phase * 0.47 + 1.3) * 0.32,
+            -1,
+            1
+        );
+        const addClamped = (key, value, min, max) => {
+            state[key] = clamp((state[key] || 0) + value, min, max);
+        };
+
+        if (type === 'loss') {
+            const pulseLossScale = payload.source === 'pulse' ? 0.38 : 1;
+            addClamped('swayXVelocity', lateralBias * (8 + magnitude * 18) * pulseLossScale, -120, 120);
+            addClamped('swayYVelocity', (2 + magnitude * 7) * pulseLossScale, -90, 90);
+            addClamped('rotationVelocity', lateralBias * (0.04 + magnitude * 0.1) * pulseLossScale, -0.9, 0.9);
+            addClamped('lengthVelocity', -(70 + magnitude * 110) * pulseLossScale, -420, 420);
+            addClamped('thicknessVelocity', -(24 + magnitude * 44) * Math.max(0.45, pulseLossScale), -260, 260);
+            addClamped('fillLiftVelocity', -(0.8 + magnitude * 1.1) * pulseLossScale, -8, 8);
+            return;
+        }
+
+        if (type === 'gain') {
+            addClamped('swayXVelocity', lateralBias * (5 + magnitude * 12), -120, 120);
+            addClamped('swayYVelocity', -(6 + magnitude * 14), -120, 90);
+            addClamped('rotationVelocity', lateralBias * (0.025 + magnitude * 0.07), -0.9, 0.9);
+            addClamped('lengthVelocity', 54 + magnitude * 90, -420, 420);
+            addClamped('thicknessVelocity', 30 + magnitude * 56, -260, 260);
+            addClamped('fillLiftVelocity', 1.05 + magnitude * 1.5, -8, 8);
+            addClamped('tipLiftVelocity', -(6 + magnitude * 12), -140, 140);
+            return;
+        }
+
+        if (type === 'overload') {
+            addClamped('swayXVelocity', lateralBias * (8 + magnitude * 14), -120, 120);
+            addClamped('swayYVelocity', -(8 + magnitude * 18), -120, 90);
+            addClamped('rotationVelocity', lateralBias * (0.04 + magnitude * 0.1), -0.9, 0.9);
+            addClamped('lengthVelocity', 84 + magnitude * 126, -420, 420);
+            addClamped('thicknessVelocity', 42 + magnitude * 72, -260, 260);
+            addClamped('fillLiftVelocity', 1.2 + magnitude * 1.7, -8, 8);
+            addClamped('tipLiftVelocity', -(14 + magnitude * 24), -140, 140);
+            return;
+        }
+
+        if (type === 'growth') {
+            addClamped('swayXVelocity', lateralBias * (4 + magnitude * 10), -120, 120);
+            addClamped('swayYVelocity', -(4 + magnitude * 10), -120, 90);
+            addClamped('rotationVelocity', lateralBias * (0.02 + magnitude * 0.05), -0.9, 0.9);
+            addClamped('lengthVelocity', 74 + magnitude * 118, -420, 420);
+            addClamped('thicknessVelocity', 18 + magnitude * 34, -260, 260);
+            addClamped('fillLiftVelocity', 0.55 + magnitude * 0.9, -8, 8);
+            addClamped('tipLiftVelocity', -(4 + magnitude * 8), -140, 140);
+            return;
+        }
+
+        if (type === 'biomass') {
+            addClamped('lengthVelocity', 16 + magnitude * 34, -420, 420);
+            addClamped('thicknessVelocity', 8 + magnitude * 18, -260, 260);
+        }
     },
     updateLivingEnergyBar(frameDt) {
         let state = null;
@@ -349,163 +447,176 @@ const SceneRenderMixin = {
             const beat = clamp(this.runState?.energyBeat || 0, 0, 1);
             const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
             const targetLength = this.getLivingEnergyBarTargetLength();
-            const lengthDamp = (energyRatio >= state.displayEnergy ? 9.5 : 11.5) + growthRatio * 1.8;
+            const lengthDamp = 9.2 + growthRatio * 1.6;
 
-        state.lossPulse = Math.max(0, state.lossPulse - frameDt * 4.8);
-        state.gainPulse = Math.max(0, state.gainPulse - frameDt * 3.8);
-        state.overloadPulse = Math.max(0, state.overloadPulse - frameDt * 2.6);
-        state.growthKick = Math.max(0, state.growthKick - frameDt * 2.2);
-        state.biomassPulse = Math.max(0, state.biomassPulse - frameDt * 2.4);
-        state.displayEnergy = damp(state.displayEnergy || energyRatio, energyRatio, energyRatio >= (state.displayEnergy || 0) ? 18 : 24, frameDt);
-        state.displayGhost = damp(state.displayGhost || ghostRatio, ghostRatio, ghostRatio >= (state.displayGhost || 0) ? 5.2 : 8.4, frameDt);
-        state.displayGrowth = damp(state.displayGrowth || growthRatio, growthRatio, 8.4, frameDt);
-        state.displayLength = damp(
-            state.displayLength || targetLength,
-            targetLength
-                + state.overloadPulse * overloadViolence * 18
-                + state.growthKick * growthViolence * 14
-                + state.gainPulse * gainViolence * 4
-                - state.lossPulse * damageViolence * 2,
-            lengthDamp,
-            frameDt
-        );
+            state.lossPulse = Math.max(0, state.lossPulse - frameDt * 4.8);
+            state.gainPulse = Math.max(0, state.gainPulse - frameDt * 3.8);
+            state.overloadPulse = Math.max(0, state.overloadPulse - frameDt * 2.6);
+            state.growthKick = Math.max(0, state.growthKick - frameDt * 2.2);
+            state.biomassPulse = Math.max(0, state.biomassPulse - frameDt * 2.4);
+            state.displayEnergy = damp(state.displayEnergy || energyRatio, energyRatio, energyRatio >= (state.displayEnergy || 0) ? 18 : 24, frameDt);
+            state.displayGhost = damp(state.displayGhost || ghostRatio, ghostRatio, ghostRatio >= (state.displayGhost || 0) ? 5.2 : 8.4, frameDt);
+            state.displayGrowth = damp(state.displayGrowth || growthRatio, growthRatio, 8.4, frameDt);
+            state.displayLength = damp(state.displayLength || targetLength, targetLength, lengthDamp, frameDt);
 
-        const pulseTime = this.worldTime * (24 + idleMotion * 9);
-        const twitchFast = Math.sin(pulseTime * 1.85 + state.seed);
-        const twitchMid = Math.sin(pulseTime * 1.18 + state.seed * 0.7);
-        const twitchSlow = Math.sin(this.worldTime * (10 + idleMotion * 4) + state.seed * 1.4);
-        const loss = state.lossPulse * damageViolence;
-        const gain = state.gainPulse * gainViolence;
-        const overload = state.overloadPulse * overloadViolence;
-        const grow = state.growthKick * growthViolence + state.biomassPulse * 0.42;
-        const chaos = idleMotion * 0.32 + beat * 0.34 + lowEnergy * 0.28 + loss * 0.7 + gain * 0.42 + overload * 0.84 + grow * 0.52;
-        const baseHeight = thickness * (1 + beat * 0.08 + lowEnergy * 0.06);
-        const rootX = this.scale.width * 0.5 + (this.cameraRig?.hudOffsetX || 0) * 0.78;
-        const rootY = 54 + topOffset + (this.cameraRig?.hudOffsetY || 0) * 0.62;
-        const rootRotation = (
-            twitchMid * (loss * 0.032 - gain * 0.012 - overload * 0.024)
-            + twitchSlow * (0.004 + chaos * 0.005)
-        );
+            this.stepLivingEnergyBarSpring(state, 'swayX', 'swayXVelocity', 56, 9.2, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'swayY', 'swayYVelocity', 62, 10.4, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'rotation', 'rotationVelocity', 84, 11.8, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'lengthPush', 'lengthVelocity', 86, 10.5, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'thicknessPush', 'thicknessVelocity', 96, 12.4, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'fillLift', 'fillLiftVelocity', 102, 13.4, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'tipLift', 'tipLiftVelocity', 78, 10.4, frameDt);
 
-        state.container.setVisible(true);
-        const shakeX = Math.sin(this.worldTime * 64 + state.seed * 0.8) * loss * 1.9
-            + Math.sin(this.worldTime * 34 + state.seed * 0.3) * (gain * 0.9 + overload * 1.4);
-        const shakeY = Math.cos(this.worldTime * 54 + state.seed) * loss * 0.8
-            + Math.sin(this.worldTime * 16 + state.seed * 0.6) * (gain * 0.45 + overload * 0.8);
-        const hudRootX = rootX + shakeX;
-        const hudRootY = rootY + shakeY;
-        const placeHudStrip = (sprite, localX, localY, width, height, color, alpha, rotation = 0) => {
-            const rotated = rotateLocal(localX, localY, rootRotation);
-            this.setLivingEnergyBarStrip(
-                sprite,
-                hudRootX + rotated.x,
-                hudRootY + rotated.y,
-                width,
-                height,
-                color,
-                alpha,
-                rootRotation + rotation
+            const loss = state.lossPulse * damageViolence;
+            const gain = state.gainPulse * gainViolence;
+            const overload = state.overloadPulse * overloadViolence;
+            const grow = state.growthKick * growthViolence + state.biomassPulse * 0.42;
+            const baseHeight = thickness * (1 + beat * 0.06 + lowEnergy * 0.05);
+            const actualLength = clamp(
+                state.displayLength + state.lengthPush,
+                Math.max(36, targetLength * 0.62),
+                targetLength + 56 + overload * 22 + grow * 18
             );
-        };
+            const bodyHeight = clamp(
+                baseHeight + state.thicknessPush,
+                Math.max(4, thickness * 0.58),
+                thickness * 2.2 + 14 + overload * 6
+            );
+            const innerInset = clamp(bodyHeight * 0.16, 1.6, 4.2);
+            const fillHeight = clamp(
+                bodyHeight - innerInset * 2 + state.fillLift * 1.6,
+                bodyHeight * 0.42,
+                bodyHeight + 10
+            );
+            const fillPixels = actualLength * clamp(state.displayEnergy, 0, 1);
+            const ghostPixels = Math.max(0, actualLength * clamp(state.displayGhost, 0, 1) - fillPixels);
+            const growthPixels = actualLength * clamp(state.displayGrowth, 0, 1);
+            const overloadPixels = clamp(
+                Math.max(0, overload * 22 + Math.max(0, gain - 0.14) * 4 + Math.max(0, -state.tipLift) * 0.28),
+                0,
+                Math.max(10, actualLength * 0.16)
+            );
 
-        const widths = [0.28, 0.31, 0.41].map((weight) => state.displayLength * weight);
-        const heights = [
-            baseHeight * clamp(0.84 + gain * 0.08 + grow * 0.05 - loss * 0.1 + twitchSlow * 0.03 * idleMotion + beat * 0.05, 0.55, 1.5),
-            baseHeight * clamp(0.92 + gain * 0.28 + grow * 0.14 + overload * 0.16 - loss * 0.2 + twitchMid * 0.05 * chaos + beat * 0.08, 0.48, 2.1),
-            baseHeight * clamp(0.82 + gain * 0.18 + grow * 0.1 + overload * 0.34 - loss * 0.34 + twitchFast * 0.08 * chaos + beat * 0.06, 0.38, 2.45)
-        ];
-        const offsetsY = [
-            baseHeight * (loss * 0.08 - gain * 0.04 + twitchSlow * 0.02 * idleMotion),
-            baseHeight * (loss * 0.14 - gain * 0.12 - overload * 0.16 - grow * 0.08 + twitchMid * 0.05 * chaos),
-            baseHeight * (loss * 0.26 - gain * 0.18 - overload * 0.3 - grow * 0.12 + twitchFast * 0.08 * chaos)
-        ];
-        const rotations = [
-            twitchSlow * (0.01 + chaos * 0.004),
-            twitchMid * (0.014 + chaos * 0.008) - gain * 0.008 + loss * 0.01,
-            twitchFast * (0.024 + chaos * 0.014) - gain * 0.018 + loss * 0.026 - overload * 0.03
-        ];
+            const idleOffsetX = (
+                Math.sin(this.worldTime * (0.84 + idleMotion * 0.18) + state.seed) * 0.6
+                + Math.sin(this.worldTime * 1.37 + state.seed * 1.9) * 0.26
+            ) * idleMotion * 0.55;
+            const idleOffsetY = Math.sin(this.worldTime * (0.92 + idleMotion * 0.12) + state.seed * 0.6) * idleMotion * 0.32;
+            const idleRotation = (
+                Math.sin(this.worldTime * 0.72 + state.seed * 0.9) * 0.0021
+                + Math.sin(this.worldTime * 1.46 + state.seed * 0.3) * 0.0011
+            ) * idleMotion;
+            const rootX = this.scale.width * 0.5 + (this.cameraRig?.hudOffsetX || 0) * 0.78;
+            const rootY = 54 + topOffset + (this.cameraRig?.hudOffsetY || 0) * 0.62;
+            const rootRotation = idleRotation + state.rotation;
 
-        const leftEdge = -state.displayLength * 0.5;
-        const fillPixels = state.displayLength * clamp(state.displayEnergy, 0, 1);
-        const ghostStartPixels = state.displayLength * clamp(state.displayEnergy, 0, 1);
-        const ghostPixels = Math.max(0, state.displayLength * clamp(state.displayGhost, 0, 1) - ghostStartPixels);
-        const growthPixels = state.displayLength * state.displayGrowth;
-        const overloadPixels = clamp(
-            (gain * 10 + overload * 20 + grow * 12) * (0.5 + idleMotion * 0.2),
-            0,
-            Math.max(16, state.displayLength * 0.28)
-        );
-        const shellColor = lowEnergy > 0.08
-            ? blendColor(palette.signal, COLORS.health, lowEnergy * 0.54)
-            : blendColor(COLORS.shadow, palette.signal, 0.22);
-        const fillColor = lowEnergy > 0.08
-            ? blendColor(COLORS.energy, COLORS.health, lowEnergy * 0.44)
-            : blendColor(COLORS.inverse, palette.signal, 0.68);
-        const flashColor = blendColor(COLORS.core, COLORS.energy, 0.38 + Math.min(0.42, gain * 0.1 + overload * 0.12));
-        const growthColor = blendColor(palette.pulse, COLORS.energy, 0.46 + Math.min(0.3, grow * 0.06));
-        const glowColor = lowEnergy > 0.08
-            ? COLORS.health
-            : blendColor(palette.pulse, COLORS.energy, 0.22);
-        const ghostColor = blendColor(COLORS.health, COLORS.inverse, 0.28);
-        let segmentLeft = leftEdge;
-        let fillRemaining = fillPixels;
-        let ghostRemaining = ghostPixels;
-        let growthRemaining = growthPixels;
+            state.container.setVisible(true);
+            const hudRootX = rootX + idleOffsetX + state.swayX;
+            const hudRootY = rootY + idleOffsetY + state.swayY;
+            const placeHudStrip = (sprite, localX, localY, width, height, color, alpha, rotation = 0) => {
+                const rotated = rotateLocal(localX, localY, rootRotation);
+                this.setLivingEnergyBarStrip(
+                    sprite,
+                    hudRootX + rotated.x,
+                    hudRootY + rotated.y,
+                    width,
+                    height,
+                    color,
+                    alpha,
+                    rootRotation + rotation
+                );
+            };
 
-        for (let i = 0; i < 3; i += 1) {
-            const segmentWidth = widths[i];
-            const segmentHeight = heights[i];
-            const stripX = segmentLeft;
-            const stripY = offsetsY[i];
-            const fillWidth = clamp(fillRemaining, 0, segmentWidth);
-            const ghostWidth = clamp(ghostRemaining, 0, segmentWidth);
-            const growthWidth = clamp(growthRemaining, 0, segmentWidth);
-            const flashAlpha = Math.min(0.42, 0.08 + gain * 0.12 + overload * 0.18 + beat * 0.08);
-            const growthAlpha = Math.min(0.62, 0.18 + state.displayGrowth * 0.2 + grow * 0.16);
-            const glowAlpha = Math.min(0.3, 0.05 + gain * 0.06 + overload * 0.1 + lowEnergy * 0.06);
+            const leftEdge = -actualLength * 0.5;
+            const shellColor = lowEnergy > 0.08
+                ? blendColor(palette.signal, COLORS.health, lowEnergy * 0.54)
+                : blendColor(COLORS.shadow, palette.signal, 0.22);
+            const fillColor = lowEnergy > 0.08
+                ? blendColor(COLORS.energy, COLORS.health, lowEnergy * 0.42)
+                : blendColor(COLORS.inverse, palette.signal, 0.68);
+            const flashColor = blendColor(COLORS.core, COLORS.energy, 0.34 + Math.min(0.46, gain * 0.08 + overload * 0.12));
+            const growthColor = blendColor(palette.pulse, COLORS.energy, 0.42 + Math.min(0.28, grow * 0.06));
+            const glowColor = lowEnergy > 0.08
+                ? COLORS.health
+                : blendColor(palette.pulse, COLORS.energy, 0.2);
+            const ghostColor = blendColor(COLORS.health, COLORS.inverse, 0.28);
+            const shadowAlpha = Math.min(0.4, 0.2 + lowEnergy * 0.06 + overload * 0.05);
+            const glowAlpha = Math.min(0.28, 0.04 + gain * 0.06 + overload * 0.1 + lowEnergy * 0.05 + beat * 0.03);
+            const flashAlpha = Math.min(0.46, 0.1 + gain * 0.11 + overload * 0.12 + grow * 0.05);
+            const growthAlpha = Math.min(0.44, 0.08 + state.displayGrowth * 0.12 + grow * 0.12);
+            const ghostAlpha = Math.min(0.34, 0.1 + loss * 0.12);
+            const overloadAlpha = Math.min(0.76, 0.08 + overload * 0.16 + gain * 0.06 + grow * 0.04);
+            const overloadHeight = Math.max(2, bodyHeight * (0.16 + overload * 0.06));
 
-            placeHudStrip(state.shadowSegments[i], stripX - 4, stripY + 2.6, segmentWidth + 8, segmentHeight + 6, COLORS.shadow, 0.42, rotations[i] * 0.55);
-            placeHudStrip(state.trackSegments[i], stripX, stripY, segmentWidth, segmentHeight, shellColor, 0.92, rotations[i]);
-            placeHudStrip(state.ghostSegments[i], stripX + Math.max(0, fillWidth), stripY, ghostWidth, segmentHeight * (0.78 + loss * 0.08), ghostColor, 0.28 + Math.min(0.26, loss * 0.12), rotations[i]);
-            placeHudStrip(state.glowSegments[i], stripX, stripY, fillWidth, segmentHeight * (1.2 + gain * 0.12 + overload * 0.18), glowColor, glowAlpha, rotations[i] * 0.6);
-            placeHudStrip(state.fillSegments[i], stripX, stripY, fillWidth, segmentHeight, fillColor, 0.96, rotations[i]);
-            placeHudStrip(state.flashSegments[i], stripX, stripY - segmentHeight * 0.22, fillWidth, Math.max(1.5, segmentHeight * 0.28), flashColor, flashAlpha, rotations[i] * 0.42);
-            placeHudStrip(state.growthSegments[i], stripX, stripY - segmentHeight * 0.48, growthWidth, Math.max(1.5, segmentHeight * 0.16), growthColor, growthAlpha, rotations[i] * 0.32);
-
-            fillRemaining -= fillWidth;
-            ghostRemaining -= ghostWidth;
-            growthRemaining -= growthWidth;
-            segmentLeft += segmentWidth;
-        }
-
-        const tipX = leftEdge + state.displayLength;
-        const overloadRise = baseHeight * (0.38 + overload * 0.24 + grow * 0.14);
-        placeHudStrip(
-            state.overloadStrips[0],
-            tipX - Math.min(10, overloadPixels * 0.12),
-            offsetsY[2] - overloadRise,
-            overloadPixels,
-            Math.max(2, heights[2] * (0.52 + overload * 0.22 + grow * 0.12)),
-            blendColor(COLORS.energy, palette.pulse, 0.42),
-            Math.min(0.72, 0.12 + overload * 0.16 + gain * 0.08 + grow * 0.08),
-            rotations[2] * 0.68
-        );
-        placeHudStrip(
-            state.overloadStrips[1],
-            tipX + Math.max(0, overloadPixels * 0.18),
-            offsetsY[2] - overloadRise - heights[2] * 0.18,
-            overloadPixels * 0.62,
-            Math.max(1.5, heights[2] * (0.22 + overload * 0.12)),
-            blendColor(COLORS.core, COLORS.energy, 0.54),
-            Math.min(0.82, 0.08 + overload * 0.2 + gain * 0.06),
-            rotations[2] * 0.92
-        );
+            placeHudStrip(state.shadowStrip, leftEdge - 5, 2.6, actualLength + 10, bodyHeight + 8, COLORS.shadow, shadowAlpha, 0);
+            placeHudStrip(state.trackStrip, leftEdge, 0, actualLength, bodyHeight, shellColor, 0.96, 0);
+            placeHudStrip(
+                state.growthStrip,
+                leftEdge,
+                -bodyHeight * 0.32 - Math.max(0, state.tipLift) * 0.04,
+                growthPixels,
+                Math.max(2, bodyHeight * 0.16),
+                growthColor,
+                growthAlpha,
+                0
+            );
+            placeHudStrip(
+                state.ghostStrip,
+                leftEdge + fillPixels,
+                0,
+                ghostPixels,
+                Math.max(2, fillHeight * 0.94),
+                ghostColor,
+                ghostAlpha,
+                0
+            );
+            placeHudStrip(
+                state.glowStrip,
+                leftEdge,
+                -Math.max(0, state.fillLift) * 0.12,
+                fillPixels,
+                fillHeight + 4 + Math.max(0, state.fillLift) * 0.8,
+                glowColor,
+                glowAlpha,
+                0
+            );
+            placeHudStrip(state.fillStrip, leftEdge, 0, fillPixels, fillHeight, fillColor, 0.98, 0);
+            placeHudStrip(
+                state.flashStrip,
+                leftEdge,
+                -bodyHeight * 0.28 - Math.max(0, state.tipLift) * 0.02,
+                fillPixels,
+                Math.max(2, bodyHeight * 0.18),
+                flashColor,
+                flashAlpha,
+                0
+            );
+            placeHudStrip(
+                state.overloadStrip,
+                leftEdge + actualLength - Math.min(8, overloadPixels * 0.2),
+                -bodyHeight * 0.48 + state.tipLift * 0.18,
+                overloadPixels,
+                overloadHeight,
+                blendColor(COLORS.energy, palette.pulse, 0.42),
+                overloadAlpha,
+                state.rotation * 0.16
+            );
+            placeHudStrip(
+                state.overloadFlashStrip,
+                leftEdge + actualLength + Math.max(0, overloadPixels * 0.08),
+                -bodyHeight * 0.68 + state.tipLift * 0.28,
+                overloadPixels * 0.64,
+                Math.max(1.5, overloadHeight * 0.7),
+                blendColor(COLORS.core, COLORS.energy, 0.56),
+                Math.min(0.82, overloadAlpha + 0.08),
+                state.rotation * 0.26
+            );
 
             state.metrics.centerX = hudRootX;
-            state.metrics.top = hudRootY - baseHeight - Math.max(8, overloadRise * 0.6);
-            state.metrics.left = hudRootX - state.displayLength * 0.5;
-            state.metrics.width = state.displayLength;
-            state.metrics.height = baseHeight + Math.max(8, overloadRise);
+            state.metrics.top = hudRootY - bodyHeight * 0.5 - Math.max(10, overloadHeight + Math.max(0, -state.tipLift) * 0.28);
+            state.metrics.left = hudRootX - actualLength * 0.5;
+            state.metrics.width = actualLength;
+            state.metrics.height = bodyHeight + Math.max(10, overloadHeight + Math.max(0, -state.tipLift) * 0.32);
             state.metrics.bottom = state.metrics.top + state.metrics.height;
         } catch (error) {
             console.error('Living energy bar update failed:', error);
