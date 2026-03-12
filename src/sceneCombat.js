@@ -747,47 +747,61 @@ const SceneCombatMixin = {
         }
 
         const created = [];
-        const lootLifetime = Math.max(1.8, this.getRunTuningValue?.('gameplayLootLifetime', 4.8) ?? 4.8);
-        const lootBurstDuration = Math.max(0.08, this.getRunTuningValue?.('gameplayLootBurstDuration', 0.2) ?? 0.2);
-        const lootCollectDelay = Math.max(0.04, this.getRunTuningValue?.('gameplayLootCollectDelay', 0.2) ?? 0.2);
+        const lootLifetime = Math.max(1.8, this.getRunTuningValue?.('gameplayLootLifetime', 4.2) ?? 4.2);
+        const lootBurstDuration = Math.max(0.08, this.getRunTuningValue?.('gameplayLootBurstDuration', 0.16) ?? 0.16);
+        const lootCollectDelay = Math.max(0.03, this.getRunTuningValue?.('gameplayLootCollectDelay', 0.08) ?? 0.08);
         for (let i = 0; i < spawnCount; i += 1) {
             const fragment = this.acquireFragment();
             if (!fragment) {
                 break;
             }
-            const spread = Phaser.Math.FloatBetween(-1.8, 1.8);
+            const spread = Phaser.Math.FloatBetween(-(collectible ? 3.05 : 2.3), collectible ? 3.05 : 2.3);
             const angle = Math.atan2(aim.y, aim.x) + spread;
-            const speedMul = Phaser.Math.FloatBetween(0.35, 1.08);
+            const speedMul = Phaser.Math.FloatBetween(collectible ? 0.78 : 0.48, collectible ? 1.55 : 1.18);
             const isEnergy = Math.random() < energyBias;
             const shardCollectible = collectible || isEnergy;
             const life = shardCollectible
                 ? Phaser.Math.FloatBetween(lootLifetime * 0.82, lootLifetime * 1.18)
                 : Phaser.Math.FloatBetween(isEnergy ? 0.85 : 0.45, isEnergy ? 1.35 : 0.82);
+            const shape = Phaser.Utils.Array.GetRandom(['circle', 'square', 'triangle']);
+            const accentColor = shape === 'triangle'
+                ? COLORS.triangle
+                : shape === 'square'
+                    ? COLORS.square
+                    : COLORS.circle;
+            const mixedColor = typeof blendColor === 'function'
+                ? blendColor(baseColor, accentColor, Phaser.Math.FloatBetween(0.32, 0.72))
+                : baseColor;
             fragment.x = x;
             fragment.y = y;
-            fragment.vx = Math.cos(angle) * speed * speedMul + aim.x * speed * 0.18;
-            fragment.vy = Math.sin(angle) * speed * speedMul + aim.y * speed * 0.18;
-            fragment.size = Phaser.Math.FloatBetween(size * 0.72, size * 1.28);
-            fragment.shape = Phaser.Utils.Array.GetRandom(['circle', 'square', 'triangle']);
-            fragment.color = isEnergy ? COLORS.energy : baseColor;
+            fragment.vx = Math.cos(angle) * speed * speedMul + aim.x * speed * (shardCollectible ? 0.34 : 0.2);
+            fragment.vy = Math.sin(angle) * speed * speedMul + aim.y * speed * (shardCollectible ? 0.34 : 0.2);
+            fragment.size = Phaser.Math.FloatBetween(
+                size * (shardCollectible ? 1.04 : 0.82),
+                size * (shardCollectible ? 1.78 : 1.34)
+            );
+            fragment.shape = shape;
+            fragment.color = isEnergy
+                ? Phaser.Utils.Array.GetRandom([COLORS.energy, COLORS.core, COLORS.base])
+                : Phaser.Utils.Array.GetRandom([baseColor, mixedColor, accentColor, COLORS.meat]);
             fragment.kind = isEnergy ? 'energy' : 'meat';
             fragment.collectible = shardCollectible;
             fragment.life = life;
             fragment.total = life;
-            fragment.drag = isEnergy ? 3.2 : 2.1;
+            fragment.drag = isEnergy ? 2.4 : 1.65;
             fragment.rotation = Math.random() * Math.PI * 2;
-            fragment.spin = Phaser.Math.FloatBetween(-10, 10);
+            fragment.spin = Phaser.Math.FloatBetween(-16, 16);
             fragment.pulse = Math.random() * Math.PI * 2;
             fragment.state = 'burst';
             fragment.stateTime = 0;
             fragment.age = 0;
-            fragment.burstDuration = lootBurstDuration * Phaser.Math.FloatBetween(0.82, 1.18);
-            fragment.collectDelay = shardCollectible ? lootCollectDelay * Phaser.Math.FloatBetween(0.8, 1.2) : 0;
+            fragment.burstDuration = lootBurstDuration * Phaser.Math.FloatBetween(0.84, 1.08);
+            fragment.collectDelay = shardCollectible ? lootCollectDelay * Phaser.Math.FloatBetween(0.78, 1.08) : 0;
             fragment.targetNodeIndex = -1;
             fragment.homeAge = 0;
             fragment.arcSign = Math.random() < 0.5 ? -1 : 1;
-            fragment.homeCurve = shardCollectible ? Phaser.Math.FloatBetween(0.1, 0.24) : 0;
-            fragment.floatStrength = shardCollectible ? Phaser.Math.FloatBetween(10, 22) : Phaser.Math.FloatBetween(4, 10);
+            fragment.homeCurve = shardCollectible ? Phaser.Math.FloatBetween(0.08, 0.18) : 0;
+            fragment.floatStrength = shardCollectible ? Phaser.Math.FloatBetween(14, 28) : Phaser.Math.FloatBetween(6, 12);
             fragment.rewardEnergy = 0;
             fragment.rewardBiomass = 0;
             fragment.rewardProgress = 0;
@@ -804,7 +818,7 @@ const SceneCombatMixin = {
             return null;
         }
         const currentTargetIndex = fragment.targetNodeIndex;
-        const loadPenalty = Math.max(0.08, this.getRunTuningValue?.('gameplayLootTargetLoadPenalty', 0.24) ?? 0.24);
+        const loadPenalty = Math.max(0.08, this.getRunTuningValue?.('gameplayLootTargetLoadPenalty', 0.18) ?? 0.18);
         const keepBias = Math.max(10, this.getRunTuningValue?.('gameplayLootTargetKeepBias', 34) ?? 34);
         const searchRangeSq = searchRange * searchRange;
         let bestNode = null;
@@ -821,8 +835,8 @@ const SceneCombatMixin = {
             const distance = Math.sqrt(distanceSq) || 0.0001;
             const load = feederLoad.get(node.index) || 0;
             let score = distance * (1 + load * loadPenalty);
-            score -= (node.feedPulse || 0) * 16;
-            score -= (node.suctionPower || 0) * 18;
+            score -= (node.feedPulse || 0) * 22;
+            score -= (node.suctionPower || 0) * 26;
             if (node.index === currentTargetIndex) {
                 score -= keepBias;
             }
@@ -866,9 +880,9 @@ const SceneCombatMixin = {
         }
         const collectPerFrameCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentCollectPerFrameCap', 8) ?? 8));
         let collectedThisFrame = 0;
-        const lootRangeBase = Math.max(120, this.getRunTuningValue?.('gameplayLootHomingRange', 220) ?? 220);
-        const lootRangeGrow = Math.max(20, this.getRunTuningValue?.('gameplayLootHomingRangeGrow', 110) ?? 110);
-        const lootRetargetRange = Math.max(180, this.getRunTuningValue?.('gameplayLootRetargetRange', 280) ?? 280);
+        const lootRangeBase = Math.max(140, this.getRunTuningValue?.('gameplayLootHomingRange', 260) ?? 260);
+        const lootRangeGrow = Math.max(30, this.getRunTuningValue?.('gameplayLootHomingRangeGrow', 180) ?? 180);
+        const lootRetargetRange = Math.max(220, this.getRunTuningValue?.('gameplayLootRetargetRange', 360) ?? 360);
         const hasFeeders = feeders.length > 0;
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
             const fragment = this.fragments[i];
@@ -890,10 +904,10 @@ const SceneCombatMixin = {
 
             let decay = Math.exp(-Math.max(0.4, fragment.drag) * simDt);
             if (fragment.state === 'drift') {
-                decay = Math.exp(-Math.max(0.8, fragment.drag * 1.12) * simDt);
+                decay = Math.exp(-Math.max(0.72, fragment.drag * 0.96) * simDt);
                 const driftAngle = fragment.pulse + fragment.age * 3.2;
-                fragment.vx += Math.cos(driftAngle) * fragment.floatStrength * 0.18 * simDt;
-                fragment.vy += Math.sin(driftAngle * 0.84) * fragment.floatStrength * 0.24 * simDt;
+                fragment.vx += Math.cos(driftAngle) * fragment.floatStrength * 0.22 * simDt;
+                fragment.vy += Math.sin(driftAngle * 0.84) * fragment.floatStrength * 0.28 * simDt;
             }
 
             if (fragment.collectible && hasFeeders && fragment.age >= fragment.collectDelay) {
@@ -930,7 +944,7 @@ const SceneCombatMixin = {
                     }
 
                     if (targetNode) {
-                        const targetLead = 0.06 + Math.min(0.12, fragment.homeAge * 0.05);
+                        const targetLead = 0.08 + Math.min(0.16, fragment.homeAge * 0.08);
                         const targetX = targetNode.x + (targetNode.vx || 0) * targetLead;
                         const targetY = targetNode.y + (targetNode.vy || 0) * targetLead;
                         const dx = targetX - fragment.x;
@@ -940,15 +954,15 @@ const SceneCombatMixin = {
                         const dirY = dy / distance;
                         const tangentX = -dirY * fragment.arcSign;
                         const tangentY = dirX * fragment.arcSign;
-                        const curve = Math.max(0, 1 - Math.min(1, fragment.homeAge / 0.55)) * fragment.homeCurve;
+                        const curve = Math.max(0, 1 - Math.min(1, fragment.homeAge / 0.28)) * fragment.homeCurve;
                         const closeFactor = 1 - clamp(distance / Math.max(48, searchRange), 0, 1);
-                        const suction = (fragment.kind === 'energy' ? 260 : 190)
-                            * (0.72 + (targetNode.suctionPower || 0) * 0.28 + (targetNode.feedPulse || 0) * 0.2 + closeFactor * 0.4);
+                        const suction = (fragment.kind === 'energy' ? 540 : 420)
+                            * (0.94 + (targetNode.suctionPower || 0) * 0.34 + (targetNode.feedPulse || 0) * 0.26 + closeFactor * 0.55);
                         fragment.vx += (dirX + tangentX * curve) * suction * simDt;
                         fragment.vy += (dirY + tangentY * curve) * suction * simDt;
-                        decay = Math.exp(-Math.max(0.55, fragment.drag * 0.82) * simDt);
-                        targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 0.92 + closeFactor * 0.46);
-                        targetNode.absorbLoad = Math.max(targetNode.absorbLoad || 0, 0.08 + closeFactor * 0.18 + (feederLoad.get(targetNode.index) || 0) * 0.04);
+                        decay = Math.exp(-Math.max(0.28, fragment.drag * 0.46) * simDt);
+                        targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 1.08 + closeFactor * 0.72);
+                        targetNode.absorbLoad = Math.max(targetNode.absorbLoad || 0, 0.14 + closeFactor * 0.26 + (feederLoad.get(targetNode.index) || 0) * 0.05);
                         if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10 && collectedThisFrame < collectPerFrameCap) {
                             collectedThisFrame += 1;
                             this.consumeFragment(fragment, targetNode);
