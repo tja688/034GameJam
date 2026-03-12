@@ -591,6 +591,12 @@ const SceneRenderMixin = {
         const pad = Math.max(0, radius + margin);
         return !(x < -pad || x > width + pad || y < -pad || y > height + pad);
     },
+    isScreenPointVisible(x, y, margin = 0) {
+        const width = this.cameraRig?.viewportWidth || this.scale?.width || window.innerWidth;
+        const height = this.cameraRig?.viewportHeight || this.scale?.height || window.innerHeight;
+        const pad = Math.max(0, margin);
+        return !(x < -pad || x > width + pad || y < -pad || y > height + pad);
+    },
     updateEffects(simDt) {
         for (let i = this.effects.length - 1; i >= 0; i -= 1) {
             this.effects[i].life -= simDt;
@@ -744,7 +750,9 @@ const SceneRenderMixin = {
             const size = clamp(baseSize, 14, prey.sizeKey === 'large' ? 220 : prey.sizeKey === 'medium' ? 156 : 118);
             const x = position.x + shakeX;
             const y = position.y + shakeY;
-            if (!this.isScreenCircleVisible(x, y, size * 1.2, 20)) {
+            const actualRadius = Math.max(1, baseSize * 0.5);
+            if (!this.isScreenCircleVisible(x, y, actualRadius, 4)
+                || !this.isScreenPointVisible(x, y, actualRadius)) {
                 return;
             }
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
@@ -1193,7 +1201,9 @@ const SceneRenderMixin = {
             const size = clamp(baseSize, 14, prey.sizeKey === 'large' ? 220 : prey.sizeKey === 'medium' ? 156 : 118);
             const x = position.x + shakeX;
             const y = position.y + shakeY;
-            if (!this.isScreenCircleVisible(x, y, size * 1.2, 20)) {
+            const actualRadius = Math.max(1, baseSize * 0.5);
+            if (!this.isScreenCircleVisible(x, y, actualRadius, 4)
+                || !this.isScreenPointVisible(x, y, actualRadius)) {
                 return;
             }
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
