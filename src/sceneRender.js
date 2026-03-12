@@ -138,7 +138,6 @@ const SceneRenderMixin = {
             flashStrip: null,
             growthStrip: null,
             overloadStrip: null,
-            overloadFlashStrip: null,
             displayLength: 0,
             displayEnergy: 0,
             displayGhost: 0,
@@ -163,6 +162,20 @@ const SceneRenderMixin = {
             fillLiftVelocity: 0,
             tipLift: 0,
             tipLiftVelocity: 0,
+            edgeNudge: 0,
+            edgeNudgeVelocity: 0,
+            lossBurstQueue: 0,
+            lossBurstStrength: 0,
+            lossBurstTimer: 0,
+            jitterX: 0,
+            jitterY: 0,
+            jitterRotation: 0,
+            jitterTargetX: 0,
+            jitterTargetY: 0,
+            jitterTargetRotation: 0,
+            jitterTimer: 0,
+            dropletSprites: [],
+            droplets: [],
             metrics: {
                 visible: false,
                 centerX: 0,
@@ -209,7 +222,26 @@ const SceneRenderMixin = {
         state.flashStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
         state.growthStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
         state.overloadStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
-        state.overloadFlashStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
+        state.dropletSprites = [];
+        state.droplets = [];
+        for (let i = 0; i < 10; i += 1) {
+            state.dropletSprites.push(this.createLivingEnergyBarStrip(state));
+            state.droplets.push({
+                active: false,
+                x: 0,
+                y: 0,
+                vx: 0,
+                vy: 0,
+                width: 0,
+                height: 0,
+                alpha: 0,
+                rotation: 0,
+                rotationVelocity: 0,
+                life: 0,
+                total: 0,
+                color: COLORS.energy
+            });
+        }
 
         state.initialized = true;
         state.container.setVisible(false);
@@ -243,6 +275,25 @@ const SceneRenderMixin = {
         state.fillLiftVelocity = 0;
         state.tipLift = 0;
         state.tipLiftVelocity = 0;
+        state.edgeNudge = 0;
+        state.edgeNudgeVelocity = 0;
+        state.lossBurstQueue = 0;
+        state.lossBurstStrength = 0;
+        state.lossBurstTimer = 0;
+        state.jitterX = 0;
+        state.jitterY = 0;
+        state.jitterRotation = 0;
+        state.jitterTargetX = 0;
+        state.jitterTargetY = 0;
+        state.jitterTargetRotation = 0;
+        state.jitterTimer = 0;
+        (state.droplets || []).forEach((droplet, index) => {
+            droplet.active = false;
+            const sprite = state.dropletSprites?.[index];
+            if (sprite) {
+                sprite.setVisible(false);
+            }
+        });
         if (state.container) {
             state.container.setVisible(false);
         }
@@ -256,6 +307,9 @@ const SceneRenderMixin = {
             const lossAmount = payload.source === 'pulse' ? amount * 0.26 : amount;
             state.lossPulse = Math.max(state.lossPulse, lossAmount);
             this.applyLivingEnergyBarImpulse(state, type, lossAmount, payload);
+            const burstWeight = payload.source === 'pulse' ? 0.4 : 1;
+            state.lossBurstQueue = Math.min(12, (state.lossBurstQueue || 0) + Math.max(1, Math.round((1 + lossAmount * 1.6) * burstWeight)));
+            state.lossBurstStrength = Math.max(state.lossBurstStrength || 0, lossAmount * burstWeight);
             return;
         }
         if (type === 'gain') {
@@ -354,7 +408,16 @@ const SceneRenderMixin = {
             addClamped('rotationVelocity', lateralBias * (0.04 + magnitude * 0.1) * pulseLossScale, -0.9, 0.9);
             addClamped('lengthVelocity', -(70 + magnitude * 110) * pulseLossScale, -420, 420);
             addClamped('thicknessVelocity', -(24 + magnitude * 44) * Math.max(0.45, pulseLossScale), -260, 260);
-            addClamped('fillLiftVelocity', -(0.8 + magnitude * 1.1) * pulseLossScale, -8, 8);
+            addClamped('fillLiftVelocity', -(0.55 + magnitude * 0.8) * pulseLossScale, -8, 8);
+            return;
+        }
+
+        if (type === 'loss-step') {
+            addClamped('swayXVelocity', lateralBias * (4 + magnitude * 9), -120, 120);
+            addClamped('rotationVelocity', lateralBias * (0.018 + magnitude * 0.05), -0.9, 0.9);
+            addClamped('lengthVelocity', -(34 + magnitude * 60), -420, 420);
+            addClamped('thicknessVelocity', -(12 + magnitude * 20), -260, 260);
+            addClamped('edgeNudgeVelocity', -(7 + magnitude * 16), -160, 160);
             return;
         }
 
@@ -364,8 +427,8 @@ const SceneRenderMixin = {
             addClamped('rotationVelocity', lateralBias * (0.025 + magnitude * 0.07), -0.9, 0.9);
             addClamped('lengthVelocity', 54 + magnitude * 90, -420, 420);
             addClamped('thicknessVelocity', 30 + magnitude * 56, -260, 260);
-            addClamped('fillLiftVelocity', 1.05 + magnitude * 1.5, -8, 8);
-            addClamped('tipLiftVelocity', -(6 + magnitude * 12), -140, 140);
+            addClamped('fillLiftVelocity', 0.9 + magnitude * 1.35, -8, 8);
+            addClamped('tipLiftVelocity', -(2 + magnitude * 5), -140, 140);
             return;
         }
 
@@ -375,8 +438,8 @@ const SceneRenderMixin = {
             addClamped('rotationVelocity', lateralBias * (0.04 + magnitude * 0.1), -0.9, 0.9);
             addClamped('lengthVelocity', 84 + magnitude * 126, -420, 420);
             addClamped('thicknessVelocity', 42 + magnitude * 72, -260, 260);
-            addClamped('fillLiftVelocity', 1.2 + magnitude * 1.7, -8, 8);
-            addClamped('tipLiftVelocity', -(14 + magnitude * 24), -140, 140);
+            addClamped('fillLiftVelocity', 1 + magnitude * 1.45, -8, 8);
+            addClamped('tipLiftVelocity', -(4 + magnitude * 8), -140, 140);
             return;
         }
 
@@ -386,14 +449,42 @@ const SceneRenderMixin = {
             addClamped('rotationVelocity', lateralBias * (0.02 + magnitude * 0.05), -0.9, 0.9);
             addClamped('lengthVelocity', 74 + magnitude * 118, -420, 420);
             addClamped('thicknessVelocity', 18 + magnitude * 34, -260, 260);
-            addClamped('fillLiftVelocity', 0.55 + magnitude * 0.9, -8, 8);
-            addClamped('tipLiftVelocity', -(4 + magnitude * 8), -140, 140);
+            addClamped('fillLiftVelocity', 0.4 + magnitude * 0.7, -8, 8);
+            addClamped('tipLiftVelocity', -(2 + magnitude * 4), -140, 140);
             return;
         }
 
         if (type === 'biomass') {
             addClamped('lengthVelocity', 16 + magnitude * 34, -420, 420);
             addClamped('thicknessVelocity', 8 + magnitude * 18, -260, 260);
+        }
+    },
+    emitLivingEnergyBarDroplets(state, count, rootX, rootY, color, widthBase, heightBase, speedBase) {
+        if (!state || count <= 0) {
+            return;
+        }
+        const droplets = state.droplets || [];
+        for (let i = 0; i < droplets.length && count > 0; i += 1) {
+            const droplet = droplets[i];
+            if (droplet.active) {
+                continue;
+            }
+            const lateral = Math.sin((state.impulseIndex + i * 0.7) * 6.123 + state.seed * 1.7);
+            const lift = Math.cos((state.impulseIndex + i * 0.43) * 5.217 + state.seed * 0.9);
+            droplet.active = true;
+            droplet.x = rootX + lateral * Math.max(8, widthBase * 0.18);
+            droplet.y = rootY;
+            droplet.vx = lateral * (8 + speedBase * 0.24);
+            droplet.vy = 18 + speedBase * (0.48 + (lift + 1) * 0.08);
+            droplet.width = clamp(widthBase * (0.12 + Math.abs(lateral) * 0.05), 2, 8);
+            droplet.height = clamp(heightBase * (0.18 + (lift + 1) * 0.08), 2, 7);
+            droplet.alpha = 0.3 + Math.abs(lateral) * 0.16;
+            droplet.rotation = lateral * 0.18;
+            droplet.rotationVelocity = lateral * (0.7 + speedBase * 0.012);
+            droplet.total = 0.22 + Math.abs(lift) * 0.1;
+            droplet.life = droplet.total;
+            droplet.color = color;
+            count -= 1;
         }
     },
     updateLivingEnergyBar(frameDt) {
@@ -429,6 +520,10 @@ const SceneRenderMixin = {
                 state.overloadPulse = Math.max(0, state.overloadPulse - frameDt * 2.6);
                 state.growthKick = Math.max(0, state.growthKick - frameDt * 2.2);
                 state.biomassPulse = Math.max(0, state.biomassPulse - frameDt * 2.4);
+                (state.droplets || []).forEach((droplet, index) => {
+                    droplet.active = false;
+                    state.dropletSprites?.[index]?.setVisible(false);
+                });
                 state.container?.setVisible(false);
                 return;
             }
@@ -466,11 +561,37 @@ const SceneRenderMixin = {
             this.stepLivingEnergyBarSpring(state, 'thicknessPush', 'thicknessVelocity', 96, 12.4, frameDt);
             this.stepLivingEnergyBarSpring(state, 'fillLift', 'fillLiftVelocity', 102, 13.4, frameDt);
             this.stepLivingEnergyBarSpring(state, 'tipLift', 'tipLiftVelocity', 78, 10.4, frameDt);
+            this.stepLivingEnergyBarSpring(state, 'edgeNudge', 'edgeNudgeVelocity', 120, 15.5, frameDt);
 
             const loss = state.lossPulse * damageViolence;
             const gain = state.gainPulse * gainViolence;
             const overload = state.overloadPulse * overloadViolence;
             const grow = state.growthKick * growthViolence + state.biomassPulse * 0.42;
+            const tremorActivity = clamp(0.2 + idleMotion * 0.1 + lowEnergy * 0.14 + loss * 0.16 + gain * 0.08 + overload * 0.1, 0, 1.4);
+            state.jitterTimer = Math.max(0, (state.jitterTimer || 0) - frameDt);
+            if ((state.jitterTimer || 0) <= 0) {
+                const jitterSeed = state.seed + (state.impulseIndex || 0) * 0.19 + this.worldTime * 11.7;
+                const jitterAmpX = 0.18 + tremorActivity * 0.65;
+                const jitterAmpY = 0.14 + tremorActivity * 0.46;
+                const jitterAmpRot = 0.0018 + tremorActivity * 0.0048;
+                state.jitterTargetX = Math.sin(jitterSeed * 1.23) * jitterAmpX;
+                state.jitterTargetY = Math.sin(jitterSeed * 1.81 + 0.6) * jitterAmpY;
+                state.jitterTargetRotation = Math.sin(jitterSeed * 1.57 + 1.1) * jitterAmpRot;
+                state.jitterTimer = 0.018 + Math.max(0.012, 0.038 - tremorActivity * 0.01);
+            }
+            state.jitterX = damp(state.jitterX || 0, state.jitterTargetX || 0, 34, frameDt);
+            state.jitterY = damp(state.jitterY || 0, state.jitterTargetY || 0, 34, frameDt);
+            state.jitterRotation = damp(state.jitterRotation || 0, state.jitterTargetRotation || 0, 34, frameDt);
+
+            state.lossBurstTimer = Math.max(0, (state.lossBurstTimer || 0) - frameDt);
+            if ((state.lossBurstQueue || 0) > 0 && (state.lossBurstTimer || 0) <= 0) {
+                const burstStrength = Math.max(0.08, state.lossBurstStrength || 0.1);
+                this.applyLivingEnergyBarImpulse(state, 'loss-step', burstStrength);
+                state.lossBurstQueue -= 1;
+                state.lossBurstStrength = Math.max(0, burstStrength * 0.86);
+                state.lossBurstTimer = 0.028 + Math.min(0.022, burstStrength * 0.012);
+            }
+
             const baseHeight = thickness * (1 + beat * 0.06 + lowEnergy * 0.05);
             const actualLength = clamp(
                 state.displayLength + state.lengthPush,
@@ -488,7 +609,7 @@ const SceneRenderMixin = {
                 bodyHeight * 0.42,
                 bodyHeight + 10
             );
-            const fillPixels = actualLength * clamp(state.displayEnergy, 0, 1);
+            const fillPixels = Math.max(0, actualLength * clamp(state.displayEnergy, 0, 1) + Math.min(0, state.edgeNudge || 0));
             const ghostPixels = Math.max(0, actualLength * clamp(state.displayGhost, 0, 1) - fillPixels);
             const growthPixels = actualLength * clamp(state.displayGrowth, 0, 1);
             const overloadPixels = clamp(
@@ -508,11 +629,11 @@ const SceneRenderMixin = {
             ) * idleMotion;
             const rootX = this.scale.width * 0.5 + (this.cameraRig?.hudOffsetX || 0) * 0.78;
             const rootY = 54 + topOffset + (this.cameraRig?.hudOffsetY || 0) * 0.62;
-            const rootRotation = idleRotation + state.rotation;
+            const rootRotation = idleRotation + state.rotation + (state.jitterRotation || 0);
 
             state.container.setVisible(true);
-            const hudRootX = rootX + idleOffsetX + state.swayX;
-            const hudRootY = rootY + idleOffsetY + state.swayY;
+            const hudRootX = rootX + idleOffsetX + state.swayX + (state.jitterX || 0);
+            const hudRootY = rootY + idleOffsetY + state.swayY + (state.jitterY || 0);
             const placeHudStrip = (sprite, localX, localY, width, height, color, alpha, rotation = 0) => {
                 const rotated = rotateLocal(localX, localY, rootRotation);
                 this.setLivingEnergyBarStrip(
@@ -553,7 +674,7 @@ const SceneRenderMixin = {
             placeHudStrip(
                 state.growthStrip,
                 leftEdge,
-                -bodyHeight * 0.32 - Math.max(0, state.tipLift) * 0.04,
+                -bodyHeight * 0.18,
                 growthPixels,
                 Math.max(2, bodyHeight * 0.16),
                 growthColor,
@@ -573,7 +694,7 @@ const SceneRenderMixin = {
             placeHudStrip(
                 state.glowStrip,
                 leftEdge,
-                -Math.max(0, state.fillLift) * 0.12,
+                0,
                 fillPixels,
                 fillHeight + 4 + Math.max(0, state.fillLift) * 0.8,
                 glowColor,
@@ -584,7 +705,7 @@ const SceneRenderMixin = {
             placeHudStrip(
                 state.flashStrip,
                 leftEdge,
-                -bodyHeight * 0.28 - Math.max(0, state.tipLift) * 0.02,
+                0,
                 fillPixels,
                 Math.max(2, bodyHeight * 0.18),
                 flashColor,
@@ -594,23 +715,59 @@ const SceneRenderMixin = {
             placeHudStrip(
                 state.overloadStrip,
                 leftEdge + actualLength - Math.min(8, overloadPixels * 0.2),
-                -bodyHeight * 0.48 + state.tipLift * 0.18,
+                0,
                 overloadPixels,
-                overloadHeight,
+                overloadHeight + Math.max(0, -state.tipLift) * 0.08,
                 blendColor(COLORS.energy, palette.pulse, 0.42),
                 overloadAlpha,
                 state.rotation * 0.16
             );
-            placeHudStrip(
-                state.overloadFlashStrip,
-                leftEdge + actualLength + Math.max(0, overloadPixels * 0.08),
-                -bodyHeight * 0.68 + state.tipLift * 0.28,
-                overloadPixels * 0.64,
-                Math.max(1.5, overloadHeight * 0.7),
-                blendColor(COLORS.core, COLORS.energy, 0.56),
-                Math.min(0.82, overloadAlpha + 0.08),
-                state.rotation * 0.26
-            );
+
+            const dropletRootX = leftEdge + Math.max(10, Math.min(actualLength - 10, fillPixels));
+            const dropletRootY = bodyHeight * 0.32;
+            if ((state.lossBurstQueue || 0) > 0 || loss > 0.14) {
+                this.emitLivingEnergyBarDroplets(
+                    state,
+                    Math.min(2, 1 + Math.floor(loss * 0.45)),
+                    dropletRootX,
+                    dropletRootY,
+                    blendColor(COLORS.health, fillColor, 0.56),
+                    bodyHeight + actualLength * 0.02,
+                    bodyHeight,
+                    32 + loss * 24
+                );
+            }
+            (state.droplets || []).forEach((droplet, index) => {
+                const sprite = state.dropletSprites?.[index];
+                if (!sprite) {
+                    return;
+                }
+                if (!droplet.active) {
+                    sprite.setVisible(false);
+                    return;
+                }
+                droplet.life -= frameDt;
+                if (droplet.life <= 0) {
+                    droplet.active = false;
+                    sprite.setVisible(false);
+                    return;
+                }
+                droplet.vy += 180 * frameDt;
+                droplet.x += droplet.vx * frameDt;
+                droplet.y += droplet.vy * frameDt;
+                droplet.rotation += droplet.rotationVelocity * frameDt;
+                const alpha = clamp(droplet.life / Math.max(0.0001, droplet.total), 0, 1) * droplet.alpha;
+                placeHudStrip(
+                    sprite,
+                    droplet.x,
+                    droplet.y,
+                    droplet.width,
+                    droplet.height,
+                    droplet.color,
+                    alpha,
+                    droplet.rotation
+                );
+            });
 
             state.metrics.centerX = hudRootX;
             state.metrics.top = hudRootY - bodyHeight * 0.5 - Math.max(10, overloadHeight + Math.max(0, -state.tipLift) * 0.28);
