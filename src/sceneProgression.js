@@ -502,7 +502,99 @@ const SceneProgressionMixin = {
             this.emitLivingEnergyBarEvent?.('biomass', 0.08 + amount * 0.06);
         }
     },
+    buildPreyDevourRewardPayload(prey) {
+        if (!prey) {
+            return null;
+        }
+        return {
+            sourceId: prey.id,
+            stageId: prey.stageId || '',
+            isObjective: !!prey.isObjective,
+            energyValue: prey.energyValue || 0,
+            biomassValue: (prey.biomassValue || 0) + (prey.growthBonus || 0),
+            progressValue: prey.progressValue || 0
+        };
+    },
+    ensureLootRewardSourceState() {
+        if (!this.pendingLootRewardSources || typeof this.pendingLootRewardSources !== 'object') {
+            this.pendingLootRewardSources = {};
+        }
+        return this.pendingLootRewardSources;
+    },
+    registerLootRewardSource(payload, shardCount) {
+        if (!payload?.sourceId || shardCount <= 0) {
+            return;
+        }
+        const sources = this.ensureLootRewardSourceState();
+        sources[payload.sourceId] = {
+            remaining: Math.max(1, Math.round(shardCount)),
+            isObjective: !!payload.isObjective
+        };
+    },
+    hasPendingObjectiveLoot(objectiveId = this.runState?.objectiveId) {
+        if (!objectiveId) {
+            return false;
+        }
+        const sources = this.ensureLootRewardSourceState();
+        return (sources[objectiveId]?.remaining || 0) > 0;
+    },
+    resolveLootRewardSourceConsumption(sourceId) {
+        if (!sourceId) {
+            return;
+        }
+        const sources = this.ensureLootRewardSourceState();
+        const source = sources[sourceId];
+        if (!source) {
+            return;
+        }
+        source.remaining = Math.max(0, (source.remaining || 0) - 1);
+        if (source.remaining > 0) {
+            return;
+        }
+        delete sources[sourceId];
+        if (!source.isObjective) {
+            return;
+        }
+        if (this.runState.objectiveId === sourceId) {
+            this.runState.objectiveId = '';
+        }
+        this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 1.1);
+        if ((this.runState.stageIndex || 0) >= this.getStageCount() - 1) {
+            this.triggerVictory();
+        } else {
+            this.advanceStage();
+        }
+    },
     absorbFragment(fragment) {
+        const rewardEnergy = Math.max(0, fragment.rewardEnergy || 0);
+        const rewardBiomass = Math.max(0, fragment.rewardBiomass || 0);
+        const rewardProgress = Math.max(0, fragment.rewardProgress || 0);
+        const hasDistributedReward = rewardEnergy > 0
+            || rewardBiomass > 0
+            || rewardProgress > 0
+            || !!fragment.rewardSourceId;
+        if (hasDistributedReward) {
+            if (rewardEnergy > 0) {
+                this.applyEnergyDelta(
+                    rewardEnergy,
+                    fragment.rewardIsObjective ? Math.min(0.62, 0.2 + rewardEnergy * 0.03) : Math.min(0.34, 0.12 + rewardEnergy * 0.025),
+                    fragment.rewardIsObjective ? 'objective' : 'fragment'
+                );
+            }
+            if (rewardBiomass > 0) {
+                this.gainBiomass(rewardBiomass);
+            }
+            if (rewardProgress > 0) {
+                const currentStageId = this.getCurrentStageDef?.()?.id || '';
+                this.runState.totalProgress += rewardProgress;
+                if (!fragment.rewardIsObjective && (!fragment.rewardStageId || fragment.rewardStageId === currentStageId)) {
+                    this.runState.stageProgress += rewardProgress;
+                }
+                this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.16 + rewardProgress * 0.04);
+            }
+            this.resolveLootRewardSourceConsumption(fragment.rewardSourceId || '');
+            return;
+        }
         const isEnergy = fragment.kind === 'energy';
         this.applyEnergyDelta(
             isEnergy
@@ -518,20 +610,21 @@ const SceneProgressionMixin = {
         );
     },
     applyPreyDevourOutcome(prey) {
-        if (!prey) {
+        const reward = this.buildPreyDevourRewardPayload(prey);
+        if (!reward) {
             return;
         }
 
-        this.applyEnergyDelta(prey.energyValue || 0, prey.isObjective ? 0.68 : 0.3, prey.isObjective ? 'objective' : 'devour');
-        this.gainBiomass((prey.biomassValue || 0) + (prey.growthBonus || 0));
-        this.runState.totalProgress += prey.progressValue || 0;
-        if (!prey.isObjective) {
-            this.runState.stageProgress += prey.progressValue || 0;
-            this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.18 + (prey.progressValue || 0) * 0.04);
+        this.applyEnergyDelta(reward.energyValue, reward.isObjective ? 0.68 : 0.3, reward.isObjective ? 'objective' : 'devour');
+        this.gainBiomass(reward.biomassValue);
+        this.runState.totalProgress += reward.progressValue;
+        if (!reward.isObjective) {
+            this.runState.stageProgress += reward.progressValue;
+            this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.18 + reward.progressValue * 0.04);
             return;
         }
 
-        if (this.runState.objectiveId === prey.id) {
+        if (this.runState.objectiveId === reward.sourceId) {
             this.runState.objectiveId = '';
         }
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 1.1);
@@ -589,11 +682,14 @@ const SceneProgressionMixin = {
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, flash);
         this.noteDevourBatch?.(count);
     },
-    onPreyDevoured(prey, node, attachment) {
+    onPreyDevoured(prey, node, attachment, options = null) {
         this.finishPreyChaseTelemetry?.(prey, 'devoured', {
             byNode: node?.index ?? -1,
             mode: attachment?.mode || ''
         });
+        if (options?.deferReward === true) {
+            return;
+        }
         this.queuePreyDevourOutcome(prey, node, attachment);
     },
     pickGrowthTemplate() {
@@ -755,7 +851,13 @@ const SceneProgressionMixin = {
 
         const objectiveVisible = !!objective;
         this.runState.objectivePulse = damp(this.runState.objectivePulse || 0, objectiveVisible ? 1 : 0, objectivePulseDamp, simDt);
-        if (this.runState.objectiveSpawned && !objectiveVisible && !this.runState.complete && !this.player.dead) {
+        if (
+            this.runState.objectiveSpawned
+            && !objectiveVisible
+            && !this.runState.complete
+            && !this.player.dead
+            && !this.hasPendingObjectiveLoot(this.runState.objectiveId)
+        ) {
             this.runState.objectiveSpawned = false;
             this.runState.objectiveId = '';
         }

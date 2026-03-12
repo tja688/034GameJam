@@ -414,6 +414,7 @@ const SceneInitMixin = {
         this.worldTime = 0;
         this.effects = [];
         this.fragments = [];
+        this.resetFragmentPool?.();
         this.prey = [];
         this.spawnTimers = this.createDefaultSpawnTimers();
         this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
@@ -427,6 +428,7 @@ const SceneInitMixin = {
         this.performanceProbe = this.createDefaultPerformanceProbe();
         this.ecoTelemetry = this.createDefaultEcoTelemetry?.() || null;
         this.pendingDevourRewards = [];
+        this.pendingLootRewardSources = {};
         this.poolNodes = this.createPoolNodesFromLibrary();
         this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
         this.resetLivingEnergyBarState?.();
@@ -781,6 +783,10 @@ const SceneInitMixin = {
             node.feedPulse = Math.max(0, node.feedPulse - frameDt * 1.6);
             node.hookTension = Math.max(0, node.hookTension - frameDt * 2.8);
             node.biteGlow = Math.max(0, node.biteGlow - frameDt * 2.2);
+            node.absorbLoad = Math.max(0, node.absorbLoad - frameDt * 1.7);
+            node.absorbJitter = Math.max(0, node.absorbJitter - frameDt * 3.6);
+            node.absorbFlash = Math.max(0, node.absorbFlash - frameDt * 2.4);
+            node.lootTargetCount = Math.max(0, Math.floor((node.lootTargetCount || 0) * 0.8));
             const facingX = node.shape === 'triangle'
                 ? (node.attackDirX || node.vx || Math.cos(this.player.heading))
                 : (node.vx || node.attackDirX || Math.cos(this.player.heading));

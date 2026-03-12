@@ -507,7 +507,7 @@ const SceneCombatMixin = {
         const directionX = node?.attackDirX ?? normalize(prey.vx, prey.vy, 1, 0).x;
         const directionY = node?.attackDirY ?? normalize(prey.vx, prey.vy, 0, 1).y;
         const feedBias = attachment?.mode === 'feed' ? 0.62 : 0.14;
-        this.spawnFragmentBurst(prey.x, prey.y, {
+        const spawned = this.spawnFragmentBurst(prey.x, prey.y, {
             count: Math.max(1, Math.round(count * countMul * visualMul)),
             speed: (fatal ? 182 : (attachment?.mode === 'feed' ? 58 : 104)) * speedMul * Math.max(0.85, visualMul * 0.9),
             size: (fatal ? 6.4 : 4.8) * sizeMul * Math.max(0.9, visualMul * 0.72),
@@ -517,6 +517,10 @@ const SceneCombatMixin = {
             directionX,
             directionY
         });
+        if (fatal && Array.isArray(spawned) && spawned.length > 0) {
+            this.distributePreyRewardAcrossFragments(prey, spawned);
+        }
+        return spawned;
     },
     finishPreyDevour(prey, node, attachment) {
         const index = this.prey.indexOf(prey);
@@ -529,7 +533,8 @@ const SceneCombatMixin = {
         // Keep alive-set in sync for same-frame checks
         if (this._preyAliveSet) { this._preyAliveSet.delete(prey); }
         this.noteDevourBurst?.(1);
-        this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
+        const deathLoot = this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
+        const rewardDeferred = Array.isArray(deathLoot) && deathLoot.some((fragment) => !!fragment.rewardSourceId);
         if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPreyDeathRingsEnabled', true)) {
             this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4, 'prey-death');
             this.createRing(prey.x, prey.y, prey.radius + 16, COLORS.core, 0.22, 3, 'prey-death');
@@ -547,8 +552,124 @@ const SceneCombatMixin = {
             node.biteGlow = Math.max(node.biteGlow || 0, 1);
         }
         if (typeof this.onPreyDevoured === 'function') {
-            this.onPreyDevoured(prey, node, attachment);
+            this.onPreyDevoured(prey, node, attachment, {
+                deferReward: rewardDeferred
+            });
         }
+    },
+    createFragmentState() {
+        return {
+            active: false,
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            size: 0,
+            shape: 'circle',
+            color: COLORS.flesh,
+            kind: 'meat',
+            collectible: false,
+            life: 0,
+            total: 0,
+            drag: 0,
+            rotation: 0,
+            spin: 0,
+            pulse: 0,
+            state: 'burst',
+            stateTime: 0,
+            age: 0,
+            burstDuration: 0.12,
+            collectDelay: 0,
+            targetNodeIndex: -1,
+            homeAge: 0,
+            arcSign: 1,
+            homeCurve: 0,
+            floatStrength: 0,
+            rewardEnergy: 0,
+            rewardBiomass: 0,
+            rewardProgress: 0,
+            rewardSourceId: '',
+            rewardIsObjective: false,
+            rewardStageId: ''
+        };
+    },
+    resetFragmentPool() {
+        if (!Array.isArray(this.fragmentPool)) {
+            this.fragmentPool = [];
+            this.fragmentPoolCursor = 0;
+            return;
+        }
+        this.fragmentPool.forEach((fragment) => {
+            fragment.active = false;
+            fragment.targetNodeIndex = -1;
+            fragment.rewardEnergy = 0;
+            fragment.rewardBiomass = 0;
+            fragment.rewardProgress = 0;
+            fragment.rewardSourceId = '';
+            fragment.rewardIsObjective = false;
+            fragment.rewardStageId = '';
+        });
+        this.fragmentPoolCursor = 0;
+    },
+    ensureFragmentPoolCapacity(minCapacity) {
+        if (!Array.isArray(this.fragmentPool)) {
+            this.fragmentPool = [];
+            this.fragmentPoolCursor = 0;
+        }
+        while (this.fragmentPool.length < minCapacity) {
+            this.fragmentPool.push(this.createFragmentState());
+        }
+    },
+    acquireFragment() {
+        if (!Array.isArray(this.fragmentPool) || this.fragmentPool.length === 0) {
+            return null;
+        }
+        const poolSize = this.fragmentPool.length;
+        const start = this.fragmentPoolCursor || 0;
+        for (let offset = 0; offset < poolSize; offset += 1) {
+            const index = (start + offset) % poolSize;
+            const fragment = this.fragmentPool[index];
+            if (fragment.active) {
+                continue;
+            }
+            fragment.active = true;
+            this.fragmentPoolCursor = (index + 1) % poolSize;
+            return fragment;
+        }
+        return null;
+    },
+    releaseFragment(fragment) {
+        if (!fragment) {
+            return;
+        }
+        fragment.active = false;
+        fragment.x = 0;
+        fragment.y = 0;
+        fragment.vx = 0;
+        fragment.vy = 0;
+        fragment.size = 0;
+        fragment.collectible = false;
+        fragment.life = 0;
+        fragment.total = 0;
+        fragment.drag = 0;
+        fragment.rotation = 0;
+        fragment.spin = 0;
+        fragment.state = 'burst';
+        fragment.stateTime = 0;
+        fragment.age = 0;
+        fragment.burstDuration = 0.12;
+        fragment.collectDelay = 0;
+        fragment.targetNodeIndex = -1;
+        fragment.homeAge = 0;
+        fragment.arcSign = 1;
+        fragment.homeCurve = 0;
+        fragment.floatStrength = 0;
+        fragment.rewardEnergy = 0;
+        fragment.rewardBiomass = 0;
+        fragment.rewardProgress = 0;
+        fragment.rewardSourceId = '';
+        fragment.rewardIsObjective = false;
+        fragment.rewardStageId = '';
     },
     removeFragmentAt(index) {
         const lastIndex = this.fragments.length - 1;
@@ -562,9 +683,47 @@ const SceneCombatMixin = {
         this.fragments.pop();
         return removed;
     },
+    releaseFragmentAt(index) {
+        const fragment = this.removeFragmentAt(index);
+        this.releaseFragment(fragment);
+        return fragment;
+    },
+    distributePreyRewardAcrossFragments(prey, fragments) {
+        const reward = this.buildPreyDevourRewardPayload?.(prey);
+        if (!reward || !Array.isArray(fragments) || fragments.length <= 0) {
+            return false;
+        }
+
+        let energyWeightTotal = 0;
+        let biomassWeightTotal = 0;
+        let progressWeightTotal = 0;
+        fragments.forEach((fragment) => {
+            const energyWeight = fragment.kind === 'energy' ? 1.2 : 0.35;
+            const biomassWeight = fragment.kind === 'energy' ? 0.45 : 1.1;
+            const progressWeight = fragment.kind === 'energy' ? 0.8 : 1;
+            fragment.rewardEnergy = reward.energyValue * energyWeight;
+            fragment.rewardBiomass = reward.biomassValue * biomassWeight;
+            fragment.rewardProgress = reward.progressValue * progressWeight;
+            fragment.rewardSourceId = reward.sourceId;
+            fragment.rewardIsObjective = reward.isObjective;
+            fragment.rewardStageId = reward.stageId || '';
+            energyWeightTotal += energyWeight;
+            biomassWeightTotal += biomassWeight;
+            progressWeightTotal += progressWeight;
+        });
+
+        fragments.forEach((fragment) => {
+            fragment.rewardEnergy = energyWeightTotal > 0 ? fragment.rewardEnergy / energyWeightTotal : 0;
+            fragment.rewardBiomass = biomassWeightTotal > 0 ? fragment.rewardBiomass / biomassWeightTotal : 0;
+            fragment.rewardProgress = progressWeightTotal > 0 ? fragment.rewardProgress / progressWeightTotal : 0;
+        });
+
+        this.registerLootRewardSource?.(reward, fragments.length);
+        return true;
+    },
     spawnFragmentBurst(x, y, options = {}) {
         if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
-            return;
+            return [];
         }
         const {
             count = 4,
@@ -579,42 +738,109 @@ const SceneCombatMixin = {
         const aim = normalize(directionX, directionY, 1, 0);
         const burstCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentBurstCap', 36) ?? 36));
         const activeCap = Math.max(burstCap, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentActiveCap', 160) ?? 160));
+        this.ensureFragmentPoolCapacity(activeCap);
         const available = Math.max(0, activeCap - this.fragments.length);
         const spawnCount = Math.min(Math.max(0, Math.round(count)), burstCap, available);
 
         if (spawnCount <= 0) {
-            return;
+            return [];
         }
 
+        const created = [];
+        const lootLifetime = Math.max(1.8, this.getRunTuningValue?.('gameplayLootLifetime', 4.8) ?? 4.8);
+        const lootBurstDuration = Math.max(0.08, this.getRunTuningValue?.('gameplayLootBurstDuration', 0.2) ?? 0.2);
+        const lootCollectDelay = Math.max(0.04, this.getRunTuningValue?.('gameplayLootCollectDelay', 0.2) ?? 0.2);
         for (let i = 0; i < spawnCount; i += 1) {
+            const fragment = this.acquireFragment();
+            if (!fragment) {
+                break;
+            }
             const spread = Phaser.Math.FloatBetween(-1.8, 1.8);
             const angle = Math.atan2(aim.y, aim.x) + spread;
             const speedMul = Phaser.Math.FloatBetween(0.35, 1.08);
             const isEnergy = Math.random() < energyBias;
-            const life = Phaser.Math.FloatBetween(isEnergy ? 0.85 : 0.45, isEnergy ? 1.35 : 0.82);
-            this.fragments.push({
-                x,
-                y,
-                vx: Math.cos(angle) * speed * speedMul + aim.x * speed * 0.18,
-                vy: Math.sin(angle) * speed * speedMul + aim.y * speed * 0.18,
-                size: Phaser.Math.FloatBetween(size * 0.72, size * 1.28),
-                shape: Phaser.Utils.Array.GetRandom(['circle', 'square', 'triangle']),
-                color: isEnergy ? COLORS.energy : baseColor,
-                kind: isEnergy ? 'energy' : 'meat',
-                collectible: collectible || isEnergy,
-                life,
-                total: life,
-                drag: isEnergy ? 3.2 : 2.1,
-                rotation: Math.random() * Math.PI * 2,
-                spin: Phaser.Math.FloatBetween(-10, 10),
-                pulse: Math.random() * Math.PI * 2
-            });
+            const shardCollectible = collectible || isEnergy;
+            const life = shardCollectible
+                ? Phaser.Math.FloatBetween(lootLifetime * 0.82, lootLifetime * 1.18)
+                : Phaser.Math.FloatBetween(isEnergy ? 0.85 : 0.45, isEnergy ? 1.35 : 0.82);
+            fragment.x = x;
+            fragment.y = y;
+            fragment.vx = Math.cos(angle) * speed * speedMul + aim.x * speed * 0.18;
+            fragment.vy = Math.sin(angle) * speed * speedMul + aim.y * speed * 0.18;
+            fragment.size = Phaser.Math.FloatBetween(size * 0.72, size * 1.28);
+            fragment.shape = Phaser.Utils.Array.GetRandom(['circle', 'square', 'triangle']);
+            fragment.color = isEnergy ? COLORS.energy : baseColor;
+            fragment.kind = isEnergy ? 'energy' : 'meat';
+            fragment.collectible = shardCollectible;
+            fragment.life = life;
+            fragment.total = life;
+            fragment.drag = isEnergy ? 3.2 : 2.1;
+            fragment.rotation = Math.random() * Math.PI * 2;
+            fragment.spin = Phaser.Math.FloatBetween(-10, 10);
+            fragment.pulse = Math.random() * Math.PI * 2;
+            fragment.state = 'burst';
+            fragment.stateTime = 0;
+            fragment.age = 0;
+            fragment.burstDuration = lootBurstDuration * Phaser.Math.FloatBetween(0.82, 1.18);
+            fragment.collectDelay = shardCollectible ? lootCollectDelay * Phaser.Math.FloatBetween(0.8, 1.2) : 0;
+            fragment.targetNodeIndex = -1;
+            fragment.homeAge = 0;
+            fragment.arcSign = Math.random() < 0.5 ? -1 : 1;
+            fragment.homeCurve = shardCollectible ? Phaser.Math.FloatBetween(0.1, 0.24) : 0;
+            fragment.floatStrength = shardCollectible ? Phaser.Math.FloatBetween(10, 22) : Phaser.Math.FloatBetween(4, 10);
+            fragment.rewardEnergy = 0;
+            fragment.rewardBiomass = 0;
+            fragment.rewardProgress = 0;
+            fragment.rewardSourceId = '';
+            fragment.rewardIsObjective = false;
+            fragment.rewardStageId = '';
+            this.fragments.push(fragment);
+            created.push(fragment);
         }
+        return created;
+    },
+    findFragmentTarget(fragment, feeders, feederLoad, searchRange) {
+        if (!Array.isArray(feeders) || feeders.length === 0) {
+            return null;
+        }
+        const currentTargetIndex = fragment.targetNodeIndex;
+        const loadPenalty = Math.max(0.08, this.getRunTuningValue?.('gameplayLootTargetLoadPenalty', 0.24) ?? 0.24);
+        const keepBias = Math.max(10, this.getRunTuningValue?.('gameplayLootTargetKeepBias', 34) ?? 34);
+        const searchRangeSq = searchRange * searchRange;
+        let bestNode = null;
+        let bestScore = Infinity;
+
+        for (let i = 0; i < feeders.length; i += 1) {
+            const node = feeders[i];
+            const dx = node.x - fragment.x;
+            const dy = node.y - fragment.y;
+            const distanceSq = dx * dx + dy * dy;
+            if (distanceSq > searchRangeSq && node.index !== currentTargetIndex) {
+                continue;
+            }
+            const distance = Math.sqrt(distanceSq) || 0.0001;
+            const load = feederLoad.get(node.index) || 0;
+            let score = distance * (1 + load * loadPenalty);
+            score -= (node.feedPulse || 0) * 16;
+            score -= (node.suctionPower || 0) * 18;
+            if (node.index === currentTargetIndex) {
+                score -= keepBias;
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                bestNode = node;
+            }
+        }
+
+        return bestNode;
     },
     updateFragments(simDt) {
         if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
-            if (this.fragments.length > 0) {
-                this.fragments.length = 0;
+            for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
+                if (this.shouldFallbackConsumeFragment(this.fragments[i])) {
+                    this.consumeFragment(this.fragments[i], null);
+                }
+                this.releaseFragmentAt(i);
             }
             return;
         }
@@ -622,75 +848,157 @@ const SceneCombatMixin = {
         for (let i = 0; i < this.activeNodes.length; i += 1) {
             const node = this.activeNodes[i];
             if (node.shape === 'circle') {
+                node.lootTargetCount = 0;
                 feeders.push(node);
+            }
+        }
+        const feederLoad = new Map(feeders.map((node) => [node.index, 0]));
+        for (let i = 0; i < this.fragments.length; i += 1) {
+            const fragment = this.fragments[i];
+            if (
+                fragment.collectible
+                && fragment.state === 'homing'
+                && fragment.targetNodeIndex >= 0
+                && feederLoad.has(fragment.targetNodeIndex)
+            ) {
+                feederLoad.set(fragment.targetNodeIndex, (feederLoad.get(fragment.targetNodeIndex) || 0) + 1);
             }
         }
         const collectPerFrameCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentCollectPerFrameCap', 8) ?? 8));
         let collectedThisFrame = 0;
-        // Pre-compute drag decay factors to avoid per-fragment Math.exp
-        const dragDecayEnergy = Math.exp(-3.2 * simDt);
-        const dragDecayMeat = Math.exp(-2.1 * simDt);
+        const lootRangeBase = Math.max(120, this.getRunTuningValue?.('gameplayLootHomingRange', 220) ?? 220);
+        const lootRangeGrow = Math.max(20, this.getRunTuningValue?.('gameplayLootHomingRangeGrow', 110) ?? 110);
+        const lootRetargetRange = Math.max(180, this.getRunTuningValue?.('gameplayLootRetargetRange', 280) ?? 280);
         const hasFeeders = feeders.length > 0;
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
             const fragment = this.fragments[i];
+            fragment.age += simDt;
+            fragment.stateTime += simDt;
             fragment.life -= simDt;
             if (fragment.life <= 0) {
-                this.removeFragmentAt(i);
+                if (this.shouldFallbackConsumeFragment(fragment)) {
+                    this.consumeFragment(fragment, null);
+                }
+                this.releaseFragmentAt(i);
                 continue;
             }
 
-            if (fragment.collectible && hasFeeders) {
-                let targetNode = null;
-                let targetDistanceSq = Infinity;
-                for (let j = 0; j < feeders.length; j += 1) {
-                    const node = feeders[j];
-                    const dx = node.x - fragment.x;
-                    const dy = node.y - fragment.y;
-                    const distanceSq = dx * dx + dy * dy;
-                    if (distanceSq < targetDistanceSq) {
-                        targetDistanceSq = distanceSq;
-                        targetNode = node;
-                    }
-                }
+            if (fragment.state === 'burst' && fragment.stateTime >= fragment.burstDuration) {
+                fragment.state = 'drift';
+                fragment.stateTime = 0;
+            }
 
-                if (targetNode) {
-                    const dx = targetNode.x - fragment.x;
-                    const dy = targetNode.y - fragment.y;
-                    const distance = Math.sqrt(targetDistanceSq) || 0.0001;
-                    const dirX = dx / distance;
-                    const dirY = dy / distance;
-                    const suckRange = 150 + (targetNode.feedPulse || 0) * 34;
-                    if (distance < suckRange) {
-                        const suction = (fragment.kind === 'energy' ? 280 : 190)
-                            * (0.56 + (targetNode.suctionPower || 0) * 0.32 + (targetNode.feedPulse || 0) * 0.22);
-                        fragment.vx += dirX * suction * simDt;
-                        fragment.vy += dirY * suction * simDt;
-                        targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 1.02);
+            let decay = Math.exp(-Math.max(0.4, fragment.drag) * simDt);
+            if (fragment.state === 'drift') {
+                decay = Math.exp(-Math.max(0.8, fragment.drag * 1.12) * simDt);
+                const driftAngle = fragment.pulse + fragment.age * 3.2;
+                fragment.vx += Math.cos(driftAngle) * fragment.floatStrength * 0.18 * simDt;
+                fragment.vy += Math.sin(driftAngle * 0.84) * fragment.floatStrength * 0.24 * simDt;
+            }
+
+            if (fragment.collectible && hasFeeders && fragment.age >= fragment.collectDelay) {
+                const searchRange = lootRangeBase + Math.min(lootRetargetRange, fragment.age * lootRangeGrow);
+                if (fragment.state === 'drift') {
+                    const targetNode = this.findFragmentTarget(fragment, feeders, feederLoad, searchRange);
+                    if (targetNode) {
+                        fragment.targetNodeIndex = targetNode.index;
+                        feederLoad.set(targetNode.index, (feederLoad.get(targetNode.index) || 0) + 1);
+                        fragment.state = 'homing';
+                        fragment.stateTime = 0;
+                        fragment.homeAge = 0;
+                    }
+                } else if (fragment.state === 'homing') {
+                    fragment.homeAge += simDt;
+                    let targetNode = feeders.find((node) => node.index === fragment.targetNodeIndex) || null;
+                    if (targetNode) {
+                        const distanceToCurrent = Math.hypot(targetNode.x - fragment.x, targetNode.y - fragment.y);
+                        if (distanceToCurrent > lootRetargetRange && fragment.homeAge > 0.12) {
+                            const replacement = this.findFragmentTarget(fragment, feeders, feederLoad, searchRange);
+                            if (replacement && replacement.index !== targetNode.index) {
+                                feederLoad.set(targetNode.index, Math.max(0, (feederLoad.get(targetNode.index) || 0) - 1));
+                                feederLoad.set(replacement.index, (feederLoad.get(replacement.index) || 0) + 1);
+                                fragment.targetNodeIndex = replacement.index;
+                                targetNode = replacement;
+                                fragment.homeAge = 0;
+                            }
+                        }
+                    } else {
+                        fragment.state = 'drift';
+                        fragment.stateTime = 0;
+                        fragment.homeAge = 0;
+                        fragment.targetNodeIndex = -1;
+                    }
+
+                    if (targetNode) {
+                        const targetLead = 0.06 + Math.min(0.12, fragment.homeAge * 0.05);
+                        const targetX = targetNode.x + (targetNode.vx || 0) * targetLead;
+                        const targetY = targetNode.y + (targetNode.vy || 0) * targetLead;
+                        const dx = targetX - fragment.x;
+                        const dy = targetY - fragment.y;
+                        const distance = Math.hypot(dx, dy) || 0.0001;
+                        const dirX = dx / distance;
+                        const dirY = dy / distance;
+                        const tangentX = -dirY * fragment.arcSign;
+                        const tangentY = dirX * fragment.arcSign;
+                        const curve = Math.max(0, 1 - Math.min(1, fragment.homeAge / 0.55)) * fragment.homeCurve;
+                        const closeFactor = 1 - clamp(distance / Math.max(48, searchRange), 0, 1);
+                        const suction = (fragment.kind === 'energy' ? 260 : 190)
+                            * (0.72 + (targetNode.suctionPower || 0) * 0.28 + (targetNode.feedPulse || 0) * 0.2 + closeFactor * 0.4);
+                        fragment.vx += (dirX + tangentX * curve) * suction * simDt;
+                        fragment.vy += (dirY + tangentY * curve) * suction * simDt;
+                        decay = Math.exp(-Math.max(0.55, fragment.drag * 0.82) * simDt);
+                        targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 0.92 + closeFactor * 0.46);
+                        targetNode.absorbLoad = Math.max(targetNode.absorbLoad || 0, 0.08 + closeFactor * 0.18 + (feederLoad.get(targetNode.index) || 0) * 0.04);
                         if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10 && collectedThisFrame < collectPerFrameCap) {
                             collectedThisFrame += 1;
                             this.consumeFragment(fragment, targetNode);
-                            this.removeFragmentAt(i);
+                            this.releaseFragmentAt(i);
                             continue;
                         }
                     }
                 }
             }
 
-            const decay = fragment.drag > 2.5 ? dragDecayEnergy : dragDecayMeat;
             fragment.vx *= decay;
             fragment.vy *= decay;
             fragment.x += fragment.vx * simDt;
             fragment.y += fragment.vy * simDt;
             fragment.rotation += fragment.spin * simDt;
         }
+        feeders.forEach((node) => {
+            node.lootTargetCount = feederLoad.get(node.index) || 0;
+            if (node.lootTargetCount > 0) {
+                node.absorbLoad = Math.max(node.absorbLoad || 0, node.lootTargetCount * 0.08);
+            }
+        });
     },
     consumeFragment(fragment, node) {
-        node.feedPulse = Math.max(node.feedPulse || 0, fragment.kind === 'energy' ? 1.5 : 1.14);
-        node.biteGlow = Math.max(node.biteGlow || 0, 0.78);
+        if (node) {
+            const rewardMagnitude = Math.max(
+                fragment.kind === 'energy' ? 0.22 : 0.14,
+                (fragment.rewardEnergy || 0) * 0.03 + (fragment.rewardBiomass || 0) * 0.08 + (fragment.rewardProgress || 0) * 0.1
+            );
+            node.feedPulse = Math.max(node.feedPulse || 0, fragment.kind === 'energy' ? 1.5 + rewardMagnitude * 0.2 : 1.14 + rewardMagnitude * 0.18);
+            node.biteGlow = Math.max(node.biteGlow || 0, 0.78 + rewardMagnitude * 0.24);
+            node.absorbLoad = clamp((node.absorbLoad || 0) + 0.24 + rewardMagnitude * 0.3, 0, 3.2);
+            node.absorbJitter = clamp((node.absorbJitter || 0) + 0.18 + rewardMagnitude * 0.22, 0, 2.4);
+            node.absorbFlash = clamp((node.absorbFlash || 0) + 0.3 + rewardMagnitude * 0.3, 0, 2.8);
+        }
         this.bumpFeastMeter(fragment.kind === 'energy' ? 0.08 : 0.04);
         if (typeof this.absorbFragment === 'function') {
             this.absorbFragment(fragment);
         }
+    },
+    shouldFallbackConsumeFragment(fragment) {
+        return !!(
+            fragment
+            && (
+                fragment.rewardSourceId
+                || (fragment.rewardEnergy || 0) > 0
+                || (fragment.rewardBiomass || 0) > 0
+                || (fragment.rewardProgress || 0) > 0
+            )
+        );
     },
     bumpFeastMeter(amount) {
         this.player.feast = clamp((this.player.feast || 0) + amount * 0.75, 0, 1.3);

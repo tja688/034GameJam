@@ -979,20 +979,43 @@ const SceneRenderMixin = {
         }
         this.fragments.forEach((fragment) => {
             const position = this.worldToScreen(fragment.x, fragment.y);
-            const alpha = clamp(fragment.life / fragment.total, 0, 1) * (fragment.collectible ? 0.96 : 0.8);
-            const pulse = fragment.kind === 'energy'
+            const lifeAlpha = clamp(fragment.life / Math.max(0.0001, fragment.total), 0, 1);
+            const collectiblePulse = fragment.collectible
+                ? 1 + Math.sin(this.worldTime * 8 + fragment.pulse) * 0.08
+                : 1;
+            const energyPulse = fragment.kind === 'energy'
                 ? 1 + Math.sin(this.worldTime * 10 + fragment.pulse) * 0.14
                 : 1;
-            const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 20);
+            const stateScale = fragment.state === 'homing' ? 1.14 : fragment.state === 'drift' ? 1.06 : 1;
+            const alpha = lifeAlpha * (fragment.collectible ? 0.98 : 0.8);
+            const size = clamp(fragment.size * collectiblePulse * energyPulse * stateScale * this.cameraRig.zoom, 2, 20);
             if (!this.isScreenCircleVisible(position.x, position.y, size * 2, 18)) {
                 return;
             }
             const trailX = position.x - fragment.vx * 0.016 * this.cameraRig.zoom;
             const trailY = position.y - fragment.vy * 0.016 * this.cameraRig.zoom;
             if (drawTrails) {
-                this.stampBakedLine('fragments', trailX, trailY, position.x, position.y, Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
+                this.stampBakedLine(
+                    'fragments',
+                    trailX,
+                    trailY,
+                    position.x,
+                    position.y,
+                    Math.max(1, size * (fragment.state === 'homing' ? 0.36 : 0.28)),
+                    fragment.color,
+                    alpha * (fragment.state === 'homing' ? 0.34 : fragment.collectible ? 0.24 : 0.14)
+                );
+                if (fragment.state === 'homing' && fragment.targetNodeIndex >= 0) {
+                    const targetNode = this.activeNodeIndexMap?.get(fragment.targetNodeIndex);
+                    if (targetNode) {
+                        const targetPosition = this.worldToScreen(targetNode.displayX, targetNode.displayY);
+                        this.stampBakedLine('fragments', position.x, position.y, targetPosition.x, targetPosition.y, Math.max(1, size * 0.14), COLORS.core, alpha * 0.1);
+                    }
+                }
                 if (fragment.kind === 'energy') {
                     this.stampBakedRing('fragments', position.x, position.y, size + 2, COLORS.core, alpha * 0.32);
+                } else if (fragment.collectible && fragment.state !== 'burst') {
+                    this.stampBakedRing('fragments', position.x, position.y, size + 1, COLORS.energy, alpha * 0.12);
                 }
             }
             if (drawBodies) {
@@ -1339,22 +1362,38 @@ const SceneRenderMixin = {
         }
         this.fragments.forEach((fragment) => {
             const position = this.worldToScreen(fragment.x, fragment.y);
-            const alpha = clamp(fragment.life / fragment.total, 0, 1) * (fragment.collectible ? 0.96 : 0.8);
-            const pulse = fragment.kind === 'energy'
+            const lifeAlpha = clamp(fragment.life / Math.max(0.0001, fragment.total), 0, 1);
+            const collectiblePulse = fragment.collectible
+                ? 1 + Math.sin(this.worldTime * 8 + fragment.pulse) * 0.08
+                : 1;
+            const energyPulse = fragment.kind === 'energy'
                 ? 1 + Math.sin(this.worldTime * 10 + fragment.pulse) * 0.14
                 : 1;
-            const size = clamp(fragment.size * pulse * this.cameraRig.zoom, 2, 20);
+            const stateScale = fragment.state === 'homing' ? 1.14 : fragment.state === 'drift' ? 1.06 : 1;
+            const alpha = lifeAlpha * (fragment.collectible ? 0.98 : 0.8);
+            const size = clamp(fragment.size * collectiblePulse * energyPulse * stateScale * this.cameraRig.zoom, 2, 20);
             if (!this.isScreenCircleVisible(position.x, position.y, size * 2, 18)) {
                 return;
             }
             const trailX = position.x - fragment.vx * 0.016 * this.cameraRig.zoom;
             const trailY = position.y - fragment.vy * 0.016 * this.cameraRig.zoom;
             if (drawTrails) {
-                g.lineStyle(Math.max(1, size * 0.28), fragment.color, alpha * (fragment.collectible ? 0.24 : 0.14));
+                g.lineStyle(Math.max(1, size * (fragment.state === 'homing' ? 0.36 : 0.28)), fragment.color, alpha * (fragment.state === 'homing' ? 0.34 : fragment.collectible ? 0.24 : 0.14));
                 g.lineBetween(trailX, trailY, position.x, position.y);
+                if (fragment.state === 'homing' && fragment.targetNodeIndex >= 0) {
+                    const targetNode = this.activeNodeIndexMap?.get(fragment.targetNodeIndex);
+                    if (targetNode) {
+                        const targetPosition = this.worldToScreen(targetNode.displayX, targetNode.displayY);
+                        g.lineStyle(Math.max(1, size * 0.14), COLORS.core, alpha * 0.1);
+                        g.lineBetween(position.x, position.y, targetPosition.x, targetPosition.y);
+                    }
+                }
                 if (fragment.kind === 'energy') {
                     g.lineStyle(1.5, COLORS.core, alpha * 0.32);
                     g.strokeCircle(position.x, position.y, size + 2);
+                } else if (fragment.collectible && fragment.state !== 'burst') {
+                    g.lineStyle(1.2, COLORS.energy, alpha * 0.12);
+                    g.strokeCircle(position.x, position.y, size + 1);
                 }
             }
             if (drawBodies) {
@@ -1590,9 +1629,25 @@ const SceneRenderMixin = {
 
             let size = clamp(30 * this.cameraRig.zoom, 14, 28);
             let rotation = Number.isFinite(node.displayAngle) ? node.displayAngle : Math.atan2(node.vy, node.vx);
+            let bodyX = nodePos.x;
+            let bodyY = nodePos.y;
             if (node.shape === 'circle') {
-                const pulse = 1 + Math.sin(this.worldTime * 9 + node.order * 1.7) * 0.1 * (0.6 + node.feedPulse + growthPulse * 0.4 + victoryPulse * 0.8);
+                const absorbLoad = clamp(node.absorbLoad || 0, 0, 2.4);
+                const absorbJitter = clamp(node.absorbJitter || 0, 0, 2.2);
+                const absorbFlash = clamp(node.absorbFlash || 0, 0, 2);
+                const mouthLoad = absorbLoad + Math.min(1.4, (node.lootTargetCount || 0) * 0.08) + absorbFlash * 0.8;
+                if (absorbJitter > 0.01) {
+                    bodyX += Math.sin(this.worldTime * 42 + (node.absorbSeed || 0)) * absorbJitter * 2.6 * this.cameraRig.zoom;
+                    bodyY += Math.cos(this.worldTime * 35 + (node.absorbSeed || 0) * 1.7) * absorbJitter * 2.1 * this.cameraRig.zoom;
+                }
+                const pulse = 1
+                    + Math.sin(this.worldTime * 9 + node.order * 1.7) * 0.1 * (0.6 + node.feedPulse + growthPulse * 0.4 + victoryPulse * 0.8)
+                    + mouthLoad * 0.1;
                 size *= pulse;
+                if (drawGlow && mouthLoad > 0.02) {
+                    g.lineStyle(clamp((1.4 + mouthLoad * 1.6) * this.cameraRig.zoom, 1, 4), COLORS.core, 0.1 + mouthLoad * 0.08);
+                    g.strokeCircle(bodyX, bodyY, clamp(size * (0.32 + mouthLoad * 0.03), 4, 18));
+                }
             } else if (node.shape === 'square') {
                 size *= 1 + node.biteGlow * 0.08 + victoryPulse * 0.04;
                 if (drawGlow && node.spinVelocity > 0.02) {
@@ -1615,12 +1670,13 @@ const SceneRenderMixin = {
                 }
             }
 
-            drawShape(g, node.shape, nodePos.x, nodePos.y, size, node.color, 0.96, rotation);
+            drawShape(g, node.shape, bodyX, bodyY, size, node.color, 0.96, rotation);
             if (drawGlow && node.shape === 'circle' && node.feedPulse > 0.02) {
-                g.fillStyle(COLORS.core, 0.18 + node.feedPulse * 0.14);
-                g.fillCircle(nodePos.x, nodePos.y, clamp(size * 0.18, 2, 7));
-                g.lineStyle(clamp((1.6 + node.feedPulse * 1.2) * this.cameraRig.zoom, 1, 3), COLORS.energy, 0.16 + node.feedPulse * 0.14);
-                g.strokeCircle(nodePos.x, nodePos.y, clamp(size * (0.26 + node.feedPulse * 0.06), 4, 16));
+                const mouthCore = clamp((node.absorbLoad || 0) * 0.08 + (node.absorbFlash || 0) * 0.1, 0, 0.22);
+                g.fillStyle(COLORS.core, 0.18 + node.feedPulse * 0.14 + mouthCore);
+                g.fillCircle(bodyX, bodyY, clamp(size * 0.18, 2, 7));
+                g.lineStyle(clamp((1.6 + node.feedPulse * 1.2 + (node.absorbLoad || 0) * 0.8) * this.cameraRig.zoom, 1, 3), COLORS.energy, 0.16 + node.feedPulse * 0.14 + mouthCore * 0.7);
+                g.strokeCircle(bodyX, bodyY, clamp(size * (0.26 + node.feedPulse * 0.06 + (node.absorbLoad || 0) * 0.02), 4, 16));
             }
         });
     },
