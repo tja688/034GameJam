@@ -1069,7 +1069,7 @@ const SceneRenderMixin = {
         const startY = Math.floor(worldTop / gridSize) * gridSize;
 
         if (drawGrid) {
-            g.lineStyle(1, palette.grid, 0.42 + stageFlash * 0.06);
+            this.updateMapBackgrounds();
             for (let x = startX; x <= worldRight; x += gridSize) {
                 const screen = this.worldToScreen(x, 0);
                 g.lineBetween(screen.x, 0, screen.x, height);

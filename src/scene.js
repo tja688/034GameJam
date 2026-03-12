@@ -17,6 +17,7 @@ class CoreDemoScene extends Phaser.Scene {
         this.graphicsHud.setDepth(40);
         this.initBakedSpriteRenderer?.();
         this.initLivingEnergyBar?.();
+        this.initInfiniteMapBackgrounds?.('geometric'); // Options: 'geometric', 'flow', 'grid'
         this.input.mouse?.disableContextMenu();
         this.scale.on('resize', this.handleResize, this);
         this.keys = this.input.keyboard.addKeys({
