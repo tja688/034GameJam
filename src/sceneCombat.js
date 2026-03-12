@@ -931,6 +931,8 @@ const SceneCombatMixin = {
                         fragment.state = 'homing';
                         fragment.stateTime = 0;
                         fragment.homeAge = 0;
+                        fragment.vx *= 0.18;
+                        fragment.vy *= 0.18;
                     }
                 } else if (fragment.state === 'homing') {
                     fragment.homeAge += simDt;
@@ -955,26 +957,23 @@ const SceneCombatMixin = {
                     }
 
                     if (targetNode) {
-                        const targetLead = 0.08 + Math.min(0.16, fragment.homeAge * 0.08);
-                        const targetX = targetNode.x + (targetNode.vx || 0) * targetLead;
-                        const targetY = targetNode.y + (targetNode.vy || 0) * targetLead;
+                        const targetX = targetNode.x;
+                        const targetY = targetNode.y;
                         const dx = targetX - fragment.x;
                         const dy = targetY - fragment.y;
                         const distance = Math.hypot(dx, dy) || 0.0001;
                         const dirX = dx / distance;
                         const dirY = dy / distance;
-                        const tangentX = -dirY * fragment.arcSign;
-                        const tangentY = dirX * fragment.arcSign;
-                        const curve = Math.max(0, 1 - Math.min(1, fragment.homeAge / 0.28)) * fragment.homeCurve;
                         const closeFactor = 1 - clamp(distance / Math.max(48, searchRange), 0, 1);
                         const absorbEaseIn = Math.min(1, Math.pow(clamp(fragment.homeAge / 0.22, 0, 1), 2));
-                        const suction = (fragment.kind === 'energy' ? 540 : 420)
+                        const desiredSpeed = (fragment.kind === 'energy' ? 540 : 420)
                             * (0.38 + absorbEaseIn * 1.18)
                             * (0.94 + (targetNode.suctionPower || 0) * 0.34 + (targetNode.feedPulse || 0) * 0.26 + closeFactor * 0.55)
                             * absorbSpeedMul;
-                        fragment.vx += (dirX + tangentX * curve) * suction * simDt;
-                        fragment.vy += (dirY + tangentY * curve) * suction * simDt;
-                        decay = Math.exp(-Math.max(0.18, fragment.drag * lerp(0.82, 0.26, absorbEaseIn)) * simDt);
+                        const turnLerp = clamp(simDt * (10 + absorbEaseIn * 26), 0, 1);
+                        fragment.vx = lerp(fragment.vx, dirX * desiredSpeed, turnLerp);
+                        fragment.vy = lerp(fragment.vy, dirY * desiredSpeed, turnLerp);
+                        decay = Math.exp(-Math.max(0.02, fragment.drag * lerp(0.16, 0.03, absorbEaseIn)) * simDt);
                         targetNode.feedPulse = Math.max(targetNode.feedPulse || 0, 1.08 + closeFactor * 0.72);
                         targetNode.absorbLoad = Math.max(targetNode.absorbLoad || 0, 0.14 + closeFactor * 0.26 + (feederLoad.get(targetNode.index) || 0) * 0.05);
                         if (distance < this.getNodeContactRadius(targetNode) + fragment.size + 10 && collectedThisFrame < collectPerFrameCap) {
