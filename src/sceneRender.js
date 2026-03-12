@@ -137,7 +137,6 @@ const SceneRenderMixin = {
             fillStrip: null,
             flashStrip: null,
             growthStrip: null,
-            overloadStrip: null,
             displayLength: 0,
             displayEnergy: 0,
             displayGhost: 0,
@@ -221,7 +220,6 @@ const SceneRenderMixin = {
         state.fillStrip = this.createLivingEnergyBarStrip(state);
         state.flashStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
         state.growthStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
-        state.overloadStrip = this.createLivingEnergyBarStrip(state, Phaser.BlendModes.ADD);
         state.dropletSprites = [];
         state.droplets = [];
         for (let i = 0; i < 10; i += 1) {
@@ -476,12 +474,12 @@ const SceneRenderMixin = {
             droplet.y = rootY;
             droplet.vx = lateral * (8 + speedBase * 0.24);
             droplet.vy = 18 + speedBase * (0.48 + (lift + 1) * 0.08);
-            droplet.width = clamp(widthBase * (0.12 + Math.abs(lateral) * 0.05), 2, 8);
-            droplet.height = clamp(heightBase * (0.18 + (lift + 1) * 0.08), 2, 7);
-            droplet.alpha = 0.3 + Math.abs(lateral) * 0.16;
+            droplet.width = clamp(widthBase * (0.18 + Math.abs(lateral) * 0.08), 4, 14);
+            droplet.height = clamp(heightBase * (0.34 + (lift + 1) * 0.12), 5, 16);
+            droplet.alpha = 0.44 + Math.abs(lateral) * 0.18;
             droplet.rotation = lateral * 0.18;
             droplet.rotationVelocity = lateral * (0.7 + speedBase * 0.012);
-            droplet.total = 0.22 + Math.abs(lift) * 0.1;
+            droplet.total = 0.28 + Math.abs(lift) * 0.12;
             droplet.life = droplet.total;
             droplet.color = color;
             count -= 1;
@@ -666,7 +664,6 @@ const SceneRenderMixin = {
             const flashAlpha = Math.min(0.46, 0.1 + gain * 0.11 + overload * 0.12 + grow * 0.05);
             const growthAlpha = Math.min(0.44, 0.08 + state.displayGrowth * 0.12 + grow * 0.12);
             const ghostAlpha = Math.min(0.34, 0.1 + loss * 0.12);
-            const overloadAlpha = Math.min(0.76, 0.08 + overload * 0.16 + gain * 0.06 + grow * 0.04);
             const overloadHeight = Math.max(2, bodyHeight * (0.16 + overload * 0.06));
 
             placeHudStrip(state.shadowStrip, leftEdge - 5, 2.6, actualLength + 10, bodyHeight + 8, COLORS.shadow, shadowAlpha, 0);
@@ -712,28 +709,17 @@ const SceneRenderMixin = {
                 flashAlpha,
                 0
             );
-            placeHudStrip(
-                state.overloadStrip,
-                leftEdge + actualLength - Math.min(8, overloadPixels * 0.2),
-                0,
-                overloadPixels,
-                overloadHeight + Math.max(0, -state.tipLift) * 0.08,
-                blendColor(COLORS.energy, palette.pulse, 0.42),
-                overloadAlpha,
-                state.rotation * 0.16
-            );
-
             const dropletRootX = leftEdge + Math.max(10, Math.min(actualLength - 10, fillPixels));
             const dropletRootY = bodyHeight * 0.32;
             if ((state.lossBurstQueue || 0) > 0 || loss > 0.14) {
                 this.emitLivingEnergyBarDroplets(
                     state,
-                    Math.min(2, 1 + Math.floor(loss * 0.45)),
+                    Math.min(3, 1 + Math.floor(loss * 0.55)),
                     dropletRootX,
                     dropletRootY,
                     blendColor(COLORS.health, fillColor, 0.56),
-                    bodyHeight + actualLength * 0.02,
-                    bodyHeight,
+                    bodyHeight + actualLength * 0.03,
+                    bodyHeight * 1.2,
                     32 + loss * 24
                 );
             }
