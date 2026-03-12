@@ -300,45 +300,57 @@ const SceneRenderMixin = {
         sprite.setAlpha(alpha);
     },
     updateLivingEnergyBar(frameDt) {
-        const state = this.initLivingEnergyBar();
-        const hudEnabled = this.isGraphicsToggleEnabled('graphicsRenderHudEnabled', true);
-        const minimalRender = this.getRunTuningToggle?.('graphicsMinimalRenderMode', false);
-        const barEnabled = this.getRunTuningToggle?.('gameplayLivingEnergyBarEnabled', true);
-        const visible = !!(
-            state?.container
-            && this.sessionStarted
-            && this.menuMode !== 'main'
-            && hudEnabled
-            && !minimalRender
-            && barEnabled
-        );
-
-        state.metrics.visible = visible;
-        if (!visible) {
-            state.lossPulse = Math.max(0, state.lossPulse - frameDt * 4.8);
-            state.gainPulse = Math.max(0, state.gainPulse - frameDt * 3.8);
-            state.overloadPulse = Math.max(0, state.overloadPulse - frameDt * 2.6);
-            state.growthKick = Math.max(0, state.growthKick - frameDt * 2.2);
-            state.biomassPulse = Math.max(0, state.biomassPulse - frameDt * 2.4);
-            state.container?.setVisible(false);
+        let state = null;
+        try {
+            state = this.initLivingEnergyBar();
+        } catch (error) {
+            console.error('Living energy bar init failed:', error);
+            this.livingEnergyBarBroken = true;
             return;
         }
+        if (!state || this.livingEnergyBarBroken) {
+            state?.container?.setVisible(false);
+            return;
+        }
+        try {
+            const hudEnabled = this.isGraphicsToggleEnabled('graphicsRenderHudEnabled', true);
+            const minimalRender = this.getRunTuningToggle?.('graphicsMinimalRenderMode', false);
+            const barEnabled = this.getRunTuningToggle?.('gameplayLivingEnergyBarEnabled', true);
+            const visible = !!(
+                state?.container
+                && this.sessionStarted
+                && this.menuMode !== 'main'
+                && hudEnabled
+                && !minimalRender
+                && barEnabled
+            );
 
-        const topOffset = this.getRunTuningValue?.('gameplayLivingEnergyBarTopOffset', 0) || 0;
-        const idleMotion = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarIdleMotion', 0.72) || 0.72);
-        const damageViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarDamageViolence', 1.36) || 1.36);
-        const gainViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarGainViolence', 1.18) || 1.18);
-        const overloadViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarOverloadViolence', 1.7) || 1.7);
-        const growthViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarGrowthViolence', 1.24) || 1.24);
-        const thickness = Math.max(4, this.getRunTuningValue?.('gameplayLivingEnergyBarThickness', 12) || 12);
-        const energyRatio = clamp((this.player?.energyDisplay || this.player?.energy || 0) / Math.max(1, this.player?.maxEnergy || 100), 0, 1);
-        const ghostRatio = clamp((this.player?.energyGhost || this.player?.energy || 0) / Math.max(1, this.player?.maxEnergy || 100), 0, 1);
-        const growthRatio = clamp(this.getGrowthRatio ? this.getGrowthRatio() : 0, 0, 1);
-        const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
-        const beat = clamp(this.runState?.energyBeat || 0, 0, 1);
-        const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
-        const targetLength = this.getLivingEnergyBarTargetLength();
-        const lengthDamp = (energyRatio >= state.displayEnergy ? 9.5 : 11.5) + growthRatio * 1.8;
+            state.metrics.visible = visible;
+            if (!visible) {
+                state.lossPulse = Math.max(0, state.lossPulse - frameDt * 4.8);
+                state.gainPulse = Math.max(0, state.gainPulse - frameDt * 3.8);
+                state.overloadPulse = Math.max(0, state.overloadPulse - frameDt * 2.6);
+                state.growthKick = Math.max(0, state.growthKick - frameDt * 2.2);
+                state.biomassPulse = Math.max(0, state.biomassPulse - frameDt * 2.4);
+                state.container?.setVisible(false);
+                return;
+            }
+
+            const topOffset = this.getRunTuningValue?.('gameplayLivingEnergyBarTopOffset', 0) || 0;
+            const idleMotion = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarIdleMotion', 0.72) || 0.72);
+            const damageViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarDamageViolence', 1.36) || 1.36);
+            const gainViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarGainViolence', 1.18) || 1.18);
+            const overloadViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarOverloadViolence', 1.7) || 1.7);
+            const growthViolence = Math.max(0, this.getRunTuningValue?.('gameplayLivingEnergyBarGrowthViolence', 1.24) || 1.24);
+            const thickness = Math.max(4, this.getRunTuningValue?.('gameplayLivingEnergyBarThickness', 12) || 12);
+            const energyRatio = clamp((this.player?.energyDisplay || this.player?.energy || 0) / Math.max(1, this.player?.maxEnergy || 100), 0, 1);
+            const ghostRatio = clamp((this.player?.energyGhost || this.player?.energy || 0) / Math.max(1, this.player?.maxEnergy || 100), 0, 1);
+            const growthRatio = clamp(this.getGrowthRatio ? this.getGrowthRatio() : 0, 0, 1);
+            const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
+            const beat = clamp(this.runState?.energyBeat || 0, 0, 1);
+            const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
+            const targetLength = this.getLivingEnergyBarTargetLength();
+            const lengthDamp = (energyRatio >= state.displayEnergy ? 9.5 : 11.5) + growthRatio * 1.8;
 
         state.lossPulse = Math.max(0, state.lossPulse - frameDt * 4.8);
         state.gainPulse = Math.max(0, state.gainPulse - frameDt * 3.8);
@@ -490,12 +502,18 @@ const SceneRenderMixin = {
             rotations[2] * 0.92
         );
 
-        state.metrics.centerX = hudRootX;
-        state.metrics.top = hudRootY - baseHeight - Math.max(8, overloadRise * 0.6);
-        state.metrics.left = hudRootX - state.displayLength * 0.5;
-        state.metrics.width = state.displayLength;
-        state.metrics.height = baseHeight + Math.max(8, overloadRise);
-        state.metrics.bottom = state.metrics.top + state.metrics.height;
+            state.metrics.centerX = hudRootX;
+            state.metrics.top = hudRootY - baseHeight - Math.max(8, overloadRise * 0.6);
+            state.metrics.left = hudRootX - state.displayLength * 0.5;
+            state.metrics.width = state.displayLength;
+            state.metrics.height = baseHeight + Math.max(8, overloadRise);
+            state.metrics.bottom = state.metrics.top + state.metrics.height;
+        } catch (error) {
+            console.error('Living energy bar update failed:', error);
+            state.container?.setVisible(false);
+            state.metrics.visible = false;
+            this.livingEnergyBarBroken = true;
+        }
     },
     getBakedShapeTexture(shape) {
         return shape === 'square'
