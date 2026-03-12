@@ -877,23 +877,15 @@ const SceneRenderMixin = {
             });
         });
     },
-    initInfiniteMapBackgrounds(styleVariant = 'geometric') {
-        const bgLayerKeys = ['map-bg-base', 'map-bg-mid', 'map-bg-anchor'];
-        
-        const sizeBase = 256;
-        const sizeMid = 512;
-        const sizeAnchor = 1024;
-        
-        const prefix = `map-bg-${styleVariant}-`;
-        const keyBase = prefix + 'base';
-        const keyMid = prefix + 'mid';
-        const keyAnchor = prefix + 'anchor';
+    initInfiniteMapBackgrounds() {
+        const keyBase = 'map-bg-static';
+        const sizeBase = 1536; // Larger texture for less repetition on panning
         
         if (!this.textures.exists(keyBase)) {
             const scratch = this.add.graphics();
             scratch.setVisible(false);
             
-            let seed = 1337;
+            let seed = 142857;
             const rand = () => {
                 seed = (seed * 9301 + 49297) % 233280;
                 return seed / 233280;
@@ -903,122 +895,59 @@ const SceneRenderMixin = {
                 drawShape(g, shape, x, y, size, 0xffffff, a, rot);
             };
 
-            // Layer 1: Base (super low contrast)
             scratch.clear();
-            scratch.lineStyle(1, 0xffffff, 1);
             scratch.fillStyle(0xffffff, 1);
-            for (let i = 0; i < 160; i++) {
-                let x = rand() * sizeBase, y = rand() * sizeBase;
-                let alpha = 0.08 + rand() * 0.12; 
-                scratch.setAlpha(alpha);
-                if (styleVariant === 'flow') {
-                    scratch.lineStyle(1 + rand() * 1.5, 0xffffff, alpha);
-                    scratch.lineBetween(x, y, x + rand() * 20 + 5, y + rand() * 10 - 5);
-                } else if (styleVariant === 'geometric') {
-                    if (rand() > 0.6) scratch.fillCircle(x, y, 1.5);
-                    else drawShapeVariant(scratch, 'triangle', x, y, 3, alpha, rand() * Math.PI);
-                } else { 
-                    if (rand() > 0.6) scratch.fillRect(x, y, 2, 2);
-                    else scratch.fillRect(x, y, 4, 1);
-                }
-            }
-            scratch.generateTexture(keyBase, sizeBase, sizeBase);
-
-            // Layer 2: Mid reference (mid scale)
-            scratch.clear();
             scratch.lineStyle(2, 0xffffff, 1);
-            scratch.fillStyle(0xffffff, 1);
-            for (let i = 0; i < 80; i++) {
-                let x = rand() * sizeMid, y = rand() * sizeMid;
-                let alpha = 0.15 + rand() * 0.15;
+
+            // Scattering circles, squares, triangles purely as ground canvas decorations
+            for (let i = 0; i < 220; i++) {
+                let x = rand() * sizeBase;
+                let y = rand() * sizeBase;
+                let alpha = 0.05 + rand() * 0.12; 
+                let size = rand() * 50 + 10; 
+                
                 scratch.setAlpha(alpha);
-                if (styleVariant === 'flow') {
-                    scratch.lineStyle(2 + rand() * 2, 0xffffff, alpha);
-                    scratch.lineBetween(x, y, x + rand() * 60 + 20, y + rand() * 20 - 10);
-                } else if (styleVariant === 'geometric') {
-                    let s = rand() * 12 + 6;
-                    scratch.lineStyle(2, 0xffffff, alpha);
-                    scratch.lineBetween(x - s, y, x + s, y);
-                    scratch.lineBetween(x, y - s, x, y + s);
-                    if (rand() > 0.8) drawShapeVariant(scratch, 'square', x, y, 4, alpha, rand() * Math.PI / 2);
-                } else { 
-                    let gx = Math.floor(x / 64) * 64;
-                    let gy = Math.floor(y / 64) * 64;
-                    scratch.lineStyle(2, 0xffffff, alpha);
-                    if (rand() > 0.5) scratch.lineBetween(gx, gy, gx + 24, gy);
-                    else scratch.lineBetween(gx, gy, gx, gy + 24);
-                    if (rand() > 0.7) scratch.fillRect(gx - 2, gy - 2, 4, 4);
+                
+                let shapeType = rand();
+                let rot = rand() * Math.PI;
+                
+                if (shapeType < 0.33) {
+                    if (rand() > 0.5) scratch.fillCircle(x, y, size * 0.5);
+                    else scratch.strokeCircle(x, y, size * 0.5);
+                } else if (shapeType < 0.66) {
+                    drawShapeVariant(scratch, 'square', x, y, size, alpha, rot);
+                } else {
+                    drawShapeVariant(scratch, 'triangle', x, y, size, alpha, rot);
                 }
             }
-            scratch.generateTexture(keyMid, sizeMid, sizeMid);
-
-            // Layer 3: Anchor (large scale)
-            scratch.clear();
-            scratch.lineStyle(3, 0xffffff, 1);
-            scratch.fillStyle(0xffffff, 1);
-            for (let i = 0; i < 30; i++) {
-                let x = rand() * sizeAnchor, y = rand() * sizeAnchor;
-                let alpha = 0.1 + rand() * 0.1;
-                scratch.setAlpha(alpha);
-                if (styleVariant === 'flow') {
-                    scratch.lineStyle(3 + rand() * 2, 0xffffff, alpha);
-                    scratch.beginPath();
-                    scratch.arc(x, y, rand() * 80 + 40, rand() * Math.PI, rand() * Math.PI + Math.PI * 0.5);
-                    scratch.strokePath();
-                } else if (styleVariant === 'geometric') {
-                    let s = rand() * 120 + 60;
-                    if (rand() > 0.6) {
-                        scratch.lineStyle(4, 0xffffff, alpha);
-                        scratch.strokeCircle(x, y, s);
-                    } else if (rand() > 0.3) {
-                        drawShapeVariant(scratch, 'square', x, y, s, alpha, rand() * Math.PI / 2);
-                    } else {
-                        drawShapeVariant(scratch, 'triangle', x, y, s * 0.8, alpha, rand() * Math.PI);
-                    }
-                } else { 
-                    let s = rand() * 80 + 40;
-                    scratch.lineStyle(3, 0xffffff, alpha);
-                    scratch.lineBetween(x, y, x + s, y);
-                    scratch.lineBetween(x, y, x, y + s);
-                    if (rand() > 0.5) scratch.fillRect(x - 4, y - 4, 8, 8);
-                }
-            }
-            scratch.generateTexture(keyAnchor, sizeAnchor, sizeAnchor);
-
+            
+            scratch.generateTexture(keyBase, sizeBase, sizeBase);
             scratch.destroy();
         }
 
         if (!this.mapBgSprites) {
-            // Depth 0.1 is right above graphicsWorld (which is at 0)
+            // Provide a single TileSprite for the ground layer
             this.mapBgSprites = {
-                base: this.add.tileSprite(0, 0, this.scale.width, this.scale.height, keyBase).setOrigin(0, 0).setDepth(0.1),
-                mid: this.add.tileSprite(0, 0, this.scale.width, this.scale.height, keyMid).setOrigin(0, 0).setDepth(0.2),
-                anchor: this.add.tileSprite(0, 0, this.scale.width, this.scale.height, keyAnchor).setOrigin(0, 0).setDepth(0.3)
+                base: this.add.tileSprite(0, 0, this.scale.width, this.scale.height, keyBase).setOrigin(0, 0).setDepth(0.1)
             };
-            this.mapBgSprites.base.setScrollFactor(0);
-            this.mapBgSprites.mid.setScrollFactor(0);
-            this.mapBgSprites.anchor.setScrollFactor(0);
+            this.mapBgSprites.base.setScrollFactor(0); // Static to view, tilePosition handles mapping
         } else {
             this.mapBgSprites.base.setTexture(keyBase).setSize(this.scale.width, this.scale.height);
-            this.mapBgSprites.mid.setTexture(keyMid).setSize(this.scale.width, this.scale.height);
-            this.mapBgSprites.anchor.setTexture(keyAnchor).setSize(this.scale.width, this.scale.height);
         }
     },
 
     updateMapBackgrounds() {
         if (!this.mapBgSprites) {
-            this.initInfiniteMapBackgrounds('geometric'); 
+            this.initInfiniteMapBackgrounds(); 
         }
 
         this.mapBgSprites.base.setVisible(true);
-        this.mapBgSprites.mid.setVisible(true);
-        this.mapBgSprites.anchor.setVisible(true);
+        if (this.mapBgSprites.mid) this.mapBgSprites.mid.setVisible(false);
+        if (this.mapBgSprites.anchor) this.mapBgSprites.anchor.setVisible(false);
 
         const vw = this.cameraRig.viewportWidth;
         const vh = this.cameraRig.viewportHeight;
         this.mapBgSprites.base.setSize(vw, vh);
-        this.mapBgSprites.mid.setSize(vw, vh);
-        this.mapBgSprites.anchor.setSize(vw, vh);
         
         const palette = this.getRunPalette ? this.getRunPalette() : { grid: COLORS.grid };
         const zoom = this.cameraRig.zoom;
@@ -1032,25 +961,13 @@ const SceneRenderMixin = {
         const baseAlphaMult = 1 + stageFlash * 0.2;
 
         this.mapBgSprites.base.setTint(palette.grid);
-        this.mapBgSprites.base.setAlpha(0.35 * baseAlphaMult);
+        this.mapBgSprites.base.setAlpha(0.65 * baseAlphaMult);
+        
+        // Exact 1:1 mapping with world scale, turning the TileSprite into a pure fixed ground pattern
         this.mapBgSprites.base.tileScaleX = zoom;
         this.mapBgSprites.base.tileScaleY = zoom;
-        this.mapBgSprites.base.tilePositionX = worldLeft * 0.15;
-        this.mapBgSprites.base.tilePositionY = worldTop * 0.15;
-
-        this.mapBgSprites.mid.setTint(palette.grid);
-        this.mapBgSprites.mid.setAlpha(0.55 * baseAlphaMult);
-        this.mapBgSprites.mid.tileScaleX = zoom;
-        this.mapBgSprites.mid.tileScaleY = zoom;
-        this.mapBgSprites.mid.tilePositionX = worldLeft * 0.55;
-        this.mapBgSprites.mid.tilePositionY = worldTop * 0.55;
-
-        this.mapBgSprites.anchor.setTint(palette.grid);
-        this.mapBgSprites.anchor.setAlpha(0.4 * baseAlphaMult);
-        this.mapBgSprites.anchor.tileScaleX = zoom;
-        this.mapBgSprites.anchor.tileScaleY = zoom;
-        this.mapBgSprites.anchor.tilePositionX = worldLeft * 0.85;
-        this.mapBgSprites.anchor.tilePositionY = worldTop * 0.85;
+        this.mapBgSprites.base.tilePositionX = worldLeft;
+        this.mapBgSprites.base.tilePositionY = worldTop;
     },
 
     drawWorld(g) {
@@ -1090,14 +1007,8 @@ const SceneRenderMixin = {
 
         if (drawGrid) {
             this.updateMapBackgrounds();
-            for (let x = startX; x <= worldRight; x += gridSize) {
-                const screen = this.worldToScreen(x, 0);
-                g.lineBetween(screen.x, 0, screen.x, height);
-            }
-            for (let y = startY; y <= worldBottom; y += gridSize) {
-                const screen = this.worldToScreen(0, y);
-                g.lineBetween(0, screen.y, width, screen.y);
-            }
+        } else if (this.mapBgSprites) {
+            this.mapBgSprites.base.setVisible(false);
         }
 
         if (objective) {
