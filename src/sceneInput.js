@@ -355,12 +355,18 @@ const SceneInputMixin = {
         return Math.hypot(x - this.player.centroidX, y - this.player.centroidY) > this.getFormationSpan() + (T.editExitPaddingPx ?? 96);
     },
     refreshEditHover() {
+        performance.mark('CoreDemoScene-refreshEditHover-start');
+        try {
         const edit = this.player.edit;
         const pointerWorld = this.getPointerWorld();
         const hoverNode = this.findActiveNodeAtWorld(pointerWorld.x, pointerWorld.y);
         const hoverLink = hoverNode ? null : this.findActiveLinkAtWorld(pointerWorld.x, pointerWorld.y);
         edit.hoverNode = hoverNode ? hoverNode.index : -1;
         edit.hoverLink = hoverLink ? hoverLink.key : '';
+        } finally {
+            performance.mark('CoreDemoScene-refreshEditHover-end');
+            performance.measure('追踪: CoreDemoScene-refreshEditHover', 'CoreDemoScene-refreshEditHover-start', 'CoreDemoScene-refreshEditHover-end');
+        }
     },
     setNodeSlotFromWorld(index, worldX, worldY) {
         const local = rotateLocal(worldX - this.player.centroidX, worldY - this.player.centroidY, -this.player.heading);
@@ -610,6 +616,8 @@ const SceneInputMixin = {
         return state;
     },
     readIntent(frameDt = 1 / 60) {
+        performance.mark('CoreDemoScene-readIntent-start');
+        try {
         const allowKeyboardDrive = this.isDebugToolsEnabled() && !this.player.edit.active;
         const moveX = allowKeyboardDrive ? (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0) : 0;
         const moveY = allowKeyboardDrive ? (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0) : 0;
@@ -684,6 +692,10 @@ const SceneInputMixin = {
         this.intent.clusterVolumeScale = volumeState.radialScale;
         this.intent.clusterVolumeForwardScale = volumeState.forwardScale;
         this.intent.clusterVolumeLateralScale = volumeState.lateralScale;
+        } finally {
+            performance.mark('CoreDemoScene-readIntent-end');
+            performance.measure('追踪: CoreDemoScene-readIntent', 'CoreDemoScene-readIntent-start', 'CoreDemoScene-readIntent-end');
+        }
     },
     handleModeInputs() {
         const T = window.TUNING || {};
@@ -875,6 +887,8 @@ const SceneInputMixin = {
         }
     },
     updateEditMode(frameDt) {
+        performance.mark('CoreDemoScene-updateEditMode-start');
+        try {
         const edit = this.player.edit;
         const T = window.TUNING || {};
         edit.ambience = damp(edit.ambience, edit.active ? 1 : 0, T.editAmbienceDamp ?? 8.5, frameDt);
@@ -946,6 +960,10 @@ const SceneInputMixin = {
                     this.clearEditSelection();
                 }
             }
+        }
+        } finally {
+            performance.mark('CoreDemoScene-updateEditMode-end');
+            performance.measure('追踪: CoreDemoScene-updateEditMode', 'CoreDemoScene-updateEditMode-start', 'CoreDemoScene-updateEditMode-end');
         }
     },
     addDebugNode(options = {}) {

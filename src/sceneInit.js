@@ -441,107 +441,113 @@ const SceneInitMixin = {
         this.refreshMenuState();
     },
     update(_, deltaMs) {
+        performance.mark('CoreDemoScene-update-start');
         const frameDt = Math.min(deltaMs, 33) / 1000;
-        this.beginFramePerformanceProbe(deltaMs);
-        this.profileFrameSection('fpsOverlay', () => this.updateFpsOverlay?.(deltaMs));
+        try {
+            this.beginFramePerformanceProbe(deltaMs);
+            this.profileFrameSection('fpsOverlay', () => this.updateFpsOverlay?.(deltaMs));
 
-        if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
-            if (this.menuMode === 'pause') {
-                this.endFramePerformanceProbe();
-                this.resumeGame();
-                return;
-            }
-            if (this.menuMode === 'main') {
-                this.endFramePerformanceProbe();
-                return;
-            }
-            if (this.player.edit.active) {
-                this.exitEditMode();
-            } else if (this.sessionStarted) {
-                this.endFramePerformanceProbe();
-                this.showPauseMenu();
-                return;
-            }
-        }
-
-        if (this.menuMode) {
-            this.profileFrameSection('camera', () => this.updateCamera(frameDt));
-            this.profileFrameSection('display', () => this.updateDisplay(frameDt));
-            this.profileFrameSection('render', () => this.render());
-            this.endFramePerformanceProbe();
-            return;
-        }
-
-        if (this.player.dead) {
-            this.player.deathTimer -= frameDt;
-            if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
-                this.endFramePerformanceProbe();
-                this.resetSimulation(true);
-                this.resumeGame();
-                return;
-            }
-        }
-
-        if (this.paused) {
-            this.profileFrameSection('camera', () => this.updateCamera(frameDt));
-            this.profileFrameSection('display', () => this.updateDisplay(frameDt));
-            this.profileFrameSection('render', () => this.render());
-            this.endFramePerformanceProbe();
-            return;
-        }
-
-        if (this.isDebugToolsEnabled() && !this.player.dead && !this.player.edit.active) {
-            if (Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
-                this.addDebugNode();
-                this.expandHoldTimer = 0;
-                this.expandAddCount = 0;
-                this.nextExpandThreshold = 0.45;
-            } else if (this.keys.expand.isDown) {
-                this.expandHoldTimer += frameDt;
-                if (this.expandHoldTimer > this.nextExpandThreshold) {
-                    this.addDebugNode();
-                    this.expandAddCount++;
-                    const interval = Math.max(0.015, 0.18 * Math.pow(0.88, this.expandAddCount));
-                    this.nextExpandThreshold += interval;
+            if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
+                if (this.menuMode === 'pause') {
+                    this.endFramePerformanceProbe();
+                    this.resumeGame();
+                    return;
+                }
+                if (this.menuMode === 'main') {
+                    this.endFramePerformanceProbe();
+                    return;
+                }
+                if (this.player.edit.active) {
+                    this.exitEditMode();
+                } else if (this.sessionStarted) {
+                    this.endFramePerformanceProbe();
+                    this.showPauseMenu();
+                    return;
                 }
             }
-        }
-        if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+
+            if (this.menuMode) {
+                this.profileFrameSection('camera', () => this.updateCamera(frameDt));
+                this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+                this.profileFrameSection('render', () => this.render());
+                this.endFramePerformanceProbe();
+                return;
+            }
+
+            if (this.player.dead) {
+                this.player.deathTimer -= frameDt;
+                if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
+                    this.endFramePerformanceProbe();
+                    this.resetSimulation(true);
+                    this.resumeGame();
+                    return;
+                }
+            }
+
+            if (this.paused) {
+                this.profileFrameSection('camera', () => this.updateCamera(frameDt));
+                this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+                this.profileFrameSection('render', () => this.render());
+                this.endFramePerformanceProbe();
+                return;
+            }
+
+            if (this.isDebugToolsEnabled() && !this.player.dead && !this.player.edit.active) {
+                if (Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
+                    this.addDebugNode();
+                    this.expandHoldTimer = 0;
+                    this.expandAddCount = 0;
+                    this.nextExpandThreshold = 0.45;
+                } else if (this.keys.expand.isDown) {
+                    this.expandHoldTimer += frameDt;
+                    if (this.expandHoldTimer > this.nextExpandThreshold) {
+                        this.addDebugNode();
+                        this.expandAddCount++;
+                        const interval = Math.max(0.015, 0.18 * Math.pow(0.88, this.expandAddCount));
+                        this.nextExpandThreshold += interval;
+                    }
+                }
+            }
+            if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+                this.endFramePerformanceProbe();
+                this.resetSimulation(true);
+                return;
+            }
+
+            this.profileFrameSection('modeInputs', () => this.handleModeInputs());
+            this.profileFrameSection('intent', () => this.readIntent(frameDt));
+            this.profileFrameSection('editMode', () => this.updateEditMode(frameDt));
+
+            const simDt = frameDt * this.timeScaleFactor;
+            this.worldTime += simDt;
+
+            if (!this.player.dead) {
+                this.profileFrameSection('pulse', () => this.updatePulse(simDt));
+                this.profileFrameSection('formation', () => this.updateFormation(simDt));
+                this.profileFrameSection('playerState', () => this.updatePlayerState(simDt));
+                this.profileFrameSection('spawns', () => this.updateSpawns(simDt));
+                this.profileFrameSection('prey', () => this.updatePrey(simDt));
+                this.profileFrameSection('collisions', () => this.resolvePreyNodeCollisions());
+                this.profileFrameSection('predation', () => this.updatePredation(simDt));
+                if (typeof this.updateRunState === 'function') {
+                    this.profileFrameSection('runState', () => this.updateRunState(simDt));
+                }
+                this.profileFrameSection('effects', () => this.updateEffects(simDt));
+            } else {
+                if (typeof this.updateRunState === 'function') {
+                    this.profileFrameSection('runState', () => this.updateRunState(frameDt));
+                }
+                this.profileFrameSection('effects', () => this.updateEffects(frameDt));
+            }
+
+            this.profileFrameSection('camera', () => this.updateCamera(frameDt));
+            this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+            this.profileFrameSection('render', () => this.render());
             this.endFramePerformanceProbe();
-            this.resetSimulation(true);
-            return;
+        } finally {
+            performance.mark('CoreDemoScene-update-end');
+            performance.measure('追踪: CoreDemoScene-update', 'CoreDemoScene-update-start', 'CoreDemoScene-update-end');
         }
-
-        this.profileFrameSection('modeInputs', () => this.handleModeInputs());
-        this.profileFrameSection('intent', () => this.readIntent(frameDt));
-        this.profileFrameSection('editMode', () => this.updateEditMode(frameDt));
-
-        const simDt = frameDt * this.timeScaleFactor;
-        this.worldTime += simDt;
-
-        if (!this.player.dead) {
-            this.profileFrameSection('pulse', () => this.updatePulse(simDt));
-            this.profileFrameSection('formation', () => this.updateFormation(simDt));
-            this.profileFrameSection('playerState', () => this.updatePlayerState(simDt));
-            this.profileFrameSection('spawns', () => this.updateSpawns(simDt));
-            this.profileFrameSection('prey', () => this.updatePrey(simDt));
-            this.profileFrameSection('collisions', () => this.resolvePreyNodeCollisions());
-            this.profileFrameSection('predation', () => this.updatePredation(simDt));
-            if (typeof this.updateRunState === 'function') {
-                this.profileFrameSection('runState', () => this.updateRunState(simDt));
-            }
-            this.profileFrameSection('effects', () => this.updateEffects(simDt));
-        } else {
-            if (typeof this.updateRunState === 'function') {
-                this.profileFrameSection('runState', () => this.updateRunState(frameDt));
-            }
-            this.profileFrameSection('effects', () => this.updateEffects(frameDt));
-        }
-
-        this.profileFrameSection('camera', () => this.updateCamera(frameDt));
-        this.profileFrameSection('display', () => this.updateDisplay(frameDt));
-        this.profileFrameSection('render', () => this.render());
-        this.endFramePerformanceProbe();
     },
     worldToScreen(x, y) {
         return {
@@ -700,94 +706,106 @@ const SceneInitMixin = {
         };
     },
     updateCamera(frameDt) {
+        performance.mark('CoreDemoScene-updateCamera-start');
         const T = window.TUNING || {};
-        const edgePaddingPx = T.cameraEdgePadding ?? 74;
-        const bounds = this.getCameraSubjectBounds();
-        const span = Math.max(bounds.width, bounds.height);
-        const maxZoom = T.cameraMaxZoom ?? 1.12;
-        const desiredZoom = clamp(
-            this.cameraRig.manualZoom ?? (T.cameraDefaultZoom ?? this.cameraRig.zoom ?? 0.92),
-            T.cameraMinZoom ?? 0.03,
-            maxZoom
-        );
-        this.cameraRig.manualZoom = desiredZoom;
-        const desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
-        const baseFocus = this.getCameraBaseFocus(bounds, span, desiredLead.intensity);
-
-        if (!this.cameraRig.initialized) {
-            this.cameraRig.x = baseFocus.x;
-            this.cameraRig.y = baseFocus.y;
-            this.cameraRig.targetX = baseFocus.x;
-            this.cameraRig.targetY = baseFocus.y;
-            this.cameraRig.zoom = desiredZoom;
-            this.cameraRig.targetZoom = desiredZoom;
+        try {
+            const edgePaddingPx = T.cameraEdgePadding ?? 74;
+            const bounds = this.getCameraSubjectBounds();
+            const span = Math.max(bounds.width, bounds.height);
+            const maxZoom = T.cameraMaxZoom ?? 1.12;
+            const desiredZoom = clamp(
+                this.cameraRig.manualZoom ?? (T.cameraDefaultZoom ?? this.cameraRig.zoom ?? 0.92),
+                T.cameraMinZoom ?? 0.03,
+                maxZoom
+            );
             this.cameraRig.manualZoom = desiredZoom;
-            this.cameraRig.initialized = true;
+            const desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
+            const baseFocus = this.getCameraBaseFocus(bounds, span, desiredLead.intensity);
+
+            if (!this.cameraRig.initialized) {
+                this.cameraRig.x = baseFocus.x;
+                this.cameraRig.y = baseFocus.y;
+                this.cameraRig.targetX = baseFocus.x;
+                this.cameraRig.targetY = baseFocus.y;
+                this.cameraRig.zoom = desiredZoom;
+                this.cameraRig.targetZoom = desiredZoom;
+                this.cameraRig.manualZoom = desiredZoom;
+                this.cameraRig.initialized = true;
+            }
+
+            this.cameraRig.leadX = damp(this.cameraRig.leadX, desiredLead.x, T.cameraLeadDamp ?? 10.5, frameDt);
+            this.cameraRig.leadY = damp(this.cameraRig.leadY, desiredLead.y, T.cameraLeadDamp ?? 10.5, frameDt);
+            const desiredFocusX = baseFocus.x + this.cameraRig.leadX;
+            const desiredFocusY = baseFocus.y + this.cameraRig.leadY;
+            this.cameraRig.targetX = damp(this.cameraRig.targetX, desiredFocusX, T.cameraFocusTrackDamp ?? 7.2, frameDt);
+            this.cameraRig.targetY = damp(this.cameraRig.targetY, desiredFocusY, T.cameraFocusTrackDamp ?? 7.2, frameDt);
+            const zoomTrackRate = T.cameraZoomTrackDamp ?? 2.6;
+            this.cameraRig.targetZoom = damp(this.cameraRig.targetZoom, desiredZoom, zoomTrackRate, frameDt);
+
+            const zoomRate = this.cameraRig.targetZoom < this.cameraRig.zoom
+                ? (T.cameraZoomOutDamp ?? 4.4)
+                : (T.cameraZoomDamp ?? 1.8);
+            const posRate = T.cameraPosDamp ?? 4.2;
+
+            this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, zoomRate, frameDt);
+            this.cameraRig.x = damp(this.cameraRig.x, this.cameraRig.targetX, posRate, frameDt);
+            this.cameraRig.y = damp(this.cameraRig.y, this.cameraRig.targetY, posRate, frameDt);
+            this.cameraRig.desiredZoom = desiredZoom;
+            this.cameraRig.baseFocusX = baseFocus.x;
+            this.cameraRig.baseFocusY = baseFocus.y;
+            this.cameraRig.focusX = desiredFocusX;
+            this.cameraRig.focusY = desiredFocusY;
+            this.cameraRig.compositionX = desiredLead.screenX;
+            this.cameraRig.compositionY = desiredLead.screenY;
+            this.cameraRig.urgency = desiredLead.intensity;
+            this.cameraRig.subjectBounds = bounds;
+            this.cameraRig.subjectSpan = span;
+            this.cameraRig.shake = Math.max(0, (this.cameraRig.shake || 0) - frameDt * 2.8);
+            this.cameraRig.hudShake = Math.max(0, (this.cameraRig.hudShake || 0) - frameDt * 3.4);
+            this.cameraRig.shakeTime = (this.cameraRig.shakeTime || 0) + frameDt * (18 + this.cameraRig.shake * 36);
+            const worldShake = Math.pow(this.cameraRig.shake || 0, 0.92);
+            const hudShake = Math.pow(this.cameraRig.hudShake || 0, 0.92);
+            this.cameraRig.renderOffsetX = (Math.sin(this.cameraRig.shakeTime * 1.7) + Math.cos(this.cameraRig.shakeTime * 2.4) * 0.62) * worldShake * 14;
+            this.cameraRig.renderOffsetY = (Math.cos(this.cameraRig.shakeTime * 1.34) + Math.sin(this.cameraRig.shakeTime * 2.1) * 0.56) * worldShake * 10;
+            this.cameraRig.hudOffsetX = (Math.sin(this.cameraRig.shakeTime * 1.9) + Math.cos(this.cameraRig.shakeTime * 2.8) * 0.4) * hudShake * 10;
+            this.cameraRig.hudOffsetY = (Math.cos(this.cameraRig.shakeTime * 1.56) + Math.sin(this.cameraRig.shakeTime * 2.36) * 0.46) * hudShake * 8;
+        } finally {
+            performance.mark('CoreDemoScene-updateCamera-end');
+            performance.measure('追踪: CoreDemoScene-updateCamera', 'CoreDemoScene-updateCamera-start', 'CoreDemoScene-updateCamera-end');
         }
-
-        this.cameraRig.leadX = damp(this.cameraRig.leadX, desiredLead.x, T.cameraLeadDamp ?? 10.5, frameDt);
-        this.cameraRig.leadY = damp(this.cameraRig.leadY, desiredLead.y, T.cameraLeadDamp ?? 10.5, frameDt);
-        const desiredFocusX = baseFocus.x + this.cameraRig.leadX;
-        const desiredFocusY = baseFocus.y + this.cameraRig.leadY;
-        this.cameraRig.targetX = damp(this.cameraRig.targetX, desiredFocusX, T.cameraFocusTrackDamp ?? 7.2, frameDt);
-        this.cameraRig.targetY = damp(this.cameraRig.targetY, desiredFocusY, T.cameraFocusTrackDamp ?? 7.2, frameDt);
-        const zoomTrackRate = T.cameraZoomTrackDamp ?? 2.6;
-        this.cameraRig.targetZoom = damp(this.cameraRig.targetZoom, desiredZoom, zoomTrackRate, frameDt);
-
-        const zoomRate = this.cameraRig.targetZoom < this.cameraRig.zoom
-            ? (T.cameraZoomOutDamp ?? 4.4)
-            : (T.cameraZoomDamp ?? 1.8);
-        const posRate = T.cameraPosDamp ?? 4.2;
-
-        this.cameraRig.zoom = damp(this.cameraRig.zoom, this.cameraRig.targetZoom, zoomRate, frameDt);
-        this.cameraRig.x = damp(this.cameraRig.x, this.cameraRig.targetX, posRate, frameDt);
-        this.cameraRig.y = damp(this.cameraRig.y, this.cameraRig.targetY, posRate, frameDt);
-        this.cameraRig.desiredZoom = desiredZoom;
-        this.cameraRig.baseFocusX = baseFocus.x;
-        this.cameraRig.baseFocusY = baseFocus.y;
-        this.cameraRig.focusX = desiredFocusX;
-        this.cameraRig.focusY = desiredFocusY;
-        this.cameraRig.compositionX = desiredLead.screenX;
-        this.cameraRig.compositionY = desiredLead.screenY;
-        this.cameraRig.urgency = desiredLead.intensity;
-        this.cameraRig.subjectBounds = bounds;
-        this.cameraRig.subjectSpan = span;
-        this.cameraRig.shake = Math.max(0, (this.cameraRig.shake || 0) - frameDt * 2.8);
-        this.cameraRig.hudShake = Math.max(0, (this.cameraRig.hudShake || 0) - frameDt * 3.4);
-        this.cameraRig.shakeTime = (this.cameraRig.shakeTime || 0) + frameDt * (18 + this.cameraRig.shake * 36);
-        const worldShake = Math.pow(this.cameraRig.shake || 0, 0.92);
-        const hudShake = Math.pow(this.cameraRig.hudShake || 0, 0.92);
-        this.cameraRig.renderOffsetX = (Math.sin(this.cameraRig.shakeTime * 1.7) + Math.cos(this.cameraRig.shakeTime * 2.4) * 0.62) * worldShake * 14;
-        this.cameraRig.renderOffsetY = (Math.cos(this.cameraRig.shakeTime * 1.34) + Math.sin(this.cameraRig.shakeTime * 2.1) * 0.56) * worldShake * 10;
-        this.cameraRig.hudOffsetX = (Math.sin(this.cameraRig.shakeTime * 1.9) + Math.cos(this.cameraRig.shakeTime * 2.8) * 0.4) * hudShake * 10;
-        this.cameraRig.hudOffsetY = (Math.cos(this.cameraRig.shakeTime * 1.56) + Math.sin(this.cameraRig.shakeTime * 2.36) * 0.46) * hudShake * 8;
     },
     updateDisplay(frameDt) {
+        performance.mark('CoreDemoScene-updateDisplay-start');
         const T = window.TUNING || {};
-        const dd = T.displayDamping ?? 18;
-        const pgd = T.pulseGlowDecay ?? 3.2;
-        this.activeNodes.forEach((node) => {
-            node.displayX = damp(node.displayX, node.x, dd, frameDt);
-            node.displayY = damp(node.displayY, node.y, dd, frameDt);
-            node.displayAnchorX = damp(node.displayAnchorX, node.anchorX, dd, frameDt);
-            node.displayAnchorY = damp(node.displayAnchorY, node.anchorY, dd, frameDt);
-            node.pulseGlow = Math.max(0, node.pulseGlow - frameDt * pgd);
-            node.attackTimer = Math.max(0, node.attackTimer - frameDt);
-            node.predationWindow = Math.max(0, node.predationWindow - frameDt);
-            node.spinVelocity = Math.max(0, node.spinVelocity - frameDt * 18);
-            node.feedPulse = Math.max(0, node.feedPulse - frameDt * 1.6);
-            node.hookTension = Math.max(0, node.hookTension - frameDt * 2.8);
-            node.biteGlow = Math.max(0, node.biteGlow - frameDt * 2.2);
-            const facingX = node.shape === 'triangle'
-                ? (node.attackDirX || node.vx || Math.cos(this.player.heading))
-                : (node.vx || node.attackDirX || Math.cos(this.player.heading));
-            const facingY = node.shape === 'triangle'
-                ? (node.attackDirY || node.vy || Math.sin(this.player.heading))
-                : (node.vy || node.attackDirY || Math.sin(this.player.heading));
-            const targetAngle = Math.atan2(facingY, facingX) + (node.shape === 'square' ? (node.spinVelocity || 0) * 0.035 : 0);
-            const currentAngle = Number.isFinite(node.displayAngle) ? node.displayAngle : targetAngle;
-            node.displayAngle = dampAngle(currentAngle, targetAngle, 16, frameDt);
-        });
+        try {
+            const dd = T.displayDamping ?? 18;
+            const pgd = T.pulseGlowDecay ?? 3.2;
+            this.activeNodes.forEach((node) => {
+                node.displayX = damp(node.displayX, node.x, dd, frameDt);
+                node.displayY = damp(node.displayY, node.y, dd, frameDt);
+                node.displayAnchorX = damp(node.displayAnchorX, node.anchorX, dd, frameDt);
+                node.displayAnchorY = damp(node.displayAnchorY, node.anchorY, dd, frameDt);
+                node.pulseGlow = Math.max(0, node.pulseGlow - frameDt * pgd);
+                node.attackTimer = Math.max(0, node.attackTimer - frameDt);
+                node.predationWindow = Math.max(0, node.predationWindow - frameDt);
+                node.spinVelocity = Math.max(0, node.spinVelocity - frameDt * 18);
+                node.feedPulse = Math.max(0, node.feedPulse - frameDt * 1.6);
+                node.hookTension = Math.max(0, node.hookTension - frameDt * 2.8);
+                node.biteGlow = Math.max(0, node.biteGlow - frameDt * 2.2);
+                const facingX = node.shape === 'triangle'
+                    ? (node.attackDirX || node.vx || Math.cos(this.player.heading))
+                    : (node.vx || node.attackDirX || Math.cos(this.player.heading));
+                const facingY = node.shape === 'triangle'
+                    ? (node.attackDirY || node.vy || Math.sin(this.player.heading))
+                    : (node.vy || node.attackDirY || Math.sin(this.player.heading));
+                const targetAngle = Math.atan2(facingY, facingX) + (node.shape === 'square' ? (node.spinVelocity || 0) * 0.035 : 0);
+                const currentAngle = Number.isFinite(node.displayAngle) ? node.displayAngle : targetAngle;
+                node.displayAngle = dampAngle(currentAngle, targetAngle, 16, frameDt);
+            });
+        } finally {
+            performance.mark('CoreDemoScene-updateDisplay-end');
+            performance.measure('追踪: CoreDemoScene-updateDisplay', 'CoreDemoScene-updateDisplay-start', 'CoreDemoScene-updateDisplay-end');
+        }
     },
 };
 

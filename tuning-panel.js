@@ -290,7 +290,9 @@ const TUNING_FALLBACKS = {
     gameplayPreyFragmentActiveCap: 160,
     gameplayPreyFragmentCollectPerFrameCap: 8,
     graphicsUseBakedSpriteRenderer: true,
+    graphicsMinimalRenderMode: false,
     graphicsRenderWorldEnabled: true,
+    graphicsRenderWorldGridEnabled: true,
     graphicsRenderPreyEnabled: true,
     graphicsRenderPreyBaseShapesEnabled: true,
     graphicsRenderPreySignalsEnabled: true,
@@ -310,6 +312,7 @@ const TUNING_FALLBACKS = {
     graphicsRenderPreyGuardRingsVisible: true,
     graphicsRenderPreyDeathRingsVisible: true,
     graphicsRenderFormationEnabled: true,
+    graphicsRenderFormationGlowEnabled: true,
     graphicsRenderHudEnabled: true,
     graphicsRenderEditOverlayEnabled: true,
     graphicsRenderDebugOverlayEnabled: true,
@@ -786,10 +789,13 @@ const TUNING_DEFS = [
 
     { section: 'Graphics 定位总开关', sectionDesc: '这些都只影响 Graphics 渲染，不改模拟结果，适合先大范围二分定位。' },
     { key: 'graphicsUseBakedSpriteRenderer', label: '预烘焙贴图渲染', desc: '主菜单启动时先生成基础几何贴图，之后用精灵池复用渲染猎物/碎块/附着/圆环，尽量绕开 Graphics path fill。', type: 'toggle' },
+    { key: 'graphicsMinimalRenderMode', label: '极简渲染模式', desc: '一键关闭 HUD、prey overlays、formation glow 和 world grid，只保留最基础轮廓，用来快速做 batchFillPath A/B。', type: 'toggle' },
     { key: 'graphicsRenderWorldEnabled', label: '世界底图', desc: '背景、网格、屏幕染色和 objective 大光斑。', type: 'toggle' },
+    { key: 'graphicsRenderWorldGridEnabled', label: '世界网格', desc: '只控制背景里的规则网格线，保留 arena 底色、屏幕染色和 objective 光斑。', type: 'toggle' },
     { key: 'graphicsRenderPreyEnabled', label: '猎物本体层', desc: '所有 prey 本体及其身上的附加层。先用它判断 batchFillPath 是否主要来自猎物绘制。', type: 'toggle' },
     { key: 'graphicsRenderPreyDeathClusterEnabled', label: '猎杀相关层', desc: '一键关闭与猎物受伤/附着/死亡最强相关的 Graphics：碎块、咬合标记、附着连线、死亡环等。', type: 'toggle' },
     { key: 'graphicsRenderFormationEnabled', label: '主角结构层', desc: '玩家节点、链路、脉冲球和抓地反馈。', type: 'toggle' },
+    { key: 'graphicsRenderFormationGlowEnabled', label: '主角辉光装饰', desc: '关闭结构层里与 glow 相关的质心光晕、节点 pulse glow、bite glow 和低能量外圈，只保留主体节点与连线。', type: 'toggle' },
     { key: 'graphicsRenderEffectsEnabled', label: '环形特效层', desc: '所有 createRing 生成的圆环特效。', type: 'toggle' },
     { key: 'graphicsRenderHudEnabled', label: 'HUD 层', desc: '顶部能量条、阶段点和全屏胜利/死亡覆盖。', type: 'toggle' },
     { key: 'graphicsRenderEditOverlayEnabled', label: '编辑态层', desc: '编辑框选、选中高亮和删除倒计时环。', type: 'toggle' },
@@ -985,6 +991,30 @@ const COMPOSITE_TUNING_MAPS = {
         { key: 'cameraClusterTether', min: 0.08, max: 0.18 }
     ]
 };
+
+const MINIMAL_RENDER_TOGGLE_KEYS = [
+    'graphicsRenderHudEnabled',
+    'graphicsRenderWorldGridEnabled',
+    'graphicsRenderPreySignalsEnabled',
+    'graphicsRenderPreyDamageOverlaysEnabled',
+    'graphicsRenderPreyAttachmentMarksEnabled',
+    'graphicsRenderPreyAttachmentHaloEnabled',
+    'graphicsRenderPredationLinksEnabled',
+    'graphicsRenderFormationGlowEnabled'
+];
+
+function applyMinimalRenderMode(enabled, allRows = []) {
+    const nextValue = !!enabled;
+    MINIMAL_RENDER_TOGGLE_KEYS.forEach((key) => {
+        window.TUNING[key] = !nextValue;
+    });
+
+    allRows.forEach((row) => {
+        if (MINIMAL_RENDER_TOGGLE_KEYS.includes(row.key)) {
+            row.sync();
+        }
+    });
+}
 
 function roundTuningValue(value, step = 0.01) {
     if (!Number.isFinite(step) || step <= 0) {
@@ -1648,7 +1678,7 @@ function buildTuningPanel() {
         if (!currentSectionBody) return;
 
         if (def.type === 'toggle') {
-            const row = createToggleRow(def);
+            const row = createToggleRow(def, allRows);
             currentSectionBody.appendChild(row.element);
             allRows.push(row);
         } else {
@@ -1786,7 +1816,7 @@ function buildTuningPanel() {
     syncTuningPanelState();
 }
 
-function createToggleRow(def) {
+function createToggleRow(def, allRows = []) {
     const row = document.createElement('div');
     row.className = 'toggle-row';
     row.dataset.searchText = `${def.label} ${def.desc} ${def.key}`;
@@ -1812,6 +1842,9 @@ function createToggleRow(def) {
         window.TUNING[def.key] = checkbox.checked;
         if (def.key === 'autoPulseOrbCount' && checkbox.checked) {
              // Game will auto-update orb count in next frame
+        }
+        if (def.key === 'graphicsMinimalRenderMode') {
+            applyMinimalRenderMode(checkbox.checked, allRows);
         }
         applyImmediateTuningEffects(def.key);
         row.classList.toggle('modified', checkbox.checked !== TUNING_DEFAULTS[def.key]);

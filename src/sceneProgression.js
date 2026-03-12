@@ -383,6 +383,8 @@ const SceneProgressionMixin = {
         return totalSpeed / this.activeNodes.length;
     },
     estimatePulseMetabolism(triggerCount = 1) {
+        performance.mark('CoreDemoScene-estimatePulseMetabolism-start');
+        try {
         const stage = this.getCurrentStageDef();
         const nodeCount = this.activeNodes?.length || this.player.chain?.length || DEFAULT_BASE_CHAIN.length;
         const baseCost = Math.max(0, this.getRunTuningValue('gameplayPulseMetabolismBase', 0.18));
@@ -420,6 +422,10 @@ const SceneProgressionMixin = {
         const phase = this.intent?.burstPhase || this.intent?.pointerDrivePhase || 'cruise';
         const phaseMul = this.getPulseMetabolismPhaseMultiplier(phase);
         return Math.max(0, (baseCost + floorCost + perStage + perNode) * Math.max(0.18, activity) * Math.max(0.18, relief) * phaseMul * Math.max(1, triggerCount));
+        } finally {
+            performance.mark('CoreDemoScene-estimatePulseMetabolism-end');
+            performance.measure('追踪: CoreDemoScene-estimatePulseMetabolism', 'CoreDemoScene-estimatePulseMetabolism-start', 'CoreDemoScene-estimatePulseMetabolism-end');
+        }
     },
     consumePulseMetabolism(triggerCount = 1) {
         if (this.player.dead || this.runState?.complete || triggerCount <= 0) {
@@ -529,6 +535,8 @@ const SceneProgressionMixin = {
         });
     },
     flushPendingDevourRewards() {
+        performance.mark('CoreDemoScene-flushPendingDevourRewards-start');
+        try {
         if (!Array.isArray(this.pendingDevourRewards) || this.pendingDevourRewards.length === 0) {
             return;
         }
@@ -554,6 +562,10 @@ const SceneProgressionMixin = {
         this.runState.stageProgress += totalProgress;
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, flash);
         this.noteDevourBatch?.(count);
+        } finally {
+            performance.mark('CoreDemoScene-flushPendingDevourRewards-end');
+            performance.measure('追踪: CoreDemoScene-flushPendingDevourRewards', 'CoreDemoScene-flushPendingDevourRewards-start', 'CoreDemoScene-flushPendingDevourRewards-end');
+        }
     },
     onPreyDevoured(prey, node, attachment) {
         this.queuePreyDevourOutcome(prey, node, attachment);
@@ -681,6 +693,8 @@ const SceneProgressionMixin = {
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 38, COLORS.health, 0.24, 3, 'player-death');
     },
     updateRunState(simDt) {
+        performance.mark('CoreDemoScene-updateRunState-start');
+        try {
         this.ensureRunProgressionState();
         this.flushPendingDevourRewards();
         const stage = this.getCurrentStageDef();
@@ -752,5 +766,9 @@ const SceneProgressionMixin = {
         }
 
         this.runState.lowEnergyPulse = damp(this.runState.lowEnergyPulse || 0, this.getEnergyRatio() < lowEnergyThreshold ? 1 : 0, 3.2, simDt);
+        } finally {
+            performance.mark('CoreDemoScene-updateRunState-end');
+            performance.measure('追踪: CoreDemoScene-updateRunState', 'CoreDemoScene-updateRunState-start', 'CoreDemoScene-updateRunState-end');
+        }
     }
 };

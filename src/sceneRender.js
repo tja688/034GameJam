@@ -22,6 +22,9 @@ const SceneRenderMixin = {
     isGraphicsToggleEnabled(key, fallback = true) {
         return !this.getRunTuningToggle || this.getRunTuningToggle(key, fallback);
     },
+    isMinimalRenderModeEnabled() {
+        return this.isGraphicsToggleEnabled('graphicsMinimalRenderMode', false);
+    },
     isDeathGraphicsClusterEnabled() {
         return this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true);
     },
@@ -78,6 +81,8 @@ const SceneRenderMixin = {
         this.bakedSpriteRendererInitialized = true;
     },
     buildBakedRenderTextures() {
+        performance.mark('CoreDemoScene-buildBakedRenderTextures-start');
+        try {
         const textureDefs = [
             { key: 'baked-shape-circle', width: 128, height: 128, draw: (g) => drawShape(g, 'circle', 64, 64, 100, 0xffffff, 1, 0) },
             { key: 'baked-shape-square', width: 128, height: 128, draw: (g) => drawShape(g, 'square', 64, 64, 100, 0xffffff, 1, 0) },
@@ -112,6 +117,10 @@ const SceneRenderMixin = {
             scratch.generateTexture(def.key, def.width, def.height);
         });
         scratch.destroy();
+        } finally {
+            performance.mark('CoreDemoScene-buildBakedRenderTextures-end');
+            performance.measure('追踪: CoreDemoScene-buildBakedRenderTextures', 'CoreDemoScene-buildBakedRenderTextures-start', 'CoreDemoScene-buildBakedRenderTextures-end');
+        }
     },
     getBakedShapeTexture(shape) {
         return shape === 'square'
@@ -211,7 +220,13 @@ const SceneRenderMixin = {
         this.cameraRig.hudShake = Math.max(this.cameraRig.hudShake || 0, hudAmount);
     },
     buildRenderCaches() {
+        performance.mark('CoreDemoScene-buildRenderCaches-start');
+        try {
         this.activeNodeIndexMap = new Map(this.activeNodes.map((node) => [node.index, node]));
+        } finally {
+            performance.mark('CoreDemoScene-buildRenderCaches-end');
+            performance.measure('追踪: CoreDemoScene-buildRenderCaches', 'CoreDemoScene-buildRenderCaches-start', 'CoreDemoScene-buildRenderCaches-end');
+        }
     },
     isScreenCircleVisible(x, y, radius = 0, margin = 0) {
         const width = this.cameraRig?.viewportWidth || this.scale?.width || window.innerWidth;
@@ -220,6 +235,8 @@ const SceneRenderMixin = {
         return !(x < -pad || x > width + pad || y < -pad || y > height + pad);
     },
     updateEffects(simDt) {
+        performance.mark('CoreDemoScene-updateEffects-start');
+        try {
         for (let i = this.effects.length - 1; i >= 0; i -= 1) {
             this.effects[i].life -= simDt;
             if (this.effects[i].life <= 0) {
@@ -229,8 +246,14 @@ const SceneRenderMixin = {
                 this.effects.pop();
             }
         }
+        } finally {
+            performance.mark('CoreDemoScene-updateEffects-end');
+            performance.measure('追踪: CoreDemoScene-updateEffects', 'CoreDemoScene-updateEffects-start', 'CoreDemoScene-updateEffects-end');
+        }
     },
     render() {
+        performance.mark('CoreDemoScene-render-start');
+        try {
         const useBakedSpriteRenderer = this.isGraphicsToggleEnabled('graphicsUseBakedSpriteRenderer', true);
         const worldGraphics = this.graphicsWorld || this.graphics;
         const midGraphics = this.graphics;
@@ -242,58 +265,97 @@ const SceneRenderMixin = {
         if (hudGraphics && hudGraphics !== midGraphics && hudGraphics !== worldGraphics) {
             hudGraphics.clear();
         }
+        performance.mark('CoreDemoScene-render-setup-start');
         this.buildRenderCaches();
         this.beginBakedSpriteFrame(useBakedSpriteRenderer);
+        performance.mark('CoreDemoScene-render-setup-end');
+        performance.measure('追踪: CoreDemoScene-render-setup', 'CoreDemoScene-render-setup-start', 'CoreDemoScene-render-setup-end');
         if (this.isGraphicsToggleEnabled('graphicsRenderWorldEnabled', true)) {
+            performance.mark('CoreDemoScene-render-world-start');
             this.drawWorld(worldGraphics);
+            performance.mark('CoreDemoScene-render-world-end');
+            performance.measure('追踪: CoreDemoScene-render-world', 'CoreDemoScene-render-world-start', 'CoreDemoScene-render-world-end');
         }
         if (this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true)
             && this.isGraphicsToggleEnabled('graphicsRenderPreyFragmentsEnabled', true)) {
+            performance.mark('CoreDemoScene-render-fragments-start');
             if (useBakedSpriteRenderer) {
                 this.renderFragmentsSprites();
             } else {
                 this.drawFragments(midGraphics);
             }
+            performance.mark('CoreDemoScene-render-fragments-end');
+            performance.measure('追踪: CoreDemoScene-render-fragments', 'CoreDemoScene-render-fragments-start', 'CoreDemoScene-render-fragments-end');
         }
         if (this.isGraphicsToggleEnabled('graphicsRenderPreyEnabled', true)) {
+            performance.mark('CoreDemoScene-render-prey-start');
             if (useBakedSpriteRenderer) {
                 this.renderPreySprites();
             } else {
                 this.drawPrey(midGraphics);
             }
+            performance.mark('CoreDemoScene-render-prey-end');
+            performance.measure('追踪: CoreDemoScene-render-prey', 'CoreDemoScene-render-prey-start', 'CoreDemoScene-render-prey-end');
         }
         if (this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true)
             && this.isGraphicsToggleEnabled('graphicsRenderPredationLinksEnabled', true)) {
+            performance.mark('CoreDemoScene-render-predationLinks-start');
             if (useBakedSpriteRenderer) {
                 this.renderPredationLinkSprites();
             } else {
                 this.drawPredationLinks(midGraphics);
             }
+            performance.mark('CoreDemoScene-render-predationLinks-end');
+            performance.measure('追踪: CoreDemoScene-render-predationLinks', 'CoreDemoScene-render-predationLinks-start', 'CoreDemoScene-render-predationLinks-end');
         }
         if (this.isGraphicsToggleEnabled('graphicsRenderFormationEnabled', true)) {
+            performance.mark('CoreDemoScene-render-formation-start');
             this.drawFormation(midGraphics);
+            performance.mark('CoreDemoScene-render-formation-end');
+            performance.measure('追踪: CoreDemoScene-render-formation', 'CoreDemoScene-render-formation-start', 'CoreDemoScene-render-formation-end');
         }
         if (this.isGraphicsToggleEnabled('graphicsRenderEffectsEnabled', true)) {
+            performance.mark('CoreDemoScene-render-effects-start');
             if (useBakedSpriteRenderer) {
                 this.renderEffectSprites();
             } else {
                 this.drawEffects(midGraphics);
             }
+            performance.mark('CoreDemoScene-render-effects-end');
+            performance.measure('追踪: CoreDemoScene-render-effects', 'CoreDemoScene-render-effects-start', 'CoreDemoScene-render-effects-end');
         }
         if ((this.player.edit.active || this.player.edit.ambience > 0.01)
             && this.isGraphicsToggleEnabled('graphicsRenderEditOverlayEnabled', true)) {
+            performance.mark('CoreDemoScene-render-editOverlay-start');
             this.drawEditOverlay(midGraphics);
+            performance.mark('CoreDemoScene-render-editOverlay-end');
+            performance.measure('追踪: CoreDemoScene-render-editOverlay', 'CoreDemoScene-render-editOverlay-start', 'CoreDemoScene-render-editOverlay-end');
         }
         if (window.TUNING && window.TUNING.showDebugVisuals
             && this.isGraphicsToggleEnabled('graphicsRenderDebugOverlayEnabled', true)) {
+            performance.mark('CoreDemoScene-render-debugOverlay-start');
             this.drawDebugOverlays(midGraphics);
+            performance.mark('CoreDemoScene-render-debugOverlay-end');
+            performance.measure('追踪: CoreDemoScene-render-debugOverlay', 'CoreDemoScene-render-debugOverlay-start', 'CoreDemoScene-render-debugOverlay-end');
         }
         if (this.isGraphicsToggleEnabled('graphicsRenderHudEnabled', true)) {
+            performance.mark('CoreDemoScene-render-hud-start');
             this.drawHud(hudGraphics);
+            performance.mark('CoreDemoScene-render-hud-end');
+            performance.measure('追踪: CoreDemoScene-render-hud', 'CoreDemoScene-render-hud-start', 'CoreDemoScene-render-hud-end');
         }
+        performance.mark('CoreDemoScene-render-teardown-start');
         this.endBakedSpriteFrame(useBakedSpriteRenderer);
+        performance.mark('CoreDemoScene-render-teardown-end');
+        performance.measure('追踪: CoreDemoScene-render-teardown', 'CoreDemoScene-render-teardown-start', 'CoreDemoScene-render-teardown-end');
+        } finally {
+            performance.mark('CoreDemoScene-render-end');
+            performance.measure('追踪: CoreDemoScene-render', 'CoreDemoScene-render-start', 'CoreDemoScene-render-end');
+        }
     },
     renderEffectSprites() {
+        performance.mark('CoreDemoScene-renderEffectSprites-start');
+        try {
         this.effects.forEach((effect) => {
             if (!this.isEffectVisible(effect)) {
                 return;
@@ -306,8 +368,14 @@ const SceneRenderMixin = {
             const alpha = clamp(effect.life / effect.total, 0, 1) * 0.9;
             this.stampBakedRing('effects', position.x, position.y, radius, effect.color, alpha);
         });
+        } finally {
+            performance.mark('CoreDemoScene-renderEffectSprites-end');
+            performance.measure('追踪: CoreDemoScene-renderEffectSprites', 'CoreDemoScene-renderEffectSprites-start', 'CoreDemoScene-renderEffectSprites-end');
+        }
     },
     renderFragmentsSprites() {
+        performance.mark('CoreDemoScene-renderFragmentsSprites-start');
+        try {
         if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             return;
         }
@@ -338,8 +406,14 @@ const SceneRenderMixin = {
                 this.stampBakedShape('fragments', fragment.shape, position.x, position.y, size * 2, fragment.color, alpha, fragment.rotation);
             }
         });
+        } finally {
+            performance.mark('CoreDemoScene-renderFragmentsSprites-end');
+            performance.measure('追踪: CoreDemoScene-renderFragmentsSprites', 'CoreDemoScene-renderFragmentsSprites-start', 'CoreDemoScene-renderFragmentsSprites-end');
+        }
     },
     renderPreySprites() {
+        performance.mark('CoreDemoScene-renderPreySprites-start');
+        try {
         const drawBaseShapes = this.isGraphicsToggleEnabled('graphicsRenderPreyBaseShapesEnabled', true);
         const drawSignals = this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true);
         const drawDamageOverlays = this.isDeathGraphicsClusterEnabled()
@@ -442,8 +516,14 @@ const SceneRenderMixin = {
                 this.stampBakedRing('prey', x, y, size * 0.56, COLORS.core, 0.2 + (prey.objectiveGlow || 0) * 0.16);
             }
         });
+        } finally {
+            performance.mark('CoreDemoScene-renderPreySprites-end');
+            performance.measure('追踪: CoreDemoScene-renderPreySprites', 'CoreDemoScene-renderPreySprites-start', 'CoreDemoScene-renderPreySprites-end');
+        }
     },
     renderPredationLinkSprites() {
+        performance.mark('CoreDemoScene-renderPredationLinkSprites-start');
+        try {
         const drawLines = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkLinesEnabled', true);
         const drawDots = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkDotsEnabled', true);
         if (!drawLines && !drawDots) {
@@ -478,10 +558,17 @@ const SceneRenderMixin = {
                 }
             });
         });
+        } finally {
+            performance.mark('CoreDemoScene-renderPredationLinkSprites-end');
+            performance.measure('追踪: CoreDemoScene-renderPredationLinkSprites', 'CoreDemoScene-renderPredationLinkSprites-start', 'CoreDemoScene-renderPredationLinkSprites-end');
+        }
     },
     drawWorld(g) {
+        performance.mark('CoreDemoScene-drawWorld-start');
+        try {
         const width = this.cameraRig.viewportWidth;
         const height = this.cameraRig.viewportHeight;
+        const drawGrid = this.isGraphicsToggleEnabled('graphicsRenderWorldGridEnabled', true);
         const palette = this.getRunPalette ? this.getRunPalette() : {
             arena: COLORS.arena,
             grid: COLORS.grid,
@@ -513,14 +600,16 @@ const SceneRenderMixin = {
         const startX = Math.floor(worldLeft / gridSize) * gridSize;
         const startY = Math.floor(worldTop / gridSize) * gridSize;
 
-        g.lineStyle(1, palette.grid, 0.42 + stageFlash * 0.06);
-        for (let x = startX; x <= worldRight; x += gridSize) {
-            const screen = this.worldToScreen(x, 0);
-            g.lineBetween(screen.x, 0, screen.x, height);
-        }
-        for (let y = startY; y <= worldBottom; y += gridSize) {
-            const screen = this.worldToScreen(0, y);
-            g.lineBetween(0, screen.y, width, screen.y);
+        if (drawGrid) {
+            g.lineStyle(1, palette.grid, 0.42 + stageFlash * 0.06);
+            for (let x = startX; x <= worldRight; x += gridSize) {
+                const screen = this.worldToScreen(x, 0);
+                g.lineBetween(screen.x, 0, screen.x, height);
+            }
+            for (let y = startY; y <= worldBottom; y += gridSize) {
+                const screen = this.worldToScreen(0, y);
+                g.lineBetween(0, screen.y, width, screen.y);
+            }
         }
 
         if (objective) {
@@ -553,8 +642,14 @@ const SceneRenderMixin = {
             g.lineStyle(4, COLORS.health, 0.08 + (this.runState.lowEnergyPulse || 0) * 0.14);
             g.strokeRect(12, 12, width - 24, height - 24);
         }
+        } finally {
+            performance.mark('CoreDemoScene-drawWorld-end');
+            performance.measure('追踪: CoreDemoScene-drawWorld', 'CoreDemoScene-drawWorld-start', 'CoreDemoScene-drawWorld-end');
+        }
     },
     drawEffects(g) {
+        performance.mark('CoreDemoScene-drawEffects-start');
+        try {
         this.effects.forEach((effect) => {
             if (!this.isEffectVisible(effect)) {
                 return;
@@ -568,8 +663,14 @@ const SceneRenderMixin = {
             g.lineStyle(effect.thickness, effect.color, alpha * 0.9);
             g.strokeCircle(position.x, position.y, effect.radius * this.cameraRig.zoom + (1 - alpha) * 18);
         });
+        } finally {
+            performance.mark('CoreDemoScene-drawEffects-end');
+            performance.measure('追踪: CoreDemoScene-drawEffects', 'CoreDemoScene-drawEffects-start', 'CoreDemoScene-drawEffects-end');
+        }
     },
     drawFragments(g) {
+        performance.mark('CoreDemoScene-drawFragments-start');
+        try {
         if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             return;
         }
@@ -602,8 +703,14 @@ const SceneRenderMixin = {
                 drawShape(g, fragment.shape, position.x, position.y, size * 2, fragment.color, alpha, fragment.rotation);
             }
         });
+        } finally {
+            performance.mark('CoreDemoScene-drawFragments-end');
+            performance.measure('追踪: CoreDemoScene-drawFragments', 'CoreDemoScene-drawFragments-start', 'CoreDemoScene-drawFragments-end');
+        }
     },
     drawPrey(g) {
+        performance.mark('CoreDemoScene-drawPrey-start');
+        try {
         const drawBaseShapes = this.isGraphicsToggleEnabled('graphicsRenderPreyBaseShapesEnabled', true);
         const drawSignals = this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true);
         const drawDamageOverlays = this.isDeathGraphicsClusterEnabled()
@@ -711,8 +818,14 @@ const SceneRenderMixin = {
                 g.strokeCircle(x, y, size * 0.56);
             }
         });
+        } finally {
+            performance.mark('CoreDemoScene-drawPrey-end');
+            performance.measure('追踪: CoreDemoScene-drawPrey', 'CoreDemoScene-drawPrey-start', 'CoreDemoScene-drawPrey-end');
+        }
     },
     drawPredationLinks(g) {
+        performance.mark('CoreDemoScene-drawPredationLinks-start');
+        try {
         const drawLines = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkLinesEnabled', true);
         const drawDots = this.isGraphicsToggleEnabled('graphicsRenderPredationLinkDotsEnabled', true);
         if (!drawLines && !drawDots) {
@@ -751,9 +864,16 @@ const SceneRenderMixin = {
                 }
             });
         });
+        } finally {
+            performance.mark('CoreDemoScene-drawPredationLinks-end');
+            performance.measure('追踪: CoreDemoScene-drawPredationLinks', 'CoreDemoScene-drawPredationLinks-start', 'CoreDemoScene-drawPredationLinks-end');
+        }
     },
     drawFormation(g) {
+        performance.mark('CoreDemoScene-drawFormation-start');
+        try {
         const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
+        const drawGlow = this.isGraphicsToggleEnabled('graphicsRenderFormationGlowEnabled', true);
         const energyRatio = this.getEnergyRatio ? this.getEnergyRatio() : 1;
         const energyGainPulse = clamp(this.runState?.energyGainPulse || 0, 0, 1.4);
         const energyLossPulse = clamp(this.runState?.energyLossPulse || 0, 0, 1.4);
@@ -761,7 +881,7 @@ const SceneRenderMixin = {
         const lowEnergyPulse = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
         const growthPulse = clamp(this.runState?.growthPulse || 0, 0, 1);
         const victoryPulse = clamp(this.player.victoryPulse || 0, 0, 1);
-        if (energyRatio > 0.02 || growthPulse > 0.02 || victoryPulse > 0.02) {
+        if (drawGlow && (energyRatio > 0.02 || growthPulse > 0.02 || victoryPulse > 0.02)) {
             const center = this.worldToScreen(this.player.centroidX, this.player.centroidY);
             g.fillStyle(lowEnergyPulse > 0.08 ? COLORS.health : palette.pulse, 0.04 + energyRatio * 0.03 + victoryPulse * 0.05 + energyGainPulse * 0.04);
             g.fillCircle(center.x, center.y, clamp((this.getFormationSpan() * (1.18 + growthPulse * 0.08) + 60 + energyBeat * 18) * this.cameraRig.zoom, 32, 240));
@@ -810,12 +930,12 @@ const SceneRenderMixin = {
             }
 
             const glowRadius = clamp((18 + node.pulseGlow * 10) * this.cameraRig.zoom, 10, 28);
-            if (node.pulseGlow > 0) {
+            if (drawGlow && node.pulseGlow > 0) {
                 g.lineStyle(3, palette.pulse, node.pulseGlow * 0.9);
                 g.strokeCircle(nodePos.x, nodePos.y, glowRadius);
             }
 
-            if (node.biteGlow > 0.01) {
+            if (drawGlow && node.biteGlow > 0.01) {
                 g.lineStyle(clamp((2.2 + node.biteGlow * 1.6) * this.cameraRig.zoom, 1, 4), node.color, node.biteGlow * 0.5);
                 g.strokeCircle(nodePos.x, nodePos.y, clamp((16 + node.biteGlow * 10) * this.cameraRig.zoom, 8, 26));
             }
@@ -827,13 +947,13 @@ const SceneRenderMixin = {
                 size *= pulse;
             } else if (node.shape === 'square') {
                 size *= 1 + node.biteGlow * 0.08 + victoryPulse * 0.04;
-                if (node.spinVelocity > 0.02) {
+                if (drawGlow && node.spinVelocity > 0.02) {
                     g.lineStyle(clamp((1.8 + node.spinVelocity * 0.04) * this.cameraRig.zoom, 1, 4), COLORS.core, 0.12 + node.biteGlow * 0.18);
                     g.strokeCircle(nodePos.x, nodePos.y, clamp(size * 0.56, 5, 22));
                 }
             } else {
                 size *= 1 + node.hookTension * 0.1;
-                if (node.hookTension > 0.02) {
+                if (drawGlow && node.hookTension > 0.02) {
                     drawShape(
                         g,
                         node.shape,
@@ -848,15 +968,21 @@ const SceneRenderMixin = {
             }
 
             drawShape(g, node.shape, nodePos.x, nodePos.y, size, node.color, 0.96, rotation);
-            if (node.shape === 'circle' && node.feedPulse > 0.02) {
+            if (drawGlow && node.shape === 'circle' && node.feedPulse > 0.02) {
                 g.fillStyle(COLORS.core, 0.18 + node.feedPulse * 0.14);
                 g.fillCircle(nodePos.x, nodePos.y, clamp(size * 0.18, 2, 7));
                 g.lineStyle(clamp((1.6 + node.feedPulse * 1.2) * this.cameraRig.zoom, 1, 3), COLORS.energy, 0.16 + node.feedPulse * 0.14);
                 g.strokeCircle(nodePos.x, nodePos.y, clamp(size * (0.26 + node.feedPulse * 0.06), 4, 16));
             }
         });
+        } finally {
+            performance.mark('CoreDemoScene-drawFormation-end');
+            performance.measure('追踪: CoreDemoScene-drawFormation', 'CoreDemoScene-drawFormation-start', 'CoreDemoScene-drawFormation-end');
+        }
     },
     drawHud(g) {
+        performance.mark('CoreDemoScene-drawHud-start');
+        try {
         const hudJolt = clamp(this.runState?.hudJolt || 0, 0, 1.4);
         const hudBeat = clamp(this.runState?.energyBeat || 0, 0, 1);
         const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
@@ -996,8 +1122,14 @@ const SceneRenderMixin = {
             g.lineStyle(4, palette.signal, 0.38 + clamp(this.player.victoryPulse || 0, 0, 1) * 0.22);
             g.strokeCircle(this.scale.width * 0.5, this.scale.height * 0.5, 80 + clamp(1 - this.runState.completeTimer / 5.5, 0, 1) * 180);
         }
+        } finally {
+            performance.mark('CoreDemoScene-drawHud-end');
+            performance.measure('追踪: CoreDemoScene-drawHud', 'CoreDemoScene-drawHud-start', 'CoreDemoScene-drawHud-end');
+        }
     },
     drawEditOverlay(g) {
+        performance.mark('CoreDemoScene-drawEditOverlay-start');
+        try {
         const edit = this.player.edit;
         const ambience = edit.ambience;
         if (ambience <= 0.01) {
@@ -1099,6 +1231,10 @@ const SceneRenderMixin = {
                 g.strokePath();
             });
         }
+        } finally {
+            performance.mark('CoreDemoScene-drawEditOverlay-end');
+            performance.measure('追踪: CoreDemoScene-drawEditOverlay', 'CoreDemoScene-drawEditOverlay-start', 'CoreDemoScene-drawEditOverlay-end');
+        }
     },
     getDrivePhaseColor(phase) {
         switch (phase) {
@@ -1115,6 +1251,8 @@ const SceneRenderMixin = {
         }
     },
     drawDebugOverlays(g) {
+        performance.mark('CoreDemoScene-drawDebugOverlays-start');
+        try {
         const T = window.TUNING || {};
         if (T.showDriveRingsDebug) {
             this.drawDriveRingsDebug(g);
@@ -1124,6 +1262,10 @@ const SceneRenderMixin = {
         }
         if (T.showCameraRigDebug) {
             this.drawCameraRigDebug(g);
+        }
+        } finally {
+            performance.mark('CoreDemoScene-drawDebugOverlays-end');
+            performance.measure('追踪: CoreDemoScene-drawDebugOverlays', 'CoreDemoScene-drawDebugOverlays-start', 'CoreDemoScene-drawDebugOverlays-end');
         }
     },
     drawDriveRingsDebug(g) {
