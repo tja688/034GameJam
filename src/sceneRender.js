@@ -1005,13 +1005,6 @@ const SceneRenderMixin = {
                     fragment.color,
                     alpha * (fragment.state === 'homing' ? 0.58 : fragment.collectible ? 0.38 : 0.22)
                 );
-                if (fragment.state === 'homing' && fragment.targetNodeIndex >= 0) {
-                    const targetNode = this.activeNodeIndexMap?.get(fragment.targetNodeIndex);
-                    if (targetNode) {
-                        const targetPosition = this.worldToScreen(targetNode.displayX, targetNode.displayY);
-                        this.stampBakedLine('fragments', position.x, position.y, targetPosition.x, targetPosition.y, Math.max(1, size * 0.2), COLORS.core, alpha * 0.18);
-                    }
-                }
                 if (fragment.kind === 'energy') {
                     this.stampBakedRing('fragments', position.x, position.y, size + 3, COLORS.core, alpha * 0.42);
                 } else if (fragment.collectible && fragment.state !== 'burst') {
@@ -1383,14 +1376,6 @@ const SceneRenderMixin = {
             if (drawTrails) {
                 g.lineStyle(Math.max(1, size * (fragment.state === 'homing' ? 0.52 : 0.36)), fragment.color, alpha * (fragment.state === 'homing' ? 0.58 : fragment.collectible ? 0.38 : 0.22));
                 g.lineBetween(trailX, trailY, position.x, position.y);
-                if (fragment.state === 'homing' && fragment.targetNodeIndex >= 0) {
-                    const targetNode = this.activeNodeIndexMap?.get(fragment.targetNodeIndex);
-                    if (targetNode) {
-                        const targetPosition = this.worldToScreen(targetNode.displayX, targetNode.displayY);
-                        g.lineStyle(Math.max(1, size * 0.2), COLORS.core, alpha * 0.18);
-                        g.lineBetween(position.x, position.y, targetPosition.x, targetPosition.y);
-                    }
-                }
                 if (fragment.kind === 'energy') {
                     g.lineStyle(1.8, COLORS.core, alpha * 0.42);
                     g.strokeCircle(position.x, position.y, size + 3);
