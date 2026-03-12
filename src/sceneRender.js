@@ -230,7 +230,6 @@ const SceneRenderMixin = {
         state.biomassPulse = 0;
         if (state.container) {
             state.container.setVisible(false);
-            state.container.setRotation(0);
         }
         return state;
     },
