@@ -183,9 +183,8 @@ const SceneRenderMixin = {
             state.container.destroy(true);
         }
 
-        state.container = this.add.container(0, 0);
+        state.container = this.add.layer();
         state.container.setDepth(39);
-        state.container.setScrollFactor?.(0);
 
         for (let i = 0; i < 3; i += 1) {
             state.shadowSegments.push(this.createLivingEnergyBarStrip(state));
@@ -370,20 +369,33 @@ const SceneRenderMixin = {
         const grow = state.growthKick * growthViolence + state.biomassPulse * 0.42;
         const chaos = idleMotion * 0.32 + beat * 0.34 + lowEnergy * 0.28 + loss * 0.7 + gain * 0.42 + overload * 0.84 + grow * 0.52;
         const baseHeight = thickness * (1 + beat * 0.08 + lowEnergy * 0.06);
-        const centerX = this.scale.width * 0.5 + (this.cameraRig?.hudOffsetX || 0) * 0.78;
-        const top = 54 + topOffset + (this.cameraRig?.hudOffsetY || 0) * 0.62;
-
-        state.container.setVisible(true);
-        state.container.x = centerX
-            + Math.sin(this.worldTime * 64 + state.seed * 0.8) * loss * 1.9
-            + Math.sin(this.worldTime * 34 + state.seed * 0.3) * (gain * 0.9 + overload * 1.4);
-        state.container.y = top
-            + Math.cos(this.worldTime * 54 + state.seed) * loss * 0.8
-            + Math.sin(this.worldTime * 16 + state.seed * 0.6) * (gain * 0.45 + overload * 0.8);
-        state.container.rotation = (
+        const rootX = this.scale.width * 0.5 + (this.cameraRig?.hudOffsetX || 0) * 0.78;
+        const rootY = 54 + topOffset + (this.cameraRig?.hudOffsetY || 0) * 0.62;
+        const rootRotation = (
             twitchMid * (loss * 0.032 - gain * 0.012 - overload * 0.024)
             + twitchSlow * (0.004 + chaos * 0.005)
         );
+
+        state.container.setVisible(true);
+        const shakeX = Math.sin(this.worldTime * 64 + state.seed * 0.8) * loss * 1.9
+            + Math.sin(this.worldTime * 34 + state.seed * 0.3) * (gain * 0.9 + overload * 1.4);
+        const shakeY = Math.cos(this.worldTime * 54 + state.seed) * loss * 0.8
+            + Math.sin(this.worldTime * 16 + state.seed * 0.6) * (gain * 0.45 + overload * 0.8);
+        const hudRootX = rootX + shakeX;
+        const hudRootY = rootY + shakeY;
+        const placeHudStrip = (sprite, localX, localY, width, height, color, alpha, rotation = 0) => {
+            const rotated = rotateLocal(localX, localY, rootRotation);
+            this.setLivingEnergyBarStrip(
+                sprite,
+                hudRootX + rotated.x,
+                hudRootY + rotated.y,
+                width,
+                height,
+                color,
+                alpha,
+                rootRotation + rotation
+            );
+        };
 
         const widths = [0.28, 0.31, 0.41].map((weight) => state.displayLength * weight);
         const heights = [
@@ -441,13 +453,13 @@ const SceneRenderMixin = {
             const growthAlpha = Math.min(0.62, 0.18 + state.displayGrowth * 0.2 + grow * 0.16);
             const glowAlpha = Math.min(0.3, 0.05 + gain * 0.06 + overload * 0.1 + lowEnergy * 0.06);
 
-            this.setLivingEnergyBarStrip(state.shadowSegments[i], stripX - 4, stripY + 2.6, segmentWidth + 8, segmentHeight + 6, COLORS.shadow, 0.42, rotations[i] * 0.55);
-            this.setLivingEnergyBarStrip(state.trackSegments[i], stripX, stripY, segmentWidth, segmentHeight, shellColor, 0.92, rotations[i]);
-            this.setLivingEnergyBarStrip(state.ghostSegments[i], stripX + Math.max(0, fillWidth), stripY, ghostWidth, segmentHeight * (0.78 + loss * 0.08), ghostColor, 0.28 + Math.min(0.26, loss * 0.12), rotations[i]);
-            this.setLivingEnergyBarStrip(state.glowSegments[i], stripX, stripY, fillWidth, segmentHeight * (1.2 + gain * 0.12 + overload * 0.18), glowColor, glowAlpha, rotations[i] * 0.6);
-            this.setLivingEnergyBarStrip(state.fillSegments[i], stripX, stripY, fillWidth, segmentHeight, fillColor, 0.96, rotations[i]);
-            this.setLivingEnergyBarStrip(state.flashSegments[i], stripX, stripY - segmentHeight * 0.22, fillWidth, Math.max(1.5, segmentHeight * 0.28), flashColor, flashAlpha, rotations[i] * 0.42);
-            this.setLivingEnergyBarStrip(state.growthSegments[i], stripX, stripY - segmentHeight * 0.48, growthWidth, Math.max(1.5, segmentHeight * 0.16), growthColor, growthAlpha, rotations[i] * 0.32);
+            placeHudStrip(state.shadowSegments[i], stripX - 4, stripY + 2.6, segmentWidth + 8, segmentHeight + 6, COLORS.shadow, 0.42, rotations[i] * 0.55);
+            placeHudStrip(state.trackSegments[i], stripX, stripY, segmentWidth, segmentHeight, shellColor, 0.92, rotations[i]);
+            placeHudStrip(state.ghostSegments[i], stripX + Math.max(0, fillWidth), stripY, ghostWidth, segmentHeight * (0.78 + loss * 0.08), ghostColor, 0.28 + Math.min(0.26, loss * 0.12), rotations[i]);
+            placeHudStrip(state.glowSegments[i], stripX, stripY, fillWidth, segmentHeight * (1.2 + gain * 0.12 + overload * 0.18), glowColor, glowAlpha, rotations[i] * 0.6);
+            placeHudStrip(state.fillSegments[i], stripX, stripY, fillWidth, segmentHeight, fillColor, 0.96, rotations[i]);
+            placeHudStrip(state.flashSegments[i], stripX, stripY - segmentHeight * 0.22, fillWidth, Math.max(1.5, segmentHeight * 0.28), flashColor, flashAlpha, rotations[i] * 0.42);
+            placeHudStrip(state.growthSegments[i], stripX, stripY - segmentHeight * 0.48, growthWidth, Math.max(1.5, segmentHeight * 0.16), growthColor, growthAlpha, rotations[i] * 0.32);
 
             fillRemaining -= fillWidth;
             ghostRemaining -= ghostWidth;
@@ -457,7 +469,7 @@ const SceneRenderMixin = {
 
         const tipX = leftEdge + state.displayLength;
         const overloadRise = baseHeight * (0.38 + overload * 0.24 + grow * 0.14);
-        this.setLivingEnergyBarStrip(
+        placeHudStrip(
             state.overloadStrips[0],
             tipX - Math.min(10, overloadPixels * 0.12),
             offsetsY[2] - overloadRise,
@@ -467,7 +479,7 @@ const SceneRenderMixin = {
             Math.min(0.72, 0.12 + overload * 0.16 + gain * 0.08 + grow * 0.08),
             rotations[2] * 0.68
         );
-        this.setLivingEnergyBarStrip(
+        placeHudStrip(
             state.overloadStrips[1],
             tipX + Math.max(0, overloadPixels * 0.18),
             offsetsY[2] - overloadRise - heights[2] * 0.18,
@@ -478,9 +490,9 @@ const SceneRenderMixin = {
             rotations[2] * 0.92
         );
 
-        state.metrics.centerX = state.container.x;
-        state.metrics.top = state.container.y - baseHeight - Math.max(8, overloadRise * 0.6);
-        state.metrics.left = state.container.x - state.displayLength * 0.5;
+        state.metrics.centerX = hudRootX;
+        state.metrics.top = hudRootY - baseHeight - Math.max(8, overloadRise * 0.6);
+        state.metrics.left = hudRootX - state.displayLength * 0.5;
         state.metrics.width = state.displayLength;
         state.metrics.height = baseHeight + Math.max(8, overloadRise);
         state.metrics.bottom = state.metrics.top + state.metrics.height;
