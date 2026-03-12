@@ -212,6 +212,7 @@ const SceneSaveLoadMixin = {
         if (this.runState) {
             Object.assign(this.runState, cloneData(data.runState || {}));
         }
+        this.resetLivingEnergyBarState?.();
 
         this.activeNodes = [];
         this.links = [];

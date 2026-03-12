@@ -462,14 +462,18 @@ const SceneProgressionMixin = {
             return 0;
         }
         const previous = this.player.energy || 0;
+        const maxEnergy = this.player.maxEnergy || 100;
         this.player.energy = clamp(previous + amount, 0, this.player.maxEnergy || 100);
         const applied = this.player.energy - previous;
+        const overflow = Math.max(0, amount - applied);
+        const wasFull = previous >= maxEnergy - 0.01;
         if (applied > 0) {
             this.player.energyFlash = clamp((this.player.energyFlash || 0) + applied * 0.024 + pulseBoost, 0, 2.6);
             this.runState.energyPulse = Math.max(this.runState.energyPulse || 0, 0.2 + pulseBoost);
             this.runState.energyGainPulse = Math.max(this.runState.energyGainPulse || 0, 0.16 + applied * 0.024 + pulseBoost);
             this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, 0.12 + applied * 0.012);
             this.player.energyDeltaFlash = Math.max(this.player.energyDeltaFlash || 0, 0.1 + applied * 0.02);
+            this.emitLivingEnergyBarEvent?.('gain', 0.12 + applied * 0.04 + pulseBoost * 0.6, { overflow, wasFull, source });
             if (source === 'devour' || source === 'objective' || source === 'fragment') {
                 this.addScreenShake?.(Math.min(0.9, 0.08 + applied * 0.012), Math.min(1, 0.12 + applied * 0.015));
             }
@@ -481,9 +485,12 @@ const SceneProgressionMixin = {
             );
             this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, 0.1 + loss * 0.02 + (source === 'pulse' ? 0.08 : 0));
             this.player.energyDeltaFlash = Math.max(this.player.energyDeltaFlash || 0, 0.08 + loss * 0.028);
+            this.emitLivingEnergyBarEvent?.('loss', 0.14 + loss * 0.05 + pulseBoost * 0.8, { source });
             if (source !== 'pulse') {
                 this.addScreenShake?.(Math.min(0.7, 0.05 + loss * 0.01), Math.min(0.85, 0.08 + loss * 0.014));
             }
+        } else if (amount > 0 && (overflow > 0 || wasFull)) {
+            this.emitLivingEnergyBarEvent?.('overload', 0.16 + Math.max(amount, overflow) * 0.045 + pulseBoost * 0.6, { source });
         }
         return applied;
     },
@@ -491,6 +498,9 @@ const SceneProgressionMixin = {
         this.ensureRunProgressionState();
         this.player.growthBuffer = (this.player.growthBuffer || 0) + Math.max(0, amount);
         this.runState.growthPulse = Math.max(this.runState.growthPulse || 0, 0.16 + amount * 0.02);
+        if (amount > 0) {
+            this.emitLivingEnergyBarEvent?.('biomass', 0.08 + amount * 0.06);
+        }
     },
     absorbFragment(fragment) {
         const isEnergy = fragment.kind === 'energy';
@@ -610,6 +620,7 @@ const SceneProgressionMixin = {
         }
         if (grown > 0) {
             this.runState.growthPulse = Math.max(this.runState.growthPulse || 0, 0.8);
+            this.emitLivingEnergyBarEvent?.('growth', 0.3 + grown * 0.28);
             this.applyEnergyDelta(
                 this.getRunTuningValue('gameplayGrowthEnergyBase', 6)
                 + grown * this.getRunTuningValue('gameplayGrowthEnergyPerNode', 1.5),

@@ -429,6 +429,7 @@ const SceneInitMixin = {
         this.pendingDevourRewards = [];
         this.poolNodes = this.createPoolNodesFromLibrary();
         this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
+        this.resetLivingEnergyBarState?.();
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
         this.links = [];
@@ -790,6 +791,7 @@ const SceneInitMixin = {
             const currentAngle = Number.isFinite(node.displayAngle) ? node.displayAngle : targetAngle;
             node.displayAngle = dampAngle(currentAngle, targetAngle, 16, frameDt);
         });
+        this.updateLivingEnergyBar?.(frameDt);
     },
 };
 
