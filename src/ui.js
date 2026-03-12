@@ -342,16 +342,40 @@ const SceneUiMixin = {
         }
 
         const showFpsCounter = !!window.TUNING?.showFpsCounter;
-        this.ui.fps.classList.toggle('hidden', !showFpsCounter);
-        if (!showFpsCounter) {
+        const showTelemetryOverlay = !!window.TUNING?.showTelemetryOverlay;
+        this.ui.fps.classList.toggle('hidden', !showFpsCounter && !showTelemetryOverlay);
+        if (!showFpsCounter && !showTelemetryOverlay) {
             return;
         }
 
         const actualFps = Number.isFinite(this.game?.loop?.actualFps) ? this.game.loop.actualFps : 0;
         const frameMs = Number.isFinite(deltaMs) ? deltaMs : 0;
         const probe = this.performanceProbe || {};
-        const peakLabel = probe.lastPeakSection ? `${probe.lastPeakSection} ${getFiniteNumber(probe.lastPeakMs, 0).toFixed(1)} ms` : 'section --';
-        const devourLabel = `devour ${Math.max(0, probe.lastDevourBurst || 0)} / batch ${Math.max(0, probe.lastDevourBatch || 0)}`;
-        this.ui.fps.textContent = `FPS ${actualFps.toFixed(1)}\n${frameMs.toFixed(1)} ms\n${peakLabel}\n${devourLabel}`;
+        const lines = [];
+
+        if (showFpsCounter) {
+            const peakLabel = probe.lastPeakSection ? `${probe.lastPeakSection} ${getFiniteNumber(probe.lastPeakMs, 0).toFixed(1)} ms` : 'section --';
+            const devourLabel = `devour ${Math.max(0, probe.lastDevourBurst || 0)} / batch ${Math.max(0, probe.lastDevourBatch || 0)}`;
+            lines.push(`FPS ${actualFps.toFixed(1)}`);
+            lines.push(`${frameMs.toFixed(1)} ms`);
+            lines.push(peakLabel);
+            lines.push(devourLabel);
+        }
+
+        if (showTelemetryOverlay) {
+            const telemetry = this.getEcoTelemetrySnapshot?.();
+            const current = telemetry?.player?.current || {};
+            const chaseStats = telemetry?.prey?.chaseStats || {};
+            const topArchetype = Object.entries(chaseStats).sort((a, b) => (b[1]?.started || 0) - (a[1]?.started || 0))[0];
+            lines.push(`cluster ${current.bucket || '--'} / ${current.phase || '--'}`);
+            lines.push(`spd ${getFiniteNumber(current.centroidSpeed, 0).toFixed(1)} | node ${getFiniteNumber(current.nodeSpeed, 0).toFixed(1)}`);
+            lines.push(`span ${getFiniteNumber(current.span, 0).toFixed(0)} | c ${getFiniteNumber(current.compression, 0).toFixed(2)} / e ${getFiniteNumber(current.expansion, 0).toFixed(2)}`);
+            if (topArchetype) {
+                const [archetype, stats] = topArchetype;
+                lines.push(`${archetype} chase ${stats.started || 0}/${stats.devoured || 0}/${stats.escaped || 0}`);
+            }
+        }
+
+        this.ui.fps.textContent = lines.join('\n');
     },
 };

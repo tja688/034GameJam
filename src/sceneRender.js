@@ -360,12 +360,14 @@ const SceneRenderMixin = {
             const carve = clamp(prey.carve || 0, 0, 2);
             const gorePulse = clamp(prey.gorePulse || 0, 0, 2);
             const devourGlow = clamp(prey.devourGlow || 0, 0, 2);
+            const alertPulse = clamp(prey.alertPulse || 0, 0, 1);
             const shakeX = Math.cos(prey.pulse * 1.7 + prey.seed) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
             const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
             const pulseScale = 1
                 + Math.sin(prey.pulse) * (prey.shape === 'circle' ? 0.08 : 0.04)
                 + prey.wound * 0.08
                 + carve * 0.04
+                + alertPulse * 0.1
                 + (prey.guardPulse || 0) * 0.08
                 + (prey.isObjective ? 0.06 : 0);
             const chewShrink = 1 - (1 - healthRatio) * (prey.sizeKey === 'large' ? 0.1 : prey.sizeKey === 'medium' ? 0.06 : 0.03);
@@ -386,6 +388,10 @@ const SceneRenderMixin = {
             }
             if (drawSignals && (prey.guardPulse || 0) > 0.04) {
                 this.stampBakedRing('prey', x, y, size * 0.66, prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
+            }
+            if (drawSignals && alertPulse > 0.04) {
+                const ringColor = prey.behaviorState === 'burst' ? COLORS.inverse : COLORS.health;
+                this.stampBakedRing('prey', x, y, size * (0.74 + alertPulse * 0.08), ringColor, 0.12 + alertPulse * 0.22);
             }
             if (drawDamageOverlays && prey.wound > 0.02) {
                 this.stampBakedShape('prey', prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);
@@ -627,12 +633,14 @@ const SceneRenderMixin = {
             const carve = clamp(prey.carve || 0, 0, 2);
             const gorePulse = clamp(prey.gorePulse || 0, 0, 2);
             const devourGlow = clamp(prey.devourGlow || 0, 0, 2);
+            const alertPulse = clamp(prey.alertPulse || 0, 0, 1);
             const shakeX = Math.cos(prey.pulse * 1.7 + prey.seed) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
             const shakeY = Math.sin(prey.pulse * 1.2 + prey.seed * 0.7) * (prey.shudder + gorePulse * 0.4) * 4.4 * this.cameraRig.zoom;
             const pulseScale = 1
                 + Math.sin(prey.pulse) * (prey.shape === 'circle' ? 0.08 : 0.04)
                 + prey.wound * 0.08
                 + carve * 0.04
+                + alertPulse * 0.1
                 + (prey.guardPulse || 0) * 0.08
                 + (prey.isObjective ? 0.06 : 0);
             const chewShrink = 1 - (1 - healthRatio) * (prey.sizeKey === 'large' ? 0.1 : prey.sizeKey === 'medium' ? 0.06 : 0.03);
@@ -655,6 +663,10 @@ const SceneRenderMixin = {
             if (drawSignals && (prey.guardPulse || 0) > 0.04) {
                 g.lineStyle(clamp((2 + prey.guardPulse * 3) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
                 g.strokeCircle(x, y, size * 0.66);
+            }
+            if (drawSignals && alertPulse > 0.04) {
+                g.lineStyle(clamp((1.8 + alertPulse * 2.4) * this.cameraRig.zoom, 1, 5), prey.behaviorState === 'burst' ? COLORS.inverse : COLORS.health, 0.12 + alertPulse * 0.22);
+                g.strokeCircle(x, y, size * (0.74 + alertPulse * 0.08));
             }
             if (drawDamageOverlays && prey.wound > 0.02) {
                 drawShape(g, prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);

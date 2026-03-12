@@ -289,6 +289,30 @@ const SceneProgressionMixin = {
         prey.objectiveGlow = prey.isObjective ? 1 : 0;
         prey.pulseGain = prey.isObjective ? 0.68 : 0.18;
         prey.exposed = prey.isObjective ? Math.max(prey.exposed || 0, archetype.weakExpose + 0.04) : Math.max(prey.exposed || 0, archetype.weakExpose);
+        prey.behaviorState = prey.archetype === 'school' ? 'schooling' : 'graze';
+        prey.behaviorStateTime = 0;
+        prey.behaviorStateAge = 0;
+        prey.fear = prey.isObjective ? 0.12 : 0;
+        prey.alarm = 0;
+        prey.stamina = 1;
+        prey.burstTimer = 0;
+        prey.recoverTimer = 0;
+        prey.braceTimer = 0;
+        prey.escapeAngle = Math.random() * Math.PI * 2;
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+        prey.behaviorTargetSpeed = prey.speed;
+        prey.behaviorTargetAccel = prey.accel;
+        prey.lastThreat = 0;
+        prey.lastGapSpeed = 0;
+        prey.groupAlarm = 0;
+        prey.alertPulse = 0;
+        prey.chaseStartedAt = 0;
+        this.notePreyStateTransition?.(prey, prey.behaviorState, {
+            stateDuration: 0,
+            threat: 0,
+            force: true
+        });
         return prey;
     },
     getCompressionAccess(prey, pressure) {
@@ -556,6 +580,10 @@ const SceneProgressionMixin = {
         this.noteDevourBatch?.(count);
     },
     onPreyDevoured(prey, node, attachment) {
+        this.finishPreyChaseTelemetry?.(prey, 'devoured', {
+            byNode: node?.index ?? -1,
+            mode: attachment?.mode || ''
+        });
         this.queuePreyDevourOutcome(prey, node, attachment);
     },
     pickGrowthTemplate() {
@@ -626,6 +654,7 @@ const SceneProgressionMixin = {
             return;
         }
 
+        this.clearActivePreyChases?.('stage-advance');
         this.prey = [];
         this.runState.stageIndex += 1;
         this.runState.stageProgress = 0;
@@ -656,6 +685,7 @@ const SceneProgressionMixin = {
         this.runState.stageFlash = 1.8;
         this.runState.objectiveSpawned = false;
         this.runState.objectiveId = '';
+        this.clearActivePreyChases?.('victory');
         this.prey = [];
         this.applyEnergyDelta(this.player.maxEnergy, 0.6, 'victory');
         this.player.victoryPulse = 1;
@@ -666,6 +696,7 @@ const SceneProgressionMixin = {
             return;
         }
 
+        this.clearActivePreyChases?.('player-death');
         this.player.dead = true;
         this.player.deathTimer = Math.max(0.5, this.getRunTuningValue('gameplayDeathDuration', 2.6));
         this.runState.deathCause = reason;

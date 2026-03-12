@@ -217,6 +217,7 @@ const TUNING_FALLBACKS = {
     showDriveVectorsDebug: false,
     showCameraRigDebug: false,
     showFpsCounter: false,
+    showTelemetryOverlay: false,
     debugPauseOnTuningOpen: true,
 
     // ─── 编队跨度比例 ────────────────────────────
@@ -916,6 +917,7 @@ const TUNING_DEFS = [
     { section: '大调试栏目', sectionDesc: '统一查看鼠标距离圈层、移动趋势和镜头前探。总开关关掉后，下面所有可视化都会停用。', defaultOpen: true },
     { key: 'debugPauseOnTuningOpen', label: '打开调参自动暂停', desc: '展开调参面板时自动暂停游戏；收起后若是它触发的暂停会自动恢复。', type: 'toggle' },
     { key: 'showFpsCounter', label: '显示帧率', desc: '在左上角显示实时 FPS 和当前帧耗时。', type: 'toggle' },
+    { key: 'showTelemetryOverlay', label: '显示追逃埋点', desc: '在左上角额外显示集群速度档位、当前规模和 prey chase 统计。', type: 'toggle' },
     { key: 'showDebugVisuals', label: '启用调试可视化', desc: '统一开启下方所有调试图层的渲染能力', type: 'toggle' },
     { key: 'showDriveRingsDebug', label: '显示三圈与指针', desc: '显示内圈/中圈/外圈、指针位置与当前圈层状态', type: 'toggle' },
     { key: 'showDriveVectorsDebug', label: '显示移动趋势', desc: '显示 WASD、鼠标瞄准和综合 Flow 的运动趋势向量', type: 'toggle' },

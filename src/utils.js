@@ -110,3 +110,65 @@ function blendColor(colorA, colorB, t) {
     return Phaser.Display.Color.GetColor(color.r, color.g, color.b);
 }
 
+function makeSpatialHashKey(cellX, cellY) {
+    return `${cellX}:${cellY}`;
+}
+
+function buildSpatialHash(items, cellSize = 160, getX = (item) => item.x, getY = (item) => item.y) {
+    const size = Math.max(1, cellSize);
+    const cells = new Map();
+
+    (Array.isArray(items) ? items : []).forEach((item) => {
+        const x = getX(item);
+        const y = getY(item);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            return;
+        }
+        const cellX = Math.floor(x / size);
+        const cellY = Math.floor(y / size);
+        const key = makeSpatialHashKey(cellX, cellY);
+        if (!cells.has(key)) {
+            cells.set(key, []);
+        }
+        cells.get(key).push(item);
+    });
+
+    return {
+        cellSize: size,
+        cells,
+        getX,
+        getY
+    };
+}
+
+function querySpatialHash(hash, x, y, radius, predicate = null) {
+    if (!hash?.cells || !Number.isFinite(x) || !Number.isFinite(y)) {
+        return [];
+    }
+
+    const size = Math.max(1, hash.cellSize || 1);
+    const minCellX = Math.floor((x - radius) / size);
+    const maxCellX = Math.floor((x + radius) / size);
+    const minCellY = Math.floor((y - radius) / size);
+    const maxCellY = Math.floor((y + radius) / size);
+    const results = [];
+
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+        for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {
+            const items = hash.cells.get(makeSpatialHashKey(cellX, cellY));
+            if (!items) {
+                continue;
+            }
+            for (let i = 0; i < items.length; i += 1) {
+                const item = items[i];
+                if (predicate && !predicate(item)) {
+                    continue;
+                }
+                results.push(item);
+            }
+        }
+    }
+
+    return results;
+}
+
