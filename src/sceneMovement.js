@@ -2,8 +2,6 @@
 
 const SceneMovementMixin = {
     rebuildFormation(forceReset = false) {
-        performance.mark('CoreDemoScene-rebuildFormation-start');
-        try {
         const count = this.player.chain.length;
         if (!this.player.topology || this.player.chain.some((poolIndex) => !Object.prototype.hasOwnProperty.call(this.player.topology.slots || {}, poolIndex))) {
             this.player.topology = this.rebuildTopologyFromCurrentChain(true);
@@ -143,10 +141,6 @@ const SceneMovementMixin = {
         });
 
         this.computeCentroid();
-        } finally {
-            performance.mark('CoreDemoScene-rebuildFormation-end');
-            performance.measure('追踪: CoreDemoScene-rebuildFormation', 'CoreDemoScene-rebuildFormation-start', 'CoreDemoScene-rebuildFormation-end');
-        }
     },
     computeCentroid() {
         if (this.activeNodes.length === 0) {
@@ -213,8 +207,6 @@ const SceneMovementMixin = {
         };
     },
     updatePulse(simDt) {
-        performance.mark('CoreDemoScene-updatePulse-start');
-        try {
         const T = window.TUNING || {};
         if (!(T.enablePulse ?? true) || this.activeNodes.length === 0) return;
         this.rebalancePulseRunners();
@@ -253,10 +245,6 @@ const SceneMovementMixin = {
         }
 
         this.syncLegacyPulseState();
-        } finally {
-            performance.mark('CoreDemoScene-updatePulse-end');
-            performance.measure('追踪: CoreDemoScene-updatePulse', 'CoreDemoScene-updatePulse-start', 'CoreDemoScene-updatePulse-end');
-        }
     },
     getPulseVisualState(runner) {
         const path = runner?.path;
@@ -468,8 +456,6 @@ const SceneMovementMixin = {
         }
     },
     updateFormation(simDt) {
-        performance.mark('CoreDemoScene-updateFormation-start');
-        try {
         const T = window.TUNING || {};
         const volume = this.getClusterVolumeState();
         const burstDriftBoost = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstDriftBoost ?? 0, 0, 1.5) : 0;
@@ -485,7 +471,6 @@ const SceneMovementMixin = {
         const driveSpan = this.getIntentDriveSpan();
         this.refreshDynamicLinkRestState();
 
-        performance.mark('CoreDemoScene-updateFormation-resetNodes-start');
         this.activeNodes.forEach((node) => {
             node.fx = 0;
             node.fy = 0;
@@ -505,10 +490,6 @@ const SceneMovementMixin = {
                 }
             }
         });
-        performance.mark('CoreDemoScene-updateFormation-resetNodes-end');
-        performance.measure('追踪: CoreDemoScene-updateFormation-resetNodes', 'CoreDemoScene-updateFormation-resetNodes-start', 'CoreDemoScene-updateFormation-resetNodes-end');
-
-        performance.mark('CoreDemoScene-updateFormation-applyForces-start');
         this.activeNodes.forEach((node) => {
             const driveIntent = this.resolveNodeDriveIntent(node);
             if ((this.isClusterVolumeControlEnabled() || volume.latticePull > 0.01) && !(draggedTarget && node.index === draggedTarget.index)) {
@@ -556,12 +537,8 @@ const SceneMovementMixin = {
                 node.fy = 0;
             }
         });
-        performance.mark('CoreDemoScene-updateFormation-applyForces-end');
-        performance.measure('追踪: CoreDemoScene-updateFormation-applyForces', 'CoreDemoScene-updateFormation-applyForces-start', 'CoreDemoScene-updateFormation-applyForces-end');
-
         // ── 弹簧力 ──
         if (T.enableSpring ?? true) {
-            performance.mark('CoreDemoScene-updateFormation-springs-start');
             const sK = T.springK ?? 260;
             const sD = T.springDamping ?? 42;
             this.links.forEach((link) => {
@@ -583,13 +560,10 @@ const SceneMovementMixin = {
                 first.tension = Math.max(first.tension * 0.82, link.tension);
                 second.tension = Math.max(second.tension * 0.82, link.tension);
             });
-            performance.mark('CoreDemoScene-updateFormation-springs-end');
-            performance.measure('追踪: CoreDemoScene-updateFormation-springs', 'CoreDemoScene-updateFormation-springs-start', 'CoreDemoScene-updateFormation-springs-end');
         }
 
         // ── 排斥力 ──
         if (T.enableRepulsion ?? true) {
-            performance.mark('CoreDemoScene-updateFormation-repulsion-start');
             const repMinDist = T.repulsionMinDist ?? 72;
             const repDegMax = T.repulsionDegreeMax ?? 18;
             const repDegScale = T.repulsionDegreeScale ?? 1.6;
@@ -615,8 +589,6 @@ const SceneMovementMixin = {
                     second.fy += dirY * push;
                 }
             }
-            performance.mark('CoreDemoScene-updateFormation-repulsion-end');
-            performance.measure('追踪: CoreDemoScene-updateFormation-repulsion', 'CoreDemoScene-updateFormation-repulsion-start', 'CoreDemoScene-updateFormation-repulsion-end');
         }
 
         // ── 速度积分 + 阻力 ──
@@ -624,7 +596,6 @@ const SceneMovementMixin = {
         const dragFBase = T.dragFreeBase ?? 5.6;
         const dragStabB = T.dragStabilityBonus ?? 1.1;
         const tDecay = T.tensionDecay ?? 0.85;
-        performance.mark('CoreDemoScene-updateFormation-integrate-start');
         this.activeNodes.forEach((node) => {
             const drag = node.anchored ? dragAnch : dragFBase + this.player.stability * dragStabB;
             node.vx = (node.vx + (node.fx / node.mass) * simDt) * Math.exp(-drag * simDt);
@@ -633,12 +604,8 @@ const SceneMovementMixin = {
             node.y += node.vy * simDt;
             node.tension *= tDecay;
         });
-        performance.mark('CoreDemoScene-updateFormation-integrate-end');
-        performance.measure('追踪: CoreDemoScene-updateFormation-integrate', 'CoreDemoScene-updateFormation-integrate-start', 'CoreDemoScene-updateFormation-integrate-end');
-
         // ── PBD 位置校正 ──
         if (T.enablePBD ?? true) {
-            performance.mark('CoreDemoScene-updateFormation-pbd-start');
             const pbdIter = T.pbdIterations ?? 3;
             const pbdRate = T.pbdCorrectionRate ?? 0.18;
             const rigidPasses = T.pbdRigidPasses ?? 2;
@@ -656,8 +623,6 @@ const SceneMovementMixin = {
                     this.solveLinkConstraint(link, pbdRate, draggedIndex);
                 });
             }
-            performance.mark('CoreDemoScene-updateFormation-pbd-end');
-            performance.measure('追踪: CoreDemoScene-updateFormation-pbd', 'CoreDemoScene-updateFormation-pbd-start', 'CoreDemoScene-updateFormation-pbd-end');
         }
 
         if (draggedTarget) {
@@ -671,14 +636,8 @@ const SceneMovementMixin = {
         }
 
         this.computeCentroid();
-        } finally {
-            performance.mark('CoreDemoScene-updateFormation-end');
-            performance.measure('追踪: CoreDemoScene-updateFormation', 'CoreDemoScene-updateFormation-start', 'CoreDemoScene-updateFormation-end');
-        }
     },
     updatePlayerState(simDt) {
-        performance.mark('CoreDemoScene-updatePlayerState-start');
-        try {
         const T = window.TUNING || {};
         const desiredHeading = Math.atan2(this.intent.flowY, this.intent.flowX);
         const burstAggro = this.isBurstIntentDriveEnabled() ? clamp(this.intent.burstAggro ?? 0, 0, 1) : 0;
@@ -694,10 +653,6 @@ const SceneMovementMixin = {
         this.player.feastGlow = Math.max(0, (this.player.feastGlow || 0) - simDt * 0.55);
         if (this.player.shieldTimer <= 0) {
             this.player.shield = 0;
-        }
-        } finally {
-            performance.mark('CoreDemoScene-updatePlayerState-end');
-            performance.measure('追踪: CoreDemoScene-updatePlayerState', 'CoreDemoScene-updatePlayerState-start', 'CoreDemoScene-updatePlayerState-end');
         }
     },
 };

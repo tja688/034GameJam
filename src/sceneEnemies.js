@@ -55,8 +55,6 @@ const SceneEnemiesMixin = {
         });
     },
     updateSpawns(simDt) {
-        performance.mark('CoreDemoScene-updateSpawns-start');
-        try {
         if (this.player.dead || this.runState?.complete) {
             return;
         }
@@ -97,10 +95,6 @@ const SceneEnemiesMixin = {
             this.spawnConfiguredPrey(rule, count);
             this.runState.spawnTimers[rule.id] = rule.interval * Phaser.Math.FloatBetween(0.86, 1.14);
         });
-        } finally {
-            performance.mark('CoreDemoScene-updateSpawns-end');
-            performance.measure('追踪: CoreDemoScene-updateSpawns', 'CoreDemoScene-updateSpawns-start', 'CoreDemoScene-updateSpawns-end');
-        }
     },
     spawnConfiguredPrey(spawnConfig, count = 1, forceObjective = false) {
         const results = [];
@@ -271,9 +265,6 @@ const SceneEnemiesMixin = {
         return matches.slice(0, limit).map((entry) => entry.prey);
     },
     updatePrey(simDt) {
-        performance.mark('CoreDemoScene-updatePrey-start');
-        try {
-        performance.mark('CoreDemoScene-updatePrey-loop-start');
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             const toCenterX = prey.x - this.player.centroidX;
@@ -434,19 +425,10 @@ const SceneEnemiesMixin = {
             );
             prey.displayRotation = dampAngle(prey.displayRotation, heading + prey.spin * 0.02, 12, simDt);
         }
-        performance.mark('CoreDemoScene-updatePrey-loop-end');
-        performance.measure('追踪: CoreDemoScene-updatePrey-loop', 'CoreDemoScene-updatePrey-loop-start', 'CoreDemoScene-updatePrey-loop-end');
-        } finally {
-            performance.mark('CoreDemoScene-updatePrey-end');
-            performance.measure('追踪: CoreDemoScene-updatePrey', 'CoreDemoScene-updatePrey-start', 'CoreDemoScene-updatePrey-end');
-        }
     },
     resolvePreyNodeCollisions() {
-        performance.mark('CoreDemoScene-resolvePreyNodeCollisions-start');
-        try {
         // Use shared alive-set so finishPreyDevour can mark deaths visible to this loop
         this._preyAliveSet = new Set(this.prey);
-        performance.mark('CoreDemoScene-resolvePreyNodeCollisions-loop-start');
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             if (!prey || !this._preyAliveSet.has(prey)) {
@@ -513,12 +495,6 @@ const SceneEnemiesMixin = {
                     node.vy -= ny * overlap * 8 / Math.max(node.mass, 0.1);
                 }
             }
-        }
-        performance.mark('CoreDemoScene-resolvePreyNodeCollisions-loop-end');
-        performance.measure('追踪: CoreDemoScene-resolvePreyNodeCollisions-loop', 'CoreDemoScene-resolvePreyNodeCollisions-loop-start', 'CoreDemoScene-resolvePreyNodeCollisions-loop-end');
-        } finally {
-            performance.mark('CoreDemoScene-resolvePreyNodeCollisions-end');
-            performance.measure('追踪: CoreDemoScene-resolvePreyNodeCollisions', 'CoreDemoScene-resolvePreyNodeCollisions-start', 'CoreDemoScene-resolvePreyNodeCollisions-end');
         }
     }
 };

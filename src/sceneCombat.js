@@ -311,8 +311,6 @@ const SceneCombatMixin = {
         };
     },
     updatePredation(simDt) {
-        performance.mark('CoreDemoScene-updatePredation-start');
-        try {
         this._preyAliveSet = new Set(this.prey);
         const nodeByIndex = new Map(this.activeNodes.map((node) => [node.index, node]));
         this.activeNodes.forEach((node) => {
@@ -321,7 +319,6 @@ const SceneCombatMixin = {
         });
 
         let totalAttachments = 0;
-        performance.mark('CoreDemoScene-updatePredation-loop-start');
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             if (!prey) {
@@ -412,16 +409,10 @@ const SceneCombatMixin = {
                 }
             }
         }
-        performance.mark('CoreDemoScene-updatePredation-loop-end');
-        performance.measure('追踪: CoreDemoScene-updatePredation-loop', 'CoreDemoScene-updatePredation-loop-start', 'CoreDemoScene-updatePredation-loop-end');
 
         this._preyAliveSet = null;
         this.player.predationPressure = damp(this.player.predationPressure || 0, clamp(totalAttachments / 10, 0, 1.2), 7.5, simDt);
         this.updateFragments(simDt);
-        } finally {
-            performance.mark('CoreDemoScene-updatePredation-end');
-            performance.measure('追踪: CoreDemoScene-updatePredation', 'CoreDemoScene-updatePredation-start', 'CoreDemoScene-updatePredation-end');
-        }
     },
     performAttachmentBite(prey, attachment, node, pressure) {
         let amount = 0;
@@ -621,8 +612,6 @@ const SceneCombatMixin = {
         }
     },
     updateFragments(simDt) {
-        performance.mark('CoreDemoScene-updateFragments-start');
-        try {
         if (this.getRunTuningToggle && !this.getRunTuningToggle('gameplayPreyFragmentsEnabled', true)) {
             if (this.fragments.length > 0) {
                 this.fragments.length = 0;
@@ -642,7 +631,6 @@ const SceneCombatMixin = {
         const dragDecayEnergy = Math.exp(-3.2 * simDt);
         const dragDecayMeat = Math.exp(-2.1 * simDt);
         const hasFeeders = feeders.length > 0;
-        performance.mark('CoreDemoScene-updateFragments-loop-start');
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {
             const fragment = this.fragments[i];
             fragment.life -= simDt;
@@ -694,12 +682,6 @@ const SceneCombatMixin = {
             fragment.x += fragment.vx * simDt;
             fragment.y += fragment.vy * simDt;
             fragment.rotation += fragment.spin * simDt;
-        }
-        performance.mark('CoreDemoScene-updateFragments-loop-end');
-        performance.measure('追踪: CoreDemoScene-updateFragments-loop', 'CoreDemoScene-updateFragments-loop-start', 'CoreDemoScene-updateFragments-loop-end');
-        } finally {
-            performance.mark('CoreDemoScene-updateFragments-end');
-            performance.measure('追踪: CoreDemoScene-updateFragments', 'CoreDemoScene-updateFragments-start', 'CoreDemoScene-updateFragments-end');
         }
     },
     consumeFragment(fragment, node) {
