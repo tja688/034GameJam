@@ -566,7 +566,87 @@ const SceneEnemiesMixin = {
         matches.sort((a, b) => a.distanceSq - b.distanceSq);
         return matches.slice(0, limit).map((entry) => entry.prey);
     },
-    getPreyBehaviorProfile(prey) {
+    getPreyBehaviorTuning() {
+        const get = (key, fallback) => (typeof this.getRunTuningValue === 'function'
+            ? this.getRunTuningValue(key, fallback)
+            : Number.isFinite(window.TUNING?.[key]) ? window.TUNING[key] : fallback);
+        return {
+            threat: {
+                distanceWeight: Math.max(0, get('gameplayPreyThreatDistanceWeight', 0.42)),
+                nodeWeight: Math.max(0, get('gameplayPreyThreatNodeWeight', 0.34)),
+                gapWeight: Math.max(0, get('gameplayPreyThreatGapWeight', 0.34)),
+                phaseWeight: Math.max(0, get('gameplayPreyThreatPhaseWeight', 0.24)),
+                pressureWeight: Math.max(0, get('gameplayPreyThreatPressureWeight', 0.72)),
+                schoolWeight: Math.max(0, get('gameplayPreyThreatSchoolWeight', 0.26)),
+                panicWeight: Math.max(0, get('gameplayPreyThreatPanicWeight', 0.24))
+            },
+            radii: {
+                distanceRangeMul: Math.max(0.2, get('gameplayPreyThreatDistanceRangeMul', 1)),
+                nodeRangeMul: Math.max(0.2, get('gameplayPreyThreatNodeRangeMul', 1)),
+                objectiveRangeMul: Math.max(0.2, get('gameplayPreyThreatObjectiveRangeMul', 1))
+            },
+            phaseAggro: {
+                stable: Math.max(0, get('gameplayPreyPhaseAggroStable', 0.16)),
+                cruise: Math.max(0, get('gameplayPreyPhaseAggroCruise', 0.32)),
+                pursuit: Math.max(0, get('gameplayPreyPhaseAggroPursuit', 0.54)),
+                hunt: Math.max(0, get('gameplayPreyPhaseAggroHunt', 0.76)),
+                burst: Math.max(0, get('gameplayPreyPhaseAggroBurst', 1))
+            },
+            thresholds: {
+                alertEnterMul: Math.max(0.25, get('gameplayPreyBehaviorAlertEnterMul', 1)),
+                evadeEnterMul: Math.max(0.25, get('gameplayPreyBehaviorEvadeEnterMul', 1)),
+                burstEnterMul: Math.max(0.25, get('gameplayPreyBehaviorBurstEnterMul', 1)),
+                recoverEnterMul: Math.max(0.25, get('gameplayPreyBehaviorRecoverEnterMul', 1)),
+                grazeExitMul: Math.max(0.25, get('gameplayPreyBehaviorGrazeExitMul', 1)),
+                braceEnterMul: Math.max(0.25, get('gameplayPreyBehaviorBraceEnterMul', 1)),
+                braceReleaseMul: Math.max(0.25, get('gameplayPreyBehaviorBraceReleaseMul', 1)),
+                burstGapGateMul: Math.max(0.2, get('gameplayPreyBehaviorBurstGapGateMul', 1))
+            },
+            pacing: {
+                globalSpeedMul: Math.max(0.2, get('gameplayPreyBehaviorGlobalSpeedMul', 1)),
+                globalAccelMul: Math.max(0.2, get('gameplayPreyBehaviorGlobalAccelMul', 1)),
+                globalSpeedCapMul: Math.max(0.3, get('gameplayPreyBehaviorGlobalSpeedCapMul', 1)),
+                globalTurnMul: Math.max(0.2, get('gameplayPreyBehaviorGlobalTurnMul', 1)),
+                globalDragMul: Math.max(0.2, get('gameplayPreyBehaviorGlobalDragMul', 1)),
+                burstDragMul: Math.max(0.1, get('gameplayPreyBehaviorBurstDragMul', 1)),
+                attachmentDragMul: Math.max(0.1, get('gameplayPreyBehaviorAttachmentDragMul', 1)),
+                awayMul: Math.max(0, get('gameplayPreyBehaviorAwayMul', 1)),
+                wanderMul: Math.max(0, get('gameplayPreyBehaviorWanderMul', 1)),
+                schoolMul: Math.max(0, get('gameplayPreyBehaviorSchoolMul', 1)),
+                strafeMul: Math.max(0, get('gameplayPreyBehaviorStrafeMul', 1)),
+                jitterMul: Math.max(0, get('gameplayPreyBehaviorJitterMul', 1))
+            },
+            timers: {
+                burstWindowMul: Math.max(0.2, get('gameplayPreyBehaviorBurstWindowMul', 1)),
+                recoverWindowMul: Math.max(0.2, get('gameplayPreyBehaviorRecoverWindowMul', 1))
+            },
+            emotion: {
+                alarmDecayMul: Math.max(0.1, get('gameplayPreyBehaviorAlarmDecayMul', 1)),
+                fearGainMul: Math.max(0.1, get('gameplayPreyBehaviorFearGainMul', 1)),
+                fearDecayMul: Math.max(0.1, get('gameplayPreyBehaviorFearDecayMul', 1)),
+                staminaDrainMul: Math.max(0.1, get('gameplayPreyBehaviorStaminaDrainMul', 1)),
+                staminaRecoverMul: Math.max(0.1, get('gameplayPreyBehaviorStaminaRecoverMul', 1))
+            },
+            stateCapability: {
+                graze: Math.max(0.2, get('gameplayPreyStateCapGrazeMul', 1)),
+                alert: Math.max(0.2, get('gameplayPreyStateCapAlertMul', 1)),
+                evade: Math.max(0.2, get('gameplayPreyStateCapEvadeMul', 1)),
+                burst: Math.max(0.2, get('gameplayPreyStateCapBurstMul', 1)),
+                recover: Math.max(0.2, get('gameplayPreyStateCapRecoverMul', 1)),
+                brace: Math.max(0.2, get('gameplayPreyStateCapBraceMul', 1)),
+                schooling: Math.max(0.2, get('gameplayPreyStateCapSchoolingMul', 1))
+            },
+            archetypeSpeed: {
+                skittish: Math.max(0.2, get('gameplayPreyArchetypeDefaultSpeedMul', 1)),
+                school: Math.max(0.2, get('gameplayPreyArchetypeSchoolSpeedMul', 1)),
+                bulwark: Math.max(0.2, get('gameplayPreyArchetypeBulwarkSpeedMul', 1)),
+                weakspot: Math.max(0.2, get('gameplayPreyArchetypeWeakspotSpeedMul', 1)),
+                apex: Math.max(0.2, get('gameplayPreyArchetypeApexSpeedMul', 1)),
+                objective: Math.max(0.2, get('gameplayPreyArchetypeObjectiveSpeedMul', 1))
+            }
+        };
+    },
+    getPreyBehaviorProfile(prey, tuning = this.getPreyBehaviorTuning()) {
         const archetype = prey?.archetype || 'skittish';
         const dominance = clamp(((this.activeNodes?.length || DEFAULT_BASE_CHAIN.length) - 8) / 14, 0, 1);
         const profile = {
@@ -679,20 +759,38 @@ const SceneEnemiesMixin = {
             profile.nativeSpeedMuls.burst = 1.14;
         }
 
+        profile.alertEnter *= tuning.thresholds.alertEnterMul;
+        profile.evadeEnter *= tuning.thresholds.evadeEnterMul;
+        profile.burstEnter *= tuning.thresholds.burstEnterMul;
+        profile.grazeExit *= tuning.thresholds.grazeExitMul;
+        profile.recoverEnter *= tuning.thresholds.recoverEnterMul;
+        profile.braceEnter *= tuning.thresholds.braceEnterMul;
+        profile.braceRelease *= tuning.thresholds.braceReleaseMul;
+        profile.burstDuration *= tuning.timers.burstWindowMul;
+        profile.recoverDuration *= tuning.timers.recoverWindowMul;
+        profile.alarmDecay *= tuning.emotion.alarmDecayMul;
+        profile.fearGain *= tuning.emotion.fearGainMul;
+        profile.fearDecay *= tuning.emotion.fearDecayMul;
+        profile.staminaDrain *= tuning.emotion.staminaDrainMul;
+        profile.staminaRecover *= tuning.emotion.staminaRecoverMul;
+        Object.keys(profile.turnRates).forEach((stateKey) => {
+            profile.turnRates[stateKey] *= tuning.pacing.globalTurnMul;
+        });
+
         return profile;
     },
-    getPreyPhaseAggro(phase) {
+    getPreyPhaseAggro(phase, tuning = this.getPreyBehaviorTuning()) {
         switch (phase) {
             case 'stable':
-                return 0.16;
+                return tuning.phaseAggro.stable;
             case 'pursuit':
-                return 0.54;
+                return tuning.phaseAggro.pursuit;
             case 'hunt':
-                return 0.76;
+                return tuning.phaseAggro.hunt;
             case 'burst':
-                return 1;
+                return tuning.phaseAggro.burst;
             default:
-                return 0.32;
+                return tuning.phaseAggro.cruise;
         }
     },
     buildSchoolSteer(prey, nearbyPrey, threat) {
@@ -746,7 +844,7 @@ const SceneEnemiesMixin = {
             alarm
         };
     },
-    evaluatePreyThreat(prey, nearbyNodes, nearbyPrey) {
+    evaluatePreyThreat(prey, nearbyNodes, nearbyPrey, tuning = this.getPreyBehaviorTuning()) {
         const telemetry = this.ecoTelemetry?.player?.current || {};
         const phase = telemetry.phase || this.getTelemetryPhaseBucket();
         const bucket = telemetry.bucket || this.getTelemetryClusterBucket();
@@ -768,7 +866,11 @@ const SceneEnemiesMixin = {
             const dx = prey.x - node.x;
             const dy = prey.y - node.y;
             const distance = Math.hypot(dx, dy) || 0.0001;
-            const weight = clamp(1 - distance / (prey.radius + 220 + (prey.isObjective ? 40 : 0)), 0, 1);
+            const weight = clamp(
+                1 - distance / ((prey.radius + 220 + (prey.isObjective ? 40 : 0)) * tuning.radii.nodeRangeMul),
+                0,
+                1
+            );
             const nodeSpeed = Math.hypot(node.vx || 0, node.vy || 0);
             const drive = normalize(node.vx || 0, node.vy || 0, away.x, away.y);
             nodeThreat += weight * (0.42 + clamp(nodeSpeed / 140, 0, 1.2) * 0.34 + Math.max(0, drive.x * away.x + drive.y * away.y) * 0.24);
@@ -777,17 +879,22 @@ const SceneEnemiesMixin = {
         nodeThreat = clamp(nodeThreat / Math.max(1, Math.sqrt(nearbyNodes.length || 1)), 0, 1.28);
 
         const schoolAlarm = nearbyPrey.reduce((best, other) => Math.max(best, other.alarm || 0), 0);
-        const phaseAggro = this.getPreyPhaseAggro(phase);
+        const phaseAggro = this.getPreyPhaseAggro(phase, tuning);
         const pressure = clamp((prey.attachments?.length || 0) / Math.max(1, prey.maxAnchors || 1), 0, 1.4);
-        const distanceThreat = clamp(1 - (distanceFromCenter - (prey.isObjective ? 260 : 330)) / (prey.isObjective ? 440 : 560), 0, 1.2);
+        const distanceRangeMul = tuning.radii.distanceRangeMul * (prey.isObjective ? tuning.radii.objectiveRangeMul : 1);
+        const distanceThreat = clamp(
+            1 - (distanceFromCenter - (prey.isObjective ? 260 : 330) * distanceRangeMul) / ((prey.isObjective ? 440 : 560) * distanceRangeMul),
+            0,
+            1.2
+        );
         const threatValue = clamp(
-            distanceThreat * 0.42
-            + nodeThreat * 0.34
-            + gapNorm * 0.34
-            + phaseAggro * 0.24
-            + pressure * 0.72
-            + schoolAlarm * 0.26
-            + (prey.panic || 0) * 0.24,
+            distanceThreat * tuning.threat.distanceWeight
+            + nodeThreat * tuning.threat.nodeWeight
+            + gapNorm * tuning.threat.gapWeight
+            + phaseAggro * tuning.threat.phaseWeight
+            + pressure * tuning.threat.pressureWeight
+            + schoolAlarm * tuning.threat.schoolWeight
+            + (prey.panic || 0) * tuning.threat.panicWeight,
             0,
             1.9
         );
@@ -841,7 +948,7 @@ const SceneEnemiesMixin = {
             this.createRing(prey.x, prey.y, prey.radius + 24, prey.signalColor || prey.color, 0.14, 2, 'prey-guard');
         }
     },
-    updatePreyStateMachine(prey, threat, profile, simDt) {
+    updatePreyStateMachine(prey, threat, profile, tuning, simDt) {
         const baseIdleState = profile.idleState || 'graze';
         prey.fear = clamp(
             prey.fear + (threat.threat * profile.fearGain - profile.fearDecay - (prey.behaviorState === baseIdleState ? 0.12 : 0)) * simDt,
@@ -867,6 +974,7 @@ const SceneEnemiesMixin = {
         const compressionAccess = this.getCompressionAccess?.(prey, { encirclement: threat.crowd * 0.34 }) || 0;
         const canBurst = prey.stamina > 0.18 && prey.guardPulse <= 0.12 && threat.threat >= profile.burstEnter;
         const shouldBrace = prey.bulwarkChargeRate > 0 && threat.threat >= profile.braceEnter && compressionAccess < 0.72;
+        const burstGapGateMul = tuning.thresholds.burstGapGateMul;
         const state = prey.behaviorState || baseIdleState;
         let nextState = state;
 
@@ -879,13 +987,13 @@ const SceneEnemiesMixin = {
                 nextState = 'evade';
             } else if (prey.braceTimer <= 0 && threat.threat < profile.alertEnter) {
                 nextState = 'recover';
-            } else if (canBurst && threat.gapNorm > 0.42) {
+            } else if (canBurst && threat.gapNorm > 0.42 * burstGapGateMul) {
                 nextState = 'burst';
             }
         } else if (state === 'recover') {
             if (shouldBrace) {
                 nextState = 'brace';
-            } else if (canBurst && threat.gapNorm > 0.48) {
+            } else if (canBurst && threat.gapNorm > 0.48 * burstGapGateMul) {
                 nextState = 'burst';
             } else if (threat.threat >= profile.evadeEnter) {
                 nextState = 'evade';
@@ -895,7 +1003,7 @@ const SceneEnemiesMixin = {
         } else if (state === 'evade') {
             if (shouldBrace) {
                 nextState = 'brace';
-            } else if (canBurst && threat.gapNorm > 0.24) {
+            } else if (canBurst && threat.gapNorm > 0.24 * burstGapGateMul) {
                 nextState = 'burst';
             } else if (threat.threat < profile.recoverEnter && prey.behaviorStateAge > 0.44) {
                 nextState = 'recover';
@@ -905,7 +1013,7 @@ const SceneEnemiesMixin = {
                 nextState = 'brace';
             } else if (threat.threat >= profile.evadeEnter || prey.attachments.length > 0) {
                 nextState = 'evade';
-            } else if (canBurst && threat.gapNorm > 0.32) {
+            } else if (canBurst && threat.gapNorm > 0.32 * burstGapGateMul) {
                 nextState = 'burst';
             } else if (threat.threat < profile.grazeExit && prey.behaviorStateAge > 0.3) {
                 nextState = baseIdleState;
@@ -915,7 +1023,7 @@ const SceneEnemiesMixin = {
                 nextState = 'brace';
             } else if (threat.threat >= profile.evadeEnter || prey.attachments.length > 0) {
                 nextState = 'evade';
-            } else if (canBurst && threat.gapNorm > 0.44) {
+            } else if (canBurst && threat.gapNorm > 0.44 * burstGapGateMul) {
                 nextState = 'burst';
             } else if (threat.threat >= profile.alertEnter || threat.schoolAlarm > 0.24) {
                 nextState = 'alert';
@@ -947,6 +1055,7 @@ const SceneEnemiesMixin = {
     },
     updatePrey(simDt) {
         this.refreshPreySpatialCache();
+        const tuning = this.getPreyBehaviorTuning();
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             const distanceFromCenter = Math.hypot(prey.x - this.player.centroidX, prey.y - this.player.centroidY);
@@ -961,9 +1070,9 @@ const SceneEnemiesMixin = {
 
             const nearbyNodes = this.pickNearbyNodes(prey.x, prey.y, 6, 240 + prey.radius + (prey.isObjective ? 60 : 0));
             const nearbyPrey = prey.schoolRadius > 0 ? this.pickNearbyPrey(prey, prey.schoolRadius, 6) : [];
-            const profile = this.getPreyBehaviorProfile(prey);
-            const threat = this.evaluatePreyThreat(prey, nearbyNodes, nearbyPrey);
-            this.updatePreyStateMachine(prey, threat, profile, simDt);
+            const profile = this.getPreyBehaviorProfile(prey, tuning);
+            const threat = this.evaluatePreyThreat(prey, nearbyNodes, nearbyPrey, tuning);
+            this.updatePreyStateMachine(prey, threat, profile, tuning, simDt);
             const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 2.4 : prey.shape === 'circle' ? 1.6 : 1.05) + prey.seed * 4.2;
             const wobble = Math.sin(this.worldTime * (prey.shape === 'triangle' ? 7.2 : 4.6) + prey.seed) * (prey.shape === 'triangle' ? 0.74 : prey.shape === 'circle' ? 0.42 : 0.18);
             const wander = {
@@ -986,31 +1095,43 @@ const SceneEnemiesMixin = {
             }
 
             const stateKey = prey.behaviorState || profile.idleState;
-            const desiredX = threat.away.x * (profile.awayWeight[stateKey] || 0.6)
-                + wander.x * prey.wander * (profile.wanderWeight[stateKey] || 0.12) * (1 - attachmentPenalty * 0.7)
-                + school.x * (profile.schoolWeight[stateKey] || 0.1) * 0.016
-                + strafeX * (profile.strafeWeight[stateKey] || 0.08)
-                + Math.cos(prey.seed * 11 + this.worldTime * 5.8) * (profile.jitterWeight[stateKey] || 0.12);
-            const desiredY = threat.away.y * (profile.awayWeight[stateKey] || 0.6)
-                + wander.y * prey.wander * (profile.wanderWeight[stateKey] || 0.12) * (1 - attachmentPenalty * 0.7)
-                + school.y * (profile.schoolWeight[stateKey] || 0.1) * 0.016
-                + strafeY * (profile.strafeWeight[stateKey] || 0.08)
-                + Math.sin(prey.seed * 7 + this.worldTime * 5.2) * (profile.jitterWeight[stateKey] || 0.12);
+            const awayWeight = (profile.awayWeight[stateKey] || 0.6) * tuning.pacing.awayMul;
+            const wanderWeight = (profile.wanderWeight[stateKey] || 0.12) * tuning.pacing.wanderMul;
+            const schoolWeight = (profile.schoolWeight[stateKey] || 0.1) * tuning.pacing.schoolMul;
+            const strafeWeight = (profile.strafeWeight[stateKey] || 0.08) * tuning.pacing.strafeMul;
+            const jitterWeight = (profile.jitterWeight[stateKey] || 0.12) * tuning.pacing.jitterMul;
+            const desiredX = threat.away.x * awayWeight
+                + wander.x * prey.wander * wanderWeight * (1 - attachmentPenalty * 0.7)
+                + school.x * schoolWeight * 0.016
+                + strafeX * strafeWeight
+                + Math.cos(prey.seed * 11 + this.worldTime * 5.8) * jitterWeight;
+            const desiredY = threat.away.y * awayWeight
+                + wander.y * prey.wander * wanderWeight * (1 - attachmentPenalty * 0.7)
+                + school.y * schoolWeight * 0.016
+                + strafeY * strafeWeight
+                + Math.sin(prey.seed * 7 + this.worldTime * 5.2) * jitterWeight;
             const desired = normalize(desiredX, desiredY, threat.away.x, threat.away.y);
             const desiredAngle = Math.atan2(desired.y, desired.x);
             prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, profile.turnRates[stateKey] || 4.2, simDt);
             prey.escapeDirX = Math.cos(prey.escapeAngle);
             prey.escapeDirY = Math.sin(prey.escapeAngle);
 
-            const capabilityRatio = Math.max(0.28, (profile.capabilityRatios[stateKey] || 0.58) - profile.dominance * profile.dominanceDrop);
-            const nativeSpeed = prey.speed * (profile.nativeSpeedMuls[stateKey] || 0.62);
+            const archetypePaceMul = (tuning.archetypeSpeed[prey.archetype] || tuning.archetypeSpeed.skittish) * (prey.isObjective ? tuning.archetypeSpeed.objective : 1);
+            const paceMul = tuning.pacing.globalSpeedMul * archetypePaceMul;
+            const capabilityRatio = Math.max(
+                0.18,
+                0.28 * paceMul,
+                (profile.capabilityRatios[stateKey] || 0.58) * (tuning.stateCapability[stateKey] || 1) * paceMul - profile.dominance * profile.dominanceDrop
+            );
+            const nativeSpeed = prey.speed * (profile.nativeSpeedMuls[stateKey] || 0.62) * paceMul;
             const targetSpeed = clamp(
                 Math.max(nativeSpeed, threat.playerRefSpeed * capabilityRatio) * (1 - attachmentPenalty * 0.46),
-                prey.speed * 0.34,
-                prey.speed * profile.speedCapMul
+                prey.speed * 0.34 * paceMul,
+                prey.speed * profile.speedCapMul * tuning.pacing.globalSpeedCapMul * paceMul
             ) * ((prey.guardPulse || 0) > 0.18 ? 0.94 : 1);
             const accel = prey.accel
                 * (profile.accelMuls[stateKey] || 0.9)
+                * tuning.pacing.globalAccelMul
                 * (1 + threat.gapNorm * 0.28 + prey.panic * 0.22 + (prey.isObjective ? 0.14 : 0))
                 * (1 - attachmentPenalty * 0.48);
             prey.behaviorTargetSpeed = targetSpeed;
@@ -1034,7 +1155,7 @@ const SceneEnemiesMixin = {
                 prey.vy *= scale;
             }
 
-            const drag = prey.attachments.length > 0
+            const baseDrag = prey.attachments.length > 0
                 ? 2.05
                 : stateKey === 'burst'
                     ? 0.86
@@ -1043,6 +1164,9 @@ const SceneEnemiesMixin = {
                         : prey.shape === 'square'
                             ? 1.28
                             : 0.94;
+            const drag = baseDrag
+                * tuning.pacing.globalDragMul
+                * (prey.attachments.length > 0 ? tuning.pacing.attachmentDragMul : stateKey === 'burst' ? tuning.pacing.burstDragMul : 1);
             prey.vx *= Math.exp(-drag * simDt);
             prey.vy *= Math.exp(-drag * simDt);
             prey.x += prey.vx * simDt;
