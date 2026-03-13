@@ -1225,7 +1225,7 @@ const SceneRenderMixin = {
                     const x = clusterX + Math.cos(angle) * dist;
                     const y = clusterY + Math.sin(angle) * dist;
                     const size = 28 + rand() * 160;
-                    const alpha = 0.012 + rand() * 0.03;
+                    const alpha = 0.02 + rand() * 0.045;
                     const rotation = rand() * Math.PI * 2;
                     const filled = rand() > 0.42;
                     const shapeRoll = rand();
@@ -1244,7 +1244,7 @@ const SceneRenderMixin = {
                 const x = rand() * sizeBase;
                 const y = rand() * sizeBase;
                 const size = 18 + rand() * 56;
-                const alpha = 0.012 + rand() * 0.028;
+                const alpha = 0.018 + rand() * 0.034;
                 const rotation = rand() * Math.PI * 2;
                 const shapeRoll = rand();
                 const shape = shapeRoll < 0.34 ? 'circle' : shapeRoll < 0.67 ? 'square' : 'triangle';
@@ -1272,7 +1272,7 @@ const SceneRenderMixin = {
                     const x = originX + Math.cos(rotation) * travel - Math.sin(rotation) * offset;
                     const y = originY + Math.sin(rotation) * travel + Math.cos(rotation) * offset;
                     const size = 120 + rand() * 260;
-                    const alpha = 0.008 + rand() * 0.018;
+                    const alpha = 0.014 + rand() * 0.026;
                     const shapeRoll = rand();
                     const shape = shapeRoll < 0.24
                         ? 'circle'
@@ -1289,7 +1289,7 @@ const SceneRenderMixin = {
                 const x = rand() * sizeMacro;
                 const y = rand() * sizeMacro;
                 const size = 180 + rand() * 420;
-                const alpha = 0.006 + rand() * 0.014;
+                const alpha = 0.01 + rand() * 0.02;
                 const rotation = rand() * Math.PI * 2;
                 drawGroundShape(scratch, rand() > 0.5 ? 'triangle' : 'square', x, y, size, alpha, rotation, rand() > 0.5);
             }
@@ -1340,12 +1340,12 @@ const SceneRenderMixin = {
 
         const stageFlash = clamp(this.runState?.stageFlash || 0, 0, 1.8);
         const baseAlphaMult = 1 + stageFlash * 0.2;
-        const macroTint = blendColor(palette.arena || COLORS.arena, palette.grid || COLORS.grid, 0.62);
-        const baseTint = blendColor(palette.grid || COLORS.grid, palette.signal || COLORS.core, 0.08);
+        const macroTint = blendColor(palette.arena || COLORS.arena, palette.grid || COLORS.grid, 0.82);
+        const baseTint = blendColor(palette.grid || COLORS.grid, palette.signal || COLORS.core, 0.18);
 
         if (this.mapBgSprites.macro) {
             this.mapBgSprites.macro.setTint(macroTint);
-            this.mapBgSprites.macro.setAlpha(0.34 * baseAlphaMult);
+            this.mapBgSprites.macro.setAlpha(0.48 * baseAlphaMult);
             this.mapBgSprites.macro.tileScaleX = zoom;
             this.mapBgSprites.macro.tileScaleY = zoom;
             this.mapBgSprites.macro.tilePositionX = worldLeft;
@@ -1353,7 +1353,7 @@ const SceneRenderMixin = {
         }
 
         this.mapBgSprites.base.setTint(baseTint);
-        this.mapBgSprites.base.setAlpha(0.44 * baseAlphaMult);
+        this.mapBgSprites.base.setAlpha(0.62 * baseAlphaMult);
         this.mapBgSprites.base.tileScaleX = zoom;
         this.mapBgSprites.base.tileScaleY = zoom;
         this.mapBgSprites.base.tilePositionX = worldLeft;
