@@ -590,7 +590,6 @@ function sanitizeTuningUiState(value) {
     const categories = raw.categories && typeof raw.categories === 'object' ? raw.categories : {};
     const sections = raw.sections && typeof raw.sections === 'object' ? raw.sections : {};
     const next = {
-        panelCollapsed: typeof raw.panelCollapsed === 'boolean' ? raw.panelCollapsed : true,
         categories: {},
         sections: {}
     };
@@ -1817,7 +1816,7 @@ function buildTuningPanel() {
     const panel = document.createElement('div');
     panel.id = 'tuning-panel';
     const uiState = loadTuningUiState();
-    panel.className = uiState.panelCollapsed ? 'collapsed' : '';
+    panel.className = 'collapsed';
 
     // ─── 切换按钮 ──────────────────────────────────
     const toggle = document.createElement('button');
@@ -1825,8 +1824,6 @@ function buildTuningPanel() {
     toggle.textContent = '⚙ 开发调参';
     const setPanelCollapsed = (collapsed) => {
         panel.classList.toggle('collapsed', collapsed);
-        uiState.panelCollapsed = !!collapsed;
-        writeTuningUiState(uiState);
         syncTuningPanelState();
     };
     toggle.addEventListener('click', () => {
