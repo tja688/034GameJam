@@ -1168,92 +1168,192 @@ const SceneRenderMixin = {
         });
     },
     initInfiniteMapBackgrounds() {
-        const keyBase = 'map-bg-static';
-        const sizeBase = 1536; // Larger texture for less repetition on panning
-        
+        const keyBase = 'map-bg-static-base';
+        const keyMacro = 'map-bg-static-macro';
+        const sizeBase = 2048;
+        const sizeMacro = 2048;
+
+        const createSeededRandom = (initialSeed) => {
+            let seed = initialSeed >>> 0;
+            return () => {
+                seed = (seed * 1664525 + 1013904223) >>> 0;
+                return seed / 0x100000000;
+            };
+        };
+
+        const drawGroundShape = (g, shape, x, y, size, alpha, rotation, filled) => {
+            if (!filled && shape === 'circle') {
+                g.lineStyle(Math.max(2, size * 0.04), 0xffffff, alpha);
+                g.strokeCircle(x, y, size * 0.5);
+                return;
+            }
+            if (!filled && shape === 'bar') {
+                g.save();
+                g.translateCanvas(x, y);
+                g.rotateCanvas(rotation);
+                g.lineStyle(Math.max(2, size * 0.08), 0xffffff, alpha);
+                g.strokeRect(-size * 0.65, -size * 0.16, size * 1.3, size * 0.32);
+                g.restore();
+                return;
+            }
+            if (shape === 'bar') {
+                g.save();
+                g.translateCanvas(x, y);
+                g.rotateCanvas(rotation);
+                g.fillStyle(0xffffff, alpha);
+                g.fillRect(-size * 0.75, -size * 0.14, size * 1.5, size * 0.28);
+                g.restore();
+                return;
+            }
+            drawShape(g, shape, x, y, size, 0xffffff, alpha, rotation);
+        };
+
         if (!this.textures.exists(keyBase)) {
             const scratch = this.add.graphics();
+            const rand = createSeededRandom(0x034034);
             scratch.setVisible(false);
-            
-            let seed = 142857;
-            const rand = () => {
-                seed = (seed * 9301 + 49297) % 233280;
-                return seed / 233280;
-            };
-
-            const drawShapeVariant = (g, shape, x, y, size, a, rot) => {
-                drawShape(g, shape, x, y, size, 0xffffff, a, rot);
-            };
-
             scratch.clear();
-            scratch.fillStyle(0xffffff, 1);
-            scratch.lineStyle(2, 0xffffff, 1);
 
-            // Scattering circles, squares, triangles purely as ground canvas decorations
-            for (let i = 0; i < 220; i++) {
-                let x = rand() * sizeBase;
-                let y = rand() * sizeBase;
-                let alpha = 0.05 + rand() * 0.12; 
-                let size = rand() * 50 + 10; 
-                
-                scratch.setAlpha(alpha);
-                
-                let shapeType = rand();
-                let rot = rand() * Math.PI;
-                
-                if (shapeType < 0.33) {
-                    if (rand() > 0.5) scratch.fillCircle(x, y, size * 0.5);
-                    else scratch.strokeCircle(x, y, size * 0.5);
-                } else if (shapeType < 0.66) {
-                    drawShapeVariant(scratch, 'square', x, y, size, alpha, rot);
-                } else {
-                    drawShapeVariant(scratch, 'triangle', x, y, size, alpha, rot);
+            for (let cluster = 0; cluster < 28; cluster++) {
+                const clusterX = rand() * sizeBase;
+                const clusterY = rand() * sizeBase;
+                const clusterRadius = 140 + rand() * 320;
+                const count = 8 + Math.floor(rand() * 14);
+                for (let i = 0; i < count; i++) {
+                    const angle = rand() * Math.PI * 2;
+                    const dist = Math.pow(rand(), 0.72) * clusterRadius;
+                    const x = clusterX + Math.cos(angle) * dist;
+                    const y = clusterY + Math.sin(angle) * dist;
+                    const size = 28 + rand() * 160;
+                    const alpha = 0.012 + rand() * 0.03;
+                    const rotation = rand() * Math.PI * 2;
+                    const filled = rand() > 0.42;
+                    const shapeRoll = rand();
+                    const shape = shapeRoll < 0.3
+                        ? 'circle'
+                        : shapeRoll < 0.58
+                            ? 'square'
+                            : shapeRoll < 0.82
+                                ? 'triangle'
+                                : 'bar';
+                    drawGroundShape(scratch, shape, x, y, size, alpha, rotation, filled);
                 }
             }
-            
+
+            for (let i = 0; i < 180; i++) {
+                const x = rand() * sizeBase;
+                const y = rand() * sizeBase;
+                const size = 18 + rand() * 56;
+                const alpha = 0.012 + rand() * 0.028;
+                const rotation = rand() * Math.PI * 2;
+                const shapeRoll = rand();
+                const shape = shapeRoll < 0.34 ? 'circle' : shapeRoll < 0.67 ? 'square' : 'triangle';
+                drawGroundShape(scratch, shape, x, y, size, alpha, rotation, rand() > 0.3);
+            }
+
             scratch.generateTexture(keyBase, sizeBase, sizeBase);
             scratch.destroy();
         }
 
+        if (!this.textures.exists(keyMacro)) {
+            const scratch = this.add.graphics();
+            const rand = createSeededRandom(0x340340);
+            scratch.setVisible(false);
+            scratch.clear();
+
+            for (let band = 0; band < 16; band++) {
+                const originX = rand() * sizeMacro;
+                const originY = rand() * sizeMacro;
+                const rotation = rand() * Math.PI * 2;
+                const stepCount = 5 + Math.floor(rand() * 7);
+                for (let i = 0; i < stepCount; i++) {
+                    const travel = (i / Math.max(1, stepCount - 1)) * (220 + rand() * 360);
+                    const offset = (rand() - 0.5) * 160;
+                    const x = originX + Math.cos(rotation) * travel - Math.sin(rotation) * offset;
+                    const y = originY + Math.sin(rotation) * travel + Math.cos(rotation) * offset;
+                    const size = 120 + rand() * 260;
+                    const alpha = 0.008 + rand() * 0.018;
+                    const shapeRoll = rand();
+                    const shape = shapeRoll < 0.24
+                        ? 'circle'
+                        : shapeRoll < 0.5
+                            ? 'square'
+                            : shapeRoll < 0.76
+                                ? 'triangle'
+                                : 'bar';
+                    drawGroundShape(scratch, shape, x, y, size, alpha, rotation + rand() * 0.55, rand() > 0.35);
+                }
+            }
+
+            for (let i = 0; i < 56; i++) {
+                const x = rand() * sizeMacro;
+                const y = rand() * sizeMacro;
+                const size = 180 + rand() * 420;
+                const alpha = 0.006 + rand() * 0.014;
+                const rotation = rand() * Math.PI * 2;
+                drawGroundShape(scratch, rand() > 0.5 ? 'triangle' : 'square', x, y, size, alpha, rotation, rand() > 0.5);
+            }
+
+            scratch.generateTexture(keyMacro, sizeMacro, sizeMacro);
+            scratch.destroy();
+        }
+
         if (!this.mapBgSprites) {
-            // Provide a single TileSprite for the ground layer
             this.mapBgSprites = {
+                macro: this.add.tileSprite(0, 0, this.scale.width, this.scale.height, keyMacro).setOrigin(0, 0).setDepth(0.05),
                 base: this.add.tileSprite(0, 0, this.scale.width, this.scale.height, keyBase).setOrigin(0, 0).setDepth(0.1)
             };
-            this.mapBgSprites.base.setScrollFactor(0); // Static to view, tilePosition handles mapping
+            this.mapBgSprites.macro.setScrollFactor(0);
+            this.mapBgSprites.base.setScrollFactor(0);
         } else {
+            this.mapBgSprites.macro.setTexture(keyMacro).setSize(this.scale.width, this.scale.height);
             this.mapBgSprites.base.setTexture(keyBase).setSize(this.scale.width, this.scale.height);
         }
     },
 
     updateMapBackgrounds() {
         if (!this.mapBgSprites) {
-            this.initInfiniteMapBackgrounds(); 
+            this.initInfiniteMapBackgrounds();
         }
 
         this.mapBgSprites.base.setVisible(true);
+        if (this.mapBgSprites.macro) this.mapBgSprites.macro.setVisible(true);
         if (this.mapBgSprites.mid) this.mapBgSprites.mid.setVisible(false);
         if (this.mapBgSprites.anchor) this.mapBgSprites.anchor.setVisible(false);
 
         const vw = this.cameraRig.viewportWidth;
         const vh = this.cameraRig.viewportHeight;
         this.mapBgSprites.base.setSize(vw, vh);
-        
+        if (this.mapBgSprites.macro) {
+            this.mapBgSprites.macro.setSize(vw, vh);
+        }
+
         const palette = this.getRunPalette ? this.getRunPalette() : { grid: COLORS.grid };
         const zoom = this.cameraRig.zoom;
         const cx = this.cameraRig.x;
         const cy = this.cameraRig.y;
+        const renderOffsetX = (this.cameraRig.renderOffsetX || 0) / Math.max(zoom, 0.0001);
+        const renderOffsetY = (this.cameraRig.renderOffsetY || 0) / Math.max(zoom, 0.0001);
 
-        const worldLeft = cx - (vw * 0.5) / zoom;
-        const worldTop = cy - (vh * 0.5) / zoom;
+        const worldLeft = cx - (vw * 0.5) / zoom - renderOffsetX;
+        const worldTop = cy - (vh * 0.5) / zoom - renderOffsetY;
 
         const stageFlash = clamp(this.runState?.stageFlash || 0, 0, 1.8);
         const baseAlphaMult = 1 + stageFlash * 0.2;
+        const macroTint = blendColor(palette.arena || COLORS.arena, palette.grid || COLORS.grid, 0.62);
+        const baseTint = blendColor(palette.grid || COLORS.grid, palette.signal || COLORS.core, 0.08);
 
-        this.mapBgSprites.base.setTint(palette.grid);
-        this.mapBgSprites.base.setAlpha(0.65 * baseAlphaMult);
-        
-        // Exact 1:1 mapping with world scale, turning the TileSprite into a pure fixed ground pattern
+        if (this.mapBgSprites.macro) {
+            this.mapBgSprites.macro.setTint(macroTint);
+            this.mapBgSprites.macro.setAlpha(0.34 * baseAlphaMult);
+            this.mapBgSprites.macro.tileScaleX = zoom;
+            this.mapBgSprites.macro.tileScaleY = zoom;
+            this.mapBgSprites.macro.tilePositionX = worldLeft;
+            this.mapBgSprites.macro.tilePositionY = worldTop;
+        }
+
+        this.mapBgSprites.base.setTint(baseTint);
+        this.mapBgSprites.base.setAlpha(0.44 * baseAlphaMult);
         this.mapBgSprites.base.tileScaleX = zoom;
         this.mapBgSprites.base.tileScaleY = zoom;
         this.mapBgSprites.base.tilePositionX = worldLeft;
@@ -1299,6 +1399,9 @@ const SceneRenderMixin = {
             this.updateMapBackgrounds();
         } else if (this.mapBgSprites) {
             this.mapBgSprites.base.setVisible(false);
+            if (this.mapBgSprites.macro) {
+                this.mapBgSprites.macro.setVisible(false);
+            }
         }
 
         if (objective) {
