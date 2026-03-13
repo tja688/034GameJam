@@ -170,7 +170,6 @@
   "showCameraRigDebug": false,
   "showFpsCounter": true,
   "showTelemetryOverlay": false,
-  "showCameraTelemetryOverlay": false,
   "debugPauseOnTuningOpen": true,
   "formationSpanFactor": 0.16,
   "maxNodeCount": 2000,

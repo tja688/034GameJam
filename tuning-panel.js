@@ -221,7 +221,6 @@ const TUNING_FALLBACKS = {
     showCameraRigDebug: false,
     showFpsCounter: false,
     showTelemetryOverlay: false,
-    showCameraTelemetryOverlay: false,
     debugPauseOnTuningOpen: true,
 
     // ─── 编队跨度比例 ────────────────────────────
@@ -1270,7 +1269,6 @@ const TUNING_DEFS = [
     { key: 'debugPauseOnTuningOpen', label: '打开调参自动暂停', desc: '展开调参面板时自动暂停游戏；收起后若是它触发的暂停会自动恢复。', type: 'toggle' },
     { key: 'showFpsCounter', label: '显示帧率', desc: '在左上角显示实时 FPS 和当前帧耗时。', type: 'toggle' },
     { key: 'showTelemetryOverlay', label: '显示追逃埋点', desc: '在左上角额外显示集群速度档位、当前规模和 prey chase 统计。', type: 'toggle' },
-    { key: 'showCameraTelemetryOverlay', label: '显示镜头参数', desc: '在左上角额外显示当前镜头缩放、焦点位置、可见世界尺寸和滚轮目标缩放。', type: 'toggle' },
     { key: 'showDebugVisuals', label: '启用调试可视化', desc: '统一开启下方所有调试图层的渲染能力', type: 'toggle' },
     { key: 'showDriveRingsDebug', label: '显示三圈与指针', desc: '显示内圈/中圈/外圈、指针位置与当前圈层状态', type: 'toggle' },
     { key: 'showDriveVectorsDebug', label: '显示移动趋势', desc: '显示 WASD、鼠标瞄准和综合 Flow 的运动趋势向量', type: 'toggle' },
@@ -1905,12 +1903,6 @@ function buildTuningPanel() {
         .tuning-section.hidden {
             display: none;
         }
-        .tuning-history-meta {
-            margin-top: 4px;
-            color: rgba(255, 209, 71, 0.72);
-            font-size: 10px;
-            line-height: 1.25;
-        }
     `;
     document.head.appendChild(style);
 
@@ -1972,29 +1964,12 @@ function buildTuningPanel() {
 
     const allRows = [];
     const saveUiState = () => writeTuningUiState(uiState);
-    const getRowHistoryStamp = (key) => {
+    const getRowAddedStamp = (key) => {
         const stamp = uiState.history?.timestamps?.[key];
         if (!stamp) {
             return 0;
         }
-        return Math.max(Number.isFinite(stamp.changedAt) ? stamp.changedAt : 0, Number.isFinite(stamp.addedAt) ? stamp.addedAt : 0);
-    };
-    const formatHistoryMeta = (key) => {
-        const stamp = uiState.history?.timestamps?.[key];
-        if (!stamp) {
-            return '';
-        }
-        const changedAt = Number.isFinite(stamp.changedAt) ? stamp.changedAt : 0;
-        const addedAt = Number.isFinite(stamp.addedAt) ? stamp.addedAt : 0;
-        if (changedAt > 0) {
-            const date = new Date(changedAt);
-            return `最后改动 ${date.toLocaleString()}`;
-        }
-        if (addedAt > 0) {
-            const date = new Date(addedAt);
-            return `新增参数 ${date.toLocaleString()}`;
-        }
-        return '历史记录缺省';
+        return Number.isFinite(stamp.addedAt) ? stamp.addedAt : 0;
     };
     const isRowVisibleForQuery = (rowEntry, query) => !query || (rowEntry.searchText || '').toLowerCase().includes(query);
     const refreshViewModeButtons = () => {
@@ -2132,10 +2107,6 @@ function buildTuningPanel() {
             }
             visibleRows.forEach((rowEntry) => {
                 rowEntry.element.style.display = '';
-                const metaEl = rowEntry.element.querySelector('.tuning-history-meta');
-                if (metaEl) {
-                    metaEl.remove();
-                }
                 sectionBody.appendChild(rowEntry.element);
             });
             sectionEl.appendChild(sectionBody);
@@ -2155,14 +2126,14 @@ function buildTuningPanel() {
         `;
         const sectionDesc = document.createElement('div');
         sectionDesc.className = 'tuning-section-desc';
-        sectionDesc.textContent = '按最后改动时间倒序排列；从未改过但后续新增进面板的参数，也会被当作最新项排到前面。';
+        sectionDesc.textContent = '这里只按参数被加入面板的先后排序，越新加的越靠前。';
         const sectionBody = document.createElement('div');
         sectionBody.className = 'tuning-section-body open';
         const visibleRows = sectionEntries
             .flatMap((sectionEntry) => sectionEntry.rows)
             .filter((rowEntry) => isRowVisibleForQuery(rowEntry, query))
             .sort((a, b) => {
-                const diff = getRowHistoryStamp(b.key) - getRowHistoryStamp(a.key);
+                const diff = getRowAddedStamp(b.key) - getRowAddedStamp(a.key);
                 if (diff !== 0) {
                     return diff;
                 }
@@ -2171,13 +2142,6 @@ function buildTuningPanel() {
 
         visibleRows.forEach((rowEntry) => {
             rowEntry.element.style.display = '';
-            let metaEl = rowEntry.element.querySelector('.tuning-history-meta');
-            if (!metaEl) {
-                metaEl = document.createElement('div');
-                metaEl.className = 'tuning-history-meta';
-                rowEntry.element.appendChild(metaEl);
-            }
-            metaEl.textContent = `${formatHistoryMeta(rowEntry.key)} | ${rowEntry.category} / ${rowEntry.section}`;
             sectionBody.appendChild(rowEntry.element);
         });
 

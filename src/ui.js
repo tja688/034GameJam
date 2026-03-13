@@ -343,9 +343,8 @@ const SceneUiMixin = {
 
         const showFpsCounter = !!window.TUNING?.showFpsCounter;
         const showTelemetryOverlay = !!window.TUNING?.showTelemetryOverlay;
-        const showCameraTelemetryOverlay = !!window.TUNING?.showCameraTelemetryOverlay;
-        this.ui.fps.classList.toggle('hidden', !showFpsCounter && !showTelemetryOverlay && !showCameraTelemetryOverlay);
-        if (!showFpsCounter && !showTelemetryOverlay && !showCameraTelemetryOverlay) {
+        this.ui.fps.classList.toggle('hidden', !showFpsCounter && !showTelemetryOverlay);
+        if (!showFpsCounter && !showTelemetryOverlay) {
             return;
         }
 
@@ -377,7 +376,7 @@ const SceneUiMixin = {
             }
         }
 
-        if (showCameraTelemetryOverlay) {
+        if (showFpsCounter) {
             const rig = this.cameraRig || {};
             const viewportWidth = getFiniteNumber(rig.viewportWidth, this.scale?.width || 0);
             const viewportHeight = getFiniteNumber(rig.viewportHeight, this.scale?.height || 0);
