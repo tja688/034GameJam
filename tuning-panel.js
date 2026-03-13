@@ -15,6 +15,7 @@ const TUNING_FALLBACKS = {
     feelCameraDirector: 0.68,
     feelCameraGlide: 0.74,
     feelCameraBreathing: 0.58,
+    backgroundStrength: 1,
     enableBurstIntentDrive: false,
     intentChaosDegree: 0.0,
     enableClusterVolumeControl: false,
@@ -371,6 +372,7 @@ const TUNING_FALLBACKS = {
     graphicsRenderEffectsEnabled: true,
     graphicsRenderRingEffectsEnabled: true,
     graphicsRenderProgressionRingsVisible: true,
+    graphicsRenderPreyAlertRingsVisible: false,
     graphicsRenderPreyGuardRingsVisible: true,
     graphicsRenderPreyDeathRingsVisible: true,
     graphicsRenderFormationEnabled: true,
@@ -626,6 +628,7 @@ const TUNING_DEFS = [
     { key: 'feelCameraDirector', label: '镜头目标感', desc: '控制鼠标意图优先级，以及镜头顾头不顾腚的程度', min: 0, max: 1, step: 0.01 },
     { key: 'feelCameraGlide', label: '稳镜丝滑度', desc: '控制去抖净化、跟镜黏性和整体高级感', min: 0, max: 1, step: 0.01 },
     { key: 'feelCameraBreathing', label: '视野呼吸感', desc: '控制默认视野、缩放上下限、构图留白和整体空间感', min: 0, max: 1, step: 0.01 },
+    { key: 'backgroundStrength', label: '背景强度', desc: '单独控制地图地面背景的层次、对比和可见度；越高越明显。', min: 0, max: 2.5, step: 0.05 },
 
     { section: '模式与意图控制', sectionDesc: '移动模式与玩家意图的驱动逻辑' },
     { key: 'enableBurstIntentDrive', label: '阶段爆发意图', desc: '根据鼠标与质心的真实世界距离、外甩趋势和指针速度，进入追击/爆发节奏', type: 'toggle' },
@@ -947,6 +950,7 @@ const TUNING_DEFS = [
     { key: 'graphicsRenderFragmentBodiesEnabled', label: '碎块形体', desc: '碎块本体 shape，包含 triangle/square 的 fillPoints。', type: 'toggle' },
     { key: 'graphicsRenderRingEffectsEnabled', label: '环形特效总开关', desc: '所有 createRing 画出来的 strokeCircle。', type: 'toggle' },
     { key: 'graphicsRenderProgressionRingsVisible', label: '流程环', desc: '成长、阶段推进、目标出现、胜利、玩家死亡这些流程环。', type: 'toggle' },
+    { key: 'graphicsRenderPreyAlertRingsVisible', label: '猎物警戒红环', desc: '猎物 alert / evade / burst 状态时身边那圈红色或橙红色描边环。', type: 'toggle' },
     { key: 'graphicsRenderPreyGuardRingsVisible', label: '守卫脉冲环', desc: 'bulwark/apex 触发的 guard pulse ring。', type: 'toggle' },
     { key: 'graphicsRenderPreyDeathRingsVisible', label: '猎物死亡环', desc: 'finishPreyDevour 里那三圈死亡 ring。', type: 'toggle' },
 

@@ -1022,6 +1022,8 @@ const SceneRenderMixin = {
     renderPreySprites() {
         const drawBaseShapes = this.isGraphicsToggleEnabled('graphicsRenderPreyBaseShapesEnabled', true);
         const drawSignals = this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true);
+        const drawAlertRings = this.isGraphicsToggleEnabled('graphicsRenderPreyAlertRingsVisible', false);
+        const drawGuardRings = this.isGraphicsToggleEnabled('graphicsRenderPreyGuardRingsVisible', true);
         const drawDamageOverlays = this.isDeathGraphicsClusterEnabled()
             && this.isGraphicsToggleEnabled('graphicsRenderPreyDamageOverlaysEnabled', true);
         const drawAttachmentMarks = this.isDeathGraphicsClusterEnabled()
@@ -1065,10 +1067,10 @@ const SceneRenderMixin = {
             if (drawDamageOverlays && prey.sizeKey !== 'small') {
                 this.stampBakedShape('prey', prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
             }
-            if (drawSignals && (prey.guardPulse || 0) > 0.04) {
+            if (drawSignals && drawGuardRings && (prey.guardPulse || 0) > 0.04) {
                 this.stampBakedRing('prey', x, y, size * 0.66, prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
             }
-            if (drawSignals && alertPulse > 0.04) {
+            if (drawSignals && drawAlertRings && alertPulse > 0.04) {
                 const ringColor = prey.behaviorState === 'burst' ? COLORS.inverse : COLORS.health;
                 this.stampBakedRing('prey', x, y, size * (0.74 + alertPulse * 0.08), ringColor, 0.12 + alertPulse * 0.22);
             }
@@ -1339,13 +1341,14 @@ const SceneRenderMixin = {
         const worldTop = cy - (vh * 0.5) / zoom - renderOffsetY;
 
         const stageFlash = clamp(this.runState?.stageFlash || 0, 0, 1.8);
-        const baseAlphaMult = 1 + stageFlash * 0.2;
+        const backgroundStrength = clamp(this.getRunTuningValue?.('backgroundStrength', 1) ?? 1, 0, 2.5);
+        const baseAlphaMult = (1 + stageFlash * 0.2) * backgroundStrength;
         const macroTint = blendColor(palette.arena || COLORS.arena, palette.grid || COLORS.grid, 0.82);
         const baseTint = blendColor(palette.grid || COLORS.grid, palette.signal || COLORS.core, 0.18);
 
         if (this.mapBgSprites.macro) {
             this.mapBgSprites.macro.setTint(macroTint);
-            this.mapBgSprites.macro.setAlpha(0.48 * baseAlphaMult);
+            this.mapBgSprites.macro.setAlpha(clamp(0.48 * baseAlphaMult, 0, 0.92));
             this.mapBgSprites.macro.tileScaleX = zoom;
             this.mapBgSprites.macro.tileScaleY = zoom;
             this.mapBgSprites.macro.tilePositionX = worldLeft;
@@ -1353,7 +1356,7 @@ const SceneRenderMixin = {
         }
 
         this.mapBgSprites.base.setTint(baseTint);
-        this.mapBgSprites.base.setAlpha(0.62 * baseAlphaMult);
+        this.mapBgSprites.base.setAlpha(clamp(0.62 * baseAlphaMult, 0, 0.98));
         this.mapBgSprites.base.tileScaleX = zoom;
         this.mapBgSprites.base.tileScaleY = zoom;
         this.mapBgSprites.base.tilePositionX = worldLeft;
@@ -1498,6 +1501,8 @@ const SceneRenderMixin = {
     drawPrey(g) {
         const drawBaseShapes = this.isGraphicsToggleEnabled('graphicsRenderPreyBaseShapesEnabled', true);
         const drawSignals = this.isGraphicsToggleEnabled('graphicsRenderPreySignalsEnabled', true);
+        const drawAlertRings = this.isGraphicsToggleEnabled('graphicsRenderPreyAlertRingsVisible', false);
+        const drawGuardRings = this.isGraphicsToggleEnabled('graphicsRenderPreyGuardRingsVisible', true);
         const drawDamageOverlays = this.isDeathGraphicsClusterEnabled()
             && this.isGraphicsToggleEnabled('graphicsRenderPreyDamageOverlaysEnabled', true);
         const drawAttachmentMarks = this.isDeathGraphicsClusterEnabled()
@@ -1542,11 +1547,11 @@ const SceneRenderMixin = {
             if (drawDamageOverlays && prey.sizeKey !== 'small') {
                 drawShape(g, prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
             }
-            if (drawSignals && (prey.guardPulse || 0) > 0.04) {
+            if (drawSignals && drawGuardRings && (prey.guardPulse || 0) > 0.04) {
                 g.lineStyle(clamp((2 + prey.guardPulse * 3) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
                 g.strokeCircle(x, y, size * 0.66);
             }
-            if (drawSignals && alertPulse > 0.04) {
+            if (drawSignals && drawAlertRings && alertPulse > 0.04) {
                 g.lineStyle(clamp((1.8 + alertPulse * 2.4) * this.cameraRig.zoom, 1, 5), prey.behaviorState === 'burst' ? COLORS.inverse : COLORS.health, 0.12 + alertPulse * 0.22);
                 g.strokeCircle(x, y, size * (0.74 + alertPulse * 0.08));
             }
