@@ -221,6 +221,7 @@ const TUNING_FALLBACKS = {
     showCameraRigDebug: false,
     showFpsCounter: false,
     showTelemetryOverlay: false,
+    showCameraTelemetryOverlay: false,
     debugPauseOnTuningOpen: true,
 
     // ─── 编队跨度比例 ────────────────────────────
@@ -589,9 +590,17 @@ function sanitizeTuningUiState(value) {
     const raw = value && typeof value === 'object' ? value : {};
     const categories = raw.categories && typeof raw.categories === 'object' ? raw.categories : {};
     const sections = raw.sections && typeof raw.sections === 'object' ? raw.sections : {};
+    const history = raw.history && typeof raw.history === 'object' ? raw.history : {};
+    const knownKeys = history.knownKeys && typeof history.knownKeys === 'object' ? history.knownKeys : {};
+    const timestamps = history.timestamps && typeof history.timestamps === 'object' ? history.timestamps : {};
     const next = {
         categories: {},
-        sections: {}
+        sections: {},
+        viewMode: raw.viewMode === 'history' ? 'history' : 'category',
+        history: {
+            knownKeys: {},
+            timestamps: {}
+        }
     };
 
     Object.entries(categories).forEach(([key, open]) => {
@@ -604,6 +613,49 @@ function sanitizeTuningUiState(value) {
         if (typeof key === 'string' && typeof open === 'boolean' && !isAlwaysCollapsedTuningSection(key)) {
             next.sections[key] = open;
         }
+    });
+
+    Object.entries(knownKeys).forEach(([key, known]) => {
+        if (typeof key === 'string' && known === true) {
+            next.history.knownKeys[key] = true;
+        }
+    });
+
+    Object.entries(timestamps).forEach(([key, stamp]) => {
+        if (typeof key !== 'string' || !stamp || typeof stamp !== 'object') {
+            return;
+        }
+        const addedAt = Number.isFinite(stamp.addedAt) ? stamp.addedAt : 0;
+        const changedAt = Number.isFinite(stamp.changedAt) ? stamp.changedAt : 0;
+        next.history.timestamps[key] = { addedAt, changedAt };
+    });
+
+    const tuningKeys = TUNING_DEFS.filter((def) => def && def.key).map((def) => def.key);
+    const hasKnownKeys = Object.keys(next.history.knownKeys).length > 0;
+    const hasTimestamps = Object.keys(next.history.timestamps).length > 0;
+    if (!hasKnownKeys && !hasTimestamps) {
+        const hasLegacyUiState = Object.keys(next.categories).length > 0 || Object.keys(next.sections).length > 0;
+        const baseTime = hasLegacyUiState ? Date.now() : 0;
+        tuningKeys.forEach((key, index) => {
+            next.history.knownKeys[key] = true;
+            const stamp = baseTime > 0 ? baseTime + index : 0;
+            next.history.timestamps[key] = { addedAt: stamp, changedAt: stamp };
+        });
+        return next;
+    }
+
+    const now = Date.now();
+    let nextAddedAt = now;
+    tuningKeys.forEach((key) => {
+        if (next.history.knownKeys[key]) {
+            if (!next.history.timestamps[key]) {
+                next.history.timestamps[key] = { addedAt: 0, changedAt: 0 };
+            }
+            return;
+        }
+        next.history.knownKeys[key] = true;
+        next.history.timestamps[key] = { addedAt: nextAddedAt, changedAt: nextAddedAt };
+        nextAddedAt += 1;
     });
 
     return next;
@@ -628,6 +680,24 @@ function writeTuningUiState(state) {
     } catch (error) {
         console.warn('写入调参面板 UI 状态失败，可忽略:', error);
     }
+}
+
+function markTuningKeysUpdated(uiState, keys) {
+    if (!uiState?.history || !Array.isArray(keys) || keys.length === 0) {
+        return;
+    }
+    const now = Date.now();
+    keys.forEach((key, index) => {
+        if (typeof key !== 'string' || !key) {
+            return;
+        }
+        uiState.history.knownKeys[key] = true;
+        const current = uiState.history.timestamps[key] || { addedAt: 0, changedAt: 0 };
+        uiState.history.timestamps[key] = {
+            addedAt: current.addedAt || 0,
+            changedAt: now + index
+        };
+    });
 }
 
 async function writeTuningProfileToRepo(profile = window.TUNING) {
@@ -1200,6 +1270,7 @@ const TUNING_DEFS = [
     { key: 'debugPauseOnTuningOpen', label: '打开调参自动暂停', desc: '展开调参面板时自动暂停游戏；收起后若是它触发的暂停会自动恢复。', type: 'toggle' },
     { key: 'showFpsCounter', label: '显示帧率', desc: '在左上角显示实时 FPS 和当前帧耗时。', type: 'toggle' },
     { key: 'showTelemetryOverlay', label: '显示追逃埋点', desc: '在左上角额外显示集群速度档位、当前规模和 prey chase 统计。', type: 'toggle' },
+    { key: 'showCameraTelemetryOverlay', label: '显示镜头参数', desc: '在左上角额外显示当前镜头缩放、焦点位置、可见世界尺寸和滚轮目标缩放。', type: 'toggle' },
     { key: 'showDebugVisuals', label: '启用调试可视化', desc: '统一开启下方所有调试图层的渲染能力', type: 'toggle' },
     { key: 'showDriveRingsDebug', label: '显示三圈与指针', desc: '显示内圈/中圈/外圈、指针位置与当前圈层状态', type: 'toggle' },
     { key: 'showDriveVectorsDebug', label: '显示移动趋势', desc: '显示 WASD、鼠标瞄准和综合 Flow 的运动趋势向量', type: 'toggle' },
@@ -1806,8 +1877,39 @@ function buildTuningPanel() {
         #tuning-search::placeholder {
             color: rgba(200, 223, 230, 0.3);
         }
+        #tuning-view-mode {
+            display: flex;
+            gap: 8px;
+            padding: 0 18px 8px;
+            flex-shrink: 0;
+        }
+        .tuning-view-btn {
+            border: 1px solid rgba(79, 169, 198, 0.24);
+            background: rgba(13, 30, 40, 0.72);
+            color: rgba(200, 223, 230, 0.72);
+            border-radius: 999px;
+            padding: 5px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .tuning-view-btn:hover {
+            border-color: rgba(54, 214, 255, 0.42);
+            color: #dff7ff;
+        }
+        .tuning-view-btn.active {
+            border-color: rgba(54, 214, 255, 0.58);
+            background: rgba(54, 214, 255, 0.14);
+            color: #36d6ff;
+        }
         .tuning-section.hidden {
             display: none;
+        }
+        .tuning-history-meta {
+            margin-top: 4px;
+            color: rgba(255, 209, 71, 0.72);
+            font-size: 10px;
+            line-height: 1.25;
         }
     `;
     document.head.appendChild(style);
@@ -1855,117 +1957,244 @@ function buildTuningPanel() {
     search.placeholder = '🔍 搜索参数名称或描述...';
     panel.appendChild(search);
 
+    const viewModeBar = document.createElement('div');
+    viewModeBar.id = 'tuning-view-mode';
+    viewModeBar.innerHTML = `
+        <button type="button" class="tuning-view-btn" data-view-mode="category">按分类</button>
+        <button type="button" class="tuning-view-btn" data-view-mode="history">按历史改动时间</button>
+    `;
+    panel.appendChild(viewModeBar);
+
     // ─── Body ─────────────────────────────────────
     const body = document.createElement('div');
     body.id = 'tuning-body';
     const compareStatus = header.querySelector('#tuning-compare-status');
 
-    let currentSectionBody = null;
-
     const allRows = [];
     const saveUiState = () => writeTuningUiState(uiState);
+    const getRowHistoryStamp = (key) => {
+        const stamp = uiState.history?.timestamps?.[key];
+        if (!stamp) {
+            return 0;
+        }
+        return Math.max(Number.isFinite(stamp.changedAt) ? stamp.changedAt : 0, Number.isFinite(stamp.addedAt) ? stamp.addedAt : 0);
+    };
+    const formatHistoryMeta = (key) => {
+        const stamp = uiState.history?.timestamps?.[key];
+        if (!stamp) {
+            return '';
+        }
+        const changedAt = Number.isFinite(stamp.changedAt) ? stamp.changedAt : 0;
+        const addedAt = Number.isFinite(stamp.addedAt) ? stamp.addedAt : 0;
+        if (changedAt > 0) {
+            const date = new Date(changedAt);
+            return `最后改动 ${date.toLocaleString()}`;
+        }
+        if (addedAt > 0) {
+            const date = new Date(addedAt);
+            return `新增参数 ${date.toLocaleString()}`;
+        }
+        return '历史记录缺省';
+    };
+    const isRowVisibleForQuery = (rowEntry, query) => !query || (rowEntry.searchText || '').toLowerCase().includes(query);
+    const refreshViewModeButtons = () => {
+        viewModeBar.querySelectorAll('.tuning-view-btn').forEach((button) => {
+            button.classList.toggle('active', button.dataset.viewMode === uiState.viewMode);
+        });
+    };
 
-    let currentCategoryBody = body; // default to body if no category
-
+    const sectionEntries = [];
+    let currentCategoryTitle = '';
+    let currentSectionEntry = null;
     TUNING_DEFS.forEach((def) => {
-        
         if (def.category) {
-            const catContainer = document.createElement('div');
-            catContainer.className = 'tuning-category-container';
-            
-            const catHeader = document.createElement('div');
-            catHeader.className = 'tuning-category';
-            const isOpen = uiState.categories[def.category] !== false; // def open
-            
-            catHeader.innerHTML = `
-                <span class="category-title">${def.category}</span>
-                <span class="category-arrow">▶</span>
-            `;
-            
-            const catBody = document.createElement('div');
-            catBody.className = 'tuning-category-body';
-            
-            if (isOpen) {
-                catHeader.classList.add('open');
-                catBody.classList.add('open');
-            }
-            
-            catHeader.addEventListener('click', () => {
-                const isNowOpen = catHeader.classList.toggle('open');
-                catBody.classList.toggle('open');
-                uiState.categories[def.category] = isNowOpen;
-                saveUiState();
-            });
-            
-            catContainer.appendChild(catHeader);
-            catContainer.appendChild(catBody);
-            body.appendChild(catContainer);
-            
-            currentCategoryBody = catBody;
+            currentCategoryTitle = def.category;
+            currentSectionEntry = null;
             return;
         }
-        
         if (def.section) {
-            // 新建 section
+            currentSectionEntry = {
+                category: currentCategoryTitle,
+                title: def.section,
+                desc: def.sectionDesc || '',
+                defaultOpen: !!def.defaultOpen,
+                forceCollapsed: isAlwaysCollapsedTuningSection(def.section),
+                rows: []
+            };
+            sectionEntries.push(currentSectionEntry);
+            return;
+        }
+        if (!currentSectionEntry || !def.key) {
+            return;
+        }
+        const row = def.type === 'toggle'
+            ? createToggleRow(def, allRows, (key) => {
+                markTuningKeysUpdated(uiState, [key]);
+                saveUiState();
+                if (uiState.viewMode === 'history') {
+                    renderRows(search.value.trim().toLowerCase());
+                }
+            })
+            : createSliderRow(def, allRows, (key) => {
+                markTuningKeysUpdated(uiState, [key]);
+                saveUiState();
+                if (uiState.viewMode === 'history') {
+                    renderRows(search.value.trim().toLowerCase());
+                }
+            });
+        const rowEntry = {
+            key: def.key,
+            def,
+            element: row.element,
+            sync: row.sync,
+            searchText: row.element.dataset.searchText || '',
+            section: currentSectionEntry.title,
+            category: currentCategoryTitle
+        };
+        currentSectionEntry.rows.push(rowEntry);
+        allRows.push(row);
+    });
+
+    const renderCategoryView = (query) => {
+        body.innerHTML = '';
+        const categoryBodies = new Map();
+        sectionEntries.forEach((sectionEntry) => {
+            const visibleRows = sectionEntry.rows.filter((rowEntry) => isRowVisibleForQuery(rowEntry, query));
+            if (query && visibleRows.length === 0) {
+                return;
+            }
+
+            let categoryBody = categoryBodies.get(sectionEntry.category);
+            if (!categoryBody) {
+                const catContainer = document.createElement('div');
+                catContainer.className = 'tuning-category-container';
+                const catHeader = document.createElement('div');
+                catHeader.className = 'tuning-category';
+                const shouldOpenCategory = query ? true : uiState.categories[sectionEntry.category] !== false;
+                catHeader.innerHTML = `
+                    <span class="category-title">${sectionEntry.category}</span>
+                    <span class="category-arrow">▶</span>
+                `;
+                const catBody = document.createElement('div');
+                catBody.className = 'tuning-category-body';
+                if (shouldOpenCategory) {
+                    catHeader.classList.add('open');
+                    catBody.classList.add('open');
+                }
+                catHeader.addEventListener('click', () => {
+                    const isNowOpen = catHeader.classList.toggle('open');
+                    catBody.classList.toggle('open');
+                    uiState.categories[sectionEntry.category] = isNowOpen;
+                    saveUiState();
+                });
+                catContainer.appendChild(catHeader);
+                catContainer.appendChild(catBody);
+                body.appendChild(catContainer);
+                categoryBodies.set(sectionEntry.category, catBody);
+                categoryBody = catBody;
+            }
+
             const sectionEl = document.createElement('div');
             sectionEl.className = 'tuning-section';
-
             const sectionHeader = document.createElement('div');
             sectionHeader.className = 'tuning-section-header';
             sectionHeader.innerHTML = `
-                <span class="section-title">${def.section}</span>
+                <span class="section-title">${sectionEntry.title}</span>
                 <span class="section-arrow">▶</span>
             `;
-
             const sectionBody = document.createElement('div');
             sectionBody.className = 'tuning-section-body';
-            const forceCollapsed = isAlwaysCollapsedTuningSection(def.section);
-
-            const isSecOpen = forceCollapsed
+            const shouldOpenSection = query
+                ? true
+                : sectionEntry.forceCollapsed
                 ? false
-                : Object.prototype.hasOwnProperty.call(uiState.sections, def.section)
-                ? uiState.sections[def.section] === true
-                : !!def.defaultOpen;
-            if (isSecOpen) {
+                : Object.prototype.hasOwnProperty.call(uiState.sections, sectionEntry.title)
+                ? uiState.sections[sectionEntry.title] === true
+                : sectionEntry.defaultOpen;
+            if (shouldOpenSection) {
                 sectionHeader.classList.add('open');
                 sectionBody.classList.add('open');
             }
             sectionHeader.addEventListener('click', () => {
                 const isNowOpen = sectionHeader.classList.toggle('open');
                 sectionBody.classList.toggle('open');
-                if (!forceCollapsed) {
-                    uiState.sections[def.section] = isNowOpen;
+                if (!sectionEntry.forceCollapsed) {
+                    uiState.sections[sectionEntry.title] = isNowOpen;
                 }
                 saveUiState();
             });
-
             sectionEl.appendChild(sectionHeader);
-
-            if (def.sectionDesc) {
+            if (sectionEntry.desc) {
                 const descEl = document.createElement('div');
                 descEl.className = 'tuning-section-desc';
-                descEl.textContent = def.sectionDesc;
+                descEl.textContent = sectionEntry.desc;
                 sectionEl.appendChild(descEl);
             }
-
+            visibleRows.forEach((rowEntry) => {
+                rowEntry.element.style.display = '';
+                const metaEl = rowEntry.element.querySelector('.tuning-history-meta');
+                if (metaEl) {
+                    metaEl.remove();
+                }
+                sectionBody.appendChild(rowEntry.element);
+            });
             sectionEl.appendChild(sectionBody);
-            currentCategoryBody.appendChild(sectionEl);
-            currentSectionBody = sectionBody;
+            categoryBody.appendChild(sectionEl);
+        });
+    };
+
+    const renderHistoryView = (query) => {
+        body.innerHTML = '';
+        const sectionEl = document.createElement('div');
+        sectionEl.className = 'tuning-section';
+        const sectionHeader = document.createElement('div');
+        sectionHeader.className = 'tuning-section-header open';
+        sectionHeader.innerHTML = `
+            <span class="section-title">最近改动 / 新增在前</span>
+            <span class="section-arrow">▶</span>
+        `;
+        const sectionDesc = document.createElement('div');
+        sectionDesc.className = 'tuning-section-desc';
+        sectionDesc.textContent = '按最后改动时间倒序排列；从未改过但后续新增进面板的参数，也会被当作最新项排到前面。';
+        const sectionBody = document.createElement('div');
+        sectionBody.className = 'tuning-section-body open';
+        const visibleRows = sectionEntries
+            .flatMap((sectionEntry) => sectionEntry.rows)
+            .filter((rowEntry) => isRowVisibleForQuery(rowEntry, query))
+            .sort((a, b) => {
+                const diff = getRowHistoryStamp(b.key) - getRowHistoryStamp(a.key);
+                if (diff !== 0) {
+                    return diff;
+                }
+                return TUNING_DEFS.findIndex((def) => def?.key === b.key) - TUNING_DEFS.findIndex((def) => def?.key === a.key);
+            });
+
+        visibleRows.forEach((rowEntry) => {
+            rowEntry.element.style.display = '';
+            let metaEl = rowEntry.element.querySelector('.tuning-history-meta');
+            if (!metaEl) {
+                metaEl = document.createElement('div');
+                metaEl.className = 'tuning-history-meta';
+                rowEntry.element.appendChild(metaEl);
+            }
+            metaEl.textContent = `${formatHistoryMeta(rowEntry.key)} | ${rowEntry.category} / ${rowEntry.section}`;
+            sectionBody.appendChild(rowEntry.element);
+        });
+
+        sectionEl.appendChild(sectionHeader);
+        sectionEl.appendChild(sectionDesc);
+        sectionEl.appendChild(sectionBody);
+        body.appendChild(sectionEl);
+    };
+
+    function renderRows(query = '') {
+        refreshViewModeButtons();
+        if (uiState.viewMode === 'history') {
+            renderHistoryView(query);
             return;
         }
-
-        if (!currentSectionBody) return;
-
-        if (def.type === 'toggle') {
-            const row = createToggleRow(def, allRows);
-            currentSectionBody.appendChild(row.element);
-            allRows.push(row);
-        } else {
-            const row = createSliderRow(def, allRows);
-            currentSectionBody.appendChild(row.element);
-            allRows.push(row);
-        }
-    });
+        renderCategoryView(query);
+    }
 
     panel.appendChild(body);
     document.body.appendChild(panel);
@@ -2006,22 +2235,18 @@ function buildTuningPanel() {
     }, 500);
 
     search.addEventListener('input', () => {
-        const query = search.value.trim().toLowerCase();
-        const sections = body.querySelectorAll('.tuning-section');
-        sections.forEach((section) => {
-            const rows = section.querySelectorAll('.tuning-row, .toggle-row');
-            let anyVisible = false;
-            rows.forEach((row) => {
-                const searchText = (row.dataset.searchText || '').toLowerCase();
-                const visible = !query || searchText.includes(query);
-                row.style.display = visible ? '' : 'none';
-                if (visible) anyVisible = true;
-            });
-            section.classList.toggle('hidden', !anyVisible && !!query);
-            if (query && anyVisible) {
-                section.querySelector('.tuning-section-header')?.classList.add('open');
-                section.querySelector('.tuning-section-body')?.classList.add('open');
+        renderRows(search.value.trim().toLowerCase());
+    });
+
+    viewModeBar.querySelectorAll('.tuning-view-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            const nextMode = button.dataset.viewMode === 'history' ? 'history' : 'category';
+            if (uiState.viewMode === nextMode) {
+                return;
             }
+            uiState.viewMode = nextMode;
+            saveUiState();
+            renderRows(search.value.trim().toLowerCase());
         });
     });
 
@@ -2032,9 +2257,12 @@ function buildTuningPanel() {
         Object.keys(TUNING_DEFAULTS).forEach((key) => {
             window.TUNING[key] = TUNING_DEFAULTS[key];
         });
+        markTuningKeysUpdated(uiState, Object.keys(TUNING_DEFAULTS));
+        saveUiState();
         allRows.forEach((row) => row.sync());
         applyImmediateTuningEffects();
         window.dispatchEvent(new CustomEvent('tuning:changed'));
+        renderRows(search.value.trim().toLowerCase());
     });
 
     document.getElementById('tuning-write-json').addEventListener('click', async () => {
@@ -2056,6 +2284,7 @@ function buildTuningPanel() {
         allRows.forEach((row) => row.sync());
         window.dispatchEvent(new CustomEvent('tuning:changed'));
         clearLegacyLocalTuningProfile();
+        renderRows(search.value.trim().toLowerCase());
 
         btn.textContent = '✅ 已写入';
         setTimeout(() => {
@@ -2107,9 +2336,10 @@ function buildTuningPanel() {
     });
 
     syncTuningPanelState();
+    renderRows(search.value.trim().toLowerCase());
 }
 
-function createToggleRow(def, allRows = []) {
+function createToggleRow(def, allRows = [], onMutate = null) {
     const row = document.createElement('div');
     row.className = 'toggle-row';
     row.dataset.searchText = `${def.label} ${def.desc} ${def.key}`;
@@ -2141,6 +2371,7 @@ function createToggleRow(def, allRows = []) {
         }
         applyImmediateTuningEffects(def.key);
         row.classList.toggle('modified', checkbox.checked !== TUNING_DEFAULTS[def.key]);
+        onMutate?.(def.key);
         window.dispatchEvent(new CustomEvent('tuning:changed'));
     });
 
@@ -2156,7 +2387,7 @@ function createToggleRow(def, allRows = []) {
     };
 }
 
-function createSliderRow(def, allRows) {
+function createSliderRow(def, allRows, onMutate = null) {
     const row = document.createElement('div');
     row.className = 'tuning-row';
     row.dataset.searchText = `${def.label} ${def.desc} ${def.key}`;
@@ -2207,6 +2438,9 @@ function createSliderRow(def, allRows) {
 
         if (manual && COMPOSITE_TUNING_MAPS[def.key]) {
             applyCompositeTuning(def.key, clamped, allRows);
+        }
+        if (manual) {
+            onMutate?.(def.key);
         }
         window.dispatchEvent(new CustomEvent('tuning:changed'));
     };

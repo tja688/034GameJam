@@ -343,8 +343,9 @@ const SceneUiMixin = {
 
         const showFpsCounter = !!window.TUNING?.showFpsCounter;
         const showTelemetryOverlay = !!window.TUNING?.showTelemetryOverlay;
-        this.ui.fps.classList.toggle('hidden', !showFpsCounter && !showTelemetryOverlay);
-        if (!showFpsCounter && !showTelemetryOverlay) {
+        const showCameraTelemetryOverlay = !!window.TUNING?.showCameraTelemetryOverlay;
+        this.ui.fps.classList.toggle('hidden', !showFpsCounter && !showTelemetryOverlay && !showCameraTelemetryOverlay);
+        if (!showFpsCounter && !showTelemetryOverlay && !showCameraTelemetryOverlay) {
             return;
         }
 
@@ -374,6 +375,28 @@ const SceneUiMixin = {
                 const [archetype, stats] = topArchetype;
                 lines.push(`${archetype} chase ${stats.started || 0}/${stats.devoured || 0}/${stats.escaped || 0}`);
             }
+        }
+
+        if (showCameraTelemetryOverlay) {
+            const rig = this.cameraRig || {};
+            const viewportWidth = getFiniteNumber(rig.viewportWidth, this.scale?.width || 0);
+            const viewportHeight = getFiniteNumber(rig.viewportHeight, this.scale?.height || 0);
+            const zoom = Math.max(0.0001, getFiniteNumber(rig.zoom, 0));
+            const worldViewWidth = viewportWidth / zoom;
+            const worldViewHeight = viewportHeight / zoom;
+            const manualZoom = getFiniteNumber(rig.manualZoom, zoom);
+            const targetZoom = getFiniteNumber(rig.targetZoom, zoom);
+            const desiredZoom = getFiniteNumber(rig.desiredZoom, manualZoom);
+            const zoomSource = Math.abs(manualZoom - zoom) > 0.0005
+                ? 'wheel->manualZoom'
+                : 'steady';
+
+            lines.push(`cam zoom ${zoom.toFixed(3)} | tgt ${targetZoom.toFixed(3)}`);
+            lines.push(`cam wheel ${manualZoom.toFixed(3)} | want ${desiredZoom.toFixed(3)}`);
+            lines.push(`cam pos ${getFiniteNumber(rig.x, 0).toFixed(1)}, ${getFiniteNumber(rig.y, 0).toFixed(1)}`);
+            lines.push(`cam focus ${getFiniteNumber(rig.focusX, rig.x || 0).toFixed(1)}, ${getFiniteNumber(rig.focusY, rig.y || 0).toFixed(1)}`);
+            lines.push(`cam view ${worldViewWidth.toFixed(0)} x ${worldViewHeight.toFixed(0)} wu`);
+            lines.push(`cam wheel affects ${zoomSource}`);
         }
 
         this.ui.fps.textContent = lines.join('\n');
