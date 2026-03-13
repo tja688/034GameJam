@@ -538,6 +538,21 @@ function hasDevWriteApi() {
     }
 }
 const DEV_WRITE_API_AVAILABLE = hasDevWriteApi();
+const TUNING_UI_STORAGE_KEY = 'core-demo-tuning-ui-state-v1';
+const ALWAYS_COLLAPSED_TUNING_SECTIONS = new Set([
+    '鼠标距离圈层（展开微调）',
+    '爆发细项（展开微调）',
+    '体积细项（展开微调）',
+    '镜头高级细项（折叠）',
+    '现有猎物尺寸清单',
+    '猎物状态切换',
+    '猎物节奏与体力',
+    '猎物威胁评估',
+    '猎物状态配速',
+    '猎物运动风格',
+    '猎物原型额外倍率',
+    '玩家相位压迫基线'
+]);
 
 function readLegacyLocalTuningProfile() {
     try {
@@ -563,6 +578,56 @@ function clearLegacyLocalTuningProfile() {
         window.localStorage?.removeItem(LEGACY_TUNING_STORAGE_KEY);
     } catch (error) {
         console.warn('清理历史本地调参失败，可忽略:', error);
+    }
+}
+
+function isAlwaysCollapsedTuningSection(section) {
+    return typeof section === 'string' && ALWAYS_COLLAPSED_TUNING_SECTIONS.has(section);
+}
+
+function sanitizeTuningUiState(value) {
+    const raw = value && typeof value === 'object' ? value : {};
+    const categories = raw.categories && typeof raw.categories === 'object' ? raw.categories : {};
+    const sections = raw.sections && typeof raw.sections === 'object' ? raw.sections : {};
+    const next = {
+        panelCollapsed: typeof raw.panelCollapsed === 'boolean' ? raw.panelCollapsed : true,
+        categories: {},
+        sections: {}
+    };
+
+    Object.entries(categories).forEach(([key, open]) => {
+        if (typeof key === 'string' && typeof open === 'boolean') {
+            next.categories[key] = open;
+        }
+    });
+
+    Object.entries(sections).forEach(([key, open]) => {
+        if (typeof key === 'string' && typeof open === 'boolean' && !isAlwaysCollapsedTuningSection(key)) {
+            next.sections[key] = open;
+        }
+    });
+
+    return next;
+}
+
+function loadTuningUiState() {
+    try {
+        const raw = window.localStorage?.getItem(TUNING_UI_STORAGE_KEY);
+        if (!raw) {
+            return sanitizeTuningUiState(null);
+        }
+        return sanitizeTuningUiState(JSON.parse(raw));
+    } catch (error) {
+        console.warn('读取调参面板 UI 状态失败，将回退为默认状态:', error);
+        return sanitizeTuningUiState(null);
+    }
+}
+
+function writeTuningUiState(state) {
+    try {
+        window.localStorage?.setItem(TUNING_UI_STORAGE_KEY, JSON.stringify(sanitizeTuningUiState(state)));
+    } catch (error) {
+        console.warn('写入调参面板 UI 状态失败，可忽略:', error);
     }
 }
 
@@ -1751,7 +1816,8 @@ function buildTuningPanel() {
     // ─── 容器 ─────────────────────────────────────
     const panel = document.createElement('div');
     panel.id = 'tuning-panel';
-    panel.className = 'collapsed';
+    const uiState = loadTuningUiState();
+    panel.className = uiState.panelCollapsed ? 'collapsed' : '';
 
     // ─── 切换按钮 ──────────────────────────────────
     const toggle = document.createElement('button');
@@ -1759,6 +1825,8 @@ function buildTuningPanel() {
     toggle.textContent = '⚙ 开发调参';
     const setPanelCollapsed = (collapsed) => {
         panel.classList.toggle('collapsed', collapsed);
+        uiState.panelCollapsed = !!collapsed;
+        writeTuningUiState(uiState);
         syncTuningPanelState();
     };
     toggle.addEventListener('click', () => {
@@ -1798,9 +1866,7 @@ function buildTuningPanel() {
     let currentSectionBody = null;
 
     const allRows = [];
-    
-    const uiState = { categories: {}, sections: {} };
-    const saveUiState = () => {};
+    const saveUiState = () => writeTuningUiState(uiState);
 
     let currentCategoryBody = body; // default to body if no category
 
@@ -1856,8 +1922,11 @@ function buildTuningPanel() {
 
             const sectionBody = document.createElement('div');
             sectionBody.className = 'tuning-section-body';
+            const forceCollapsed = isAlwaysCollapsedTuningSection(def.section);
 
-            const isSecOpen = Object.prototype.hasOwnProperty.call(uiState.sections, def.section)
+            const isSecOpen = forceCollapsed
+                ? false
+                : Object.prototype.hasOwnProperty.call(uiState.sections, def.section)
                 ? uiState.sections[def.section] === true
                 : !!def.defaultOpen;
             if (isSecOpen) {
@@ -1867,7 +1936,9 @@ function buildTuningPanel() {
             sectionHeader.addEventListener('click', () => {
                 const isNowOpen = sectionHeader.classList.toggle('open');
                 sectionBody.classList.toggle('open');
-                uiState.sections[def.section] = isNowOpen;
+                if (!forceCollapsed) {
+                    uiState.sections[def.section] = isNowOpen;
+                }
                 saveUiState();
             });
 

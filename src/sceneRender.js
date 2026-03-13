@@ -1185,8 +1185,8 @@ const SceneRenderMixin = {
 
         const drawGroundShape = (g, shape, x, y, size, alpha, rotation, filled) => {
             if (!filled && shape === 'circle') {
-                g.lineStyle(Math.max(2, size * 0.04), 0xffffff, alpha);
-                g.strokeCircle(x, y, size * 0.5);
+                // Hollow circles in the background read like off-screen prey markers when zoomed out.
+                drawShape(g, 'circle', x, y, size, 0xffffff, alpha * 0.22, rotation);
                 return;
             }
             if (!filled && shape === 'bar') {
