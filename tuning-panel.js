@@ -194,6 +194,8 @@ const TUNING_FALLBACKS = {
     pulseOrbCount: 2,
 
     // ─── 相机 ────────────────────────────────────
+    cameraAutoNodeZoomEnabled: false,
+    cameraAutoNodeBaseOffsetWu: 0,
     cameraDefaultZoom: 0.92,
     cameraWheelStep: 0.12,
     cameraZoomDamp: 1.7,
@@ -258,6 +260,7 @@ const TUNING_FALLBACKS = {
     gameplayPreyInitialSpawnEnabled: true,
     gameplayPreyRespawnEnabled: false,
     gameplayPreyObjectiveSpawnEnabled: true,
+    gameplayPreyEncounterDensityMul: 1,
     gameplayPreyInitialDensityMul: 2.35,
     gameplayPreyInitialCountBonus: 0,
     gameplayPreyFieldRadiusMul: 0.92,
@@ -980,6 +983,8 @@ const TUNING_DEFS = [
     { category: '🎥 镜头与呈现' },
 
     { section: '镜头高级细项（折叠）', sectionDesc: '默认先拧上面的镜头主旋钮。这里是高级细调。', defaultOpen: false },
+    { key: 'cameraAutoNodeZoomEnabled', label: '自动镜头(按节点数)', desc: '开启后按节点数自动计算视野；关闭后恢复滚轮缩放。', type: 'toggle' },
+    { key: 'cameraAutoNodeBaseOffsetWu', label: '自动镜头初始偏移', desc: '给自动镜头的基础视野额外加一截世界单位，专门解决低节点时视野偏小。', min: -120, max: 900, step: 10 },
     { key: 'cameraDefaultZoom', label: '默认镜头缩放', desc: '开局或重置时的默认镜头大小', min: 0.05, max: 2.4, step: 0.01 },
     { key: 'cameraWheelStep', label: '滚轮缩放步进', desc: '每个滚轮刻度让镜头缩放变化多少，指数式响应', min: 0.01, max: 0.35, step: 0.01 },
     { key: 'cameraZoomDamp', label: '贴近阻尼', desc: '滚轮把镜头往近处拉时，镜头追到目标缩放的速度', min: 0.4, max: 6, step: 0.05 },
@@ -1022,6 +1027,7 @@ const TUNING_DEFS = [
     { key: 'gameplayPreyInitialSpawnEnabled', label: '初始铺场开关', desc: '控制 reset / 进关时是否按 stage 规则一次性铺出猎物。', type: 'toggle' },
     { key: 'gameplayPreyRespawnEnabled', label: '持续补怪开关', desc: '关闭后只保留开局铺场和阶段晋级目标，不会再按计时补怪。', type: 'toggle' },
     { key: 'gameplayPreyObjectiveSpawnEnabled', label: '阶段目标生成', desc: '控制每一关的 objective prey 是否出现。', type: 'toggle' },
+    { key: 'gameplayPreyEncounterDensityMul', label: '猎物分布密度', desc: '扫图时综合遇怪频率。越高越容易持续遇到可猎杀目标；越低越稀疏。', min: 0.35, max: 3, step: 0.05 },
     { key: 'gameplayPreyInitialDensityMul', label: '初始铺场密度', desc: '按每条 spawn rule 的 desired 扩大开局猎物数量。', min: 0.25, max: 5, step: 0.05 },
     { key: 'gameplayPreyInitialCountBonus', label: '初始数量补正', desc: '每条 spawn rule 额外再加几个。', min: -4, max: 16, step: 1 },
     { key: 'gameplayPreyFieldRadiusMul', label: '铺场半径倍率', desc: '开局猎物离玩家有多远。越低越贴脸。', min: 0.35, max: 1.6, step: 0.01 },

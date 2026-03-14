@@ -4,6 +4,9 @@ const SceneEnemiesMixin = {
         const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
         return Math.max(rule.packMin || 1, Math.round(rule.desired * density) + bonus);
     },
+    getPreyEncounterDensityMul() {
+        return clamp(this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1), 0.35, 3);
+    },
     getPreySpawnViewportMetrics() {
         const viewportWidth = Math.max(1, this.cameraRig?.viewportWidth || this.scale?.width || 1280);
         const viewportHeight = Math.max(1, this.cameraRig?.viewportHeight || this.scale?.height || 720);
@@ -25,10 +28,13 @@ const SceneEnemiesMixin = {
     },
     getPreySpawnRing(isObjective = false) {
         const metrics = this.getPreySpawnViewportMetrics();
-        const hidePadding = Math.max(90, this.getRunTuningValue('gameplayPreySpawnHidePadding', 170));
+        const encounterMul = this.getPreyEncounterDensityMul();
+        const hidePaddingBase = Math.max(90, this.getRunTuningValue('gameplayPreySpawnHidePadding', 170));
+        const hidePadding = Math.max(70, hidePaddingBase / Math.sqrt(encounterMul));
         const formationSafety = Math.max(130, this.getFormationSpan() + 90);
         const ringMin = Math.max(formationSafety, metrics.viewRadius + hidePadding);
-        const ringThickness = Math.max(180, Math.min(620, metrics.viewRadius * (isObjective ? 0.62 : 0.44)));
+        const ringThicknessBase = metrics.viewRadius * (isObjective ? 0.62 : 0.44);
+        const ringThickness = Math.max(160, Math.min(760, ringThicknessBase * (0.8 + encounterMul * 0.22)));
         const ringMax = ringMin + ringThickness;
         return {
             ...metrics,
@@ -36,6 +42,235 @@ const SceneEnemiesMixin = {
             ringMax,
             ringThickness
         };
+    },
+    getPreySpawnPredictionState(ring, isObjective = false) {
+        const telemetry = this.ecoTelemetry?.player?.current || {};
+        const flow = this.getPreySpawnFlowDirection();
+        const phase = this.getTelemetryPhaseBucket(telemetry.phase || this.intent?.pointerDrivePhase || this.intent?.burstPhase || 'cruise');
+        const burstAggro = clamp(this.intent?.burstAggro ?? 0, 0, 1.5);
+        const burstTempo = clamp(this.intent?.burstTempo ?? 0, 0, 1.5);
+        const encounterMul = this.getPreyEncounterDensityMul();
+        const phaseMul = phase === 'burst'
+            ? 1.44
+            : phase === 'hunt'
+                ? 1.2
+                : phase === 'pursuit'
+                    ? 1.1
+                    : 1;
+        const lookAheadBase = Math.max(0.2, this.getRunTuningValue('gameplayPreySpawnLookAheadSec', 0.56));
+        const lookAheadSec = clamp(lookAheadBase * phaseMul * (1 + burstAggro * 0.34 + burstTempo * 0.22), 0.2, 1.85);
+        const rawSpeed = Number.isFinite(telemetry.centroidSpeed) ? telemetry.centroidSpeed : 0;
+        const fallbackSpeed = this.getPlayerCapabilityReference?.()?.avgCentroidSpeed || 0;
+        const centroidSpeed = Math.max(rawSpeed, fallbackSpeed, 72);
+        const vx = Number.isFinite(telemetry.vx) ? telemetry.vx : flow.x * centroidSpeed;
+        const vy = Number.isFinite(telemetry.vy) ? telemetry.vy : flow.y * centroidSpeed;
+        const speedPadding = centroidSpeed * lookAheadSec;
+        const phasePadding = phase === 'burst' ? 140 : phase === 'hunt' ? 92 : phase === 'pursuit' ? 56 : 20;
+        const dynamicPadding = clamp(
+            (speedPadding * 0.55 + phasePadding + burstAggro * 88 + burstTempo * 52) * (encounterMul > 1 ? 1 / Math.sqrt(encounterMul) : 1),
+            80,
+            980
+        ) * (isObjective ? 1.12 : 1);
+        const currentPlayerX = this.player.centroidX;
+        const currentPlayerY = this.player.centroidY;
+        const predictedPlayerX = currentPlayerX + vx * lookAheadSec + flow.x * dynamicPadding * 0.24;
+        const predictedPlayerY = currentPlayerY + vy * lookAheadSec + flow.y * dynamicPadding * 0.24;
+        const cameraX = Number.isFinite(this.cameraRig?.x) ? this.cameraRig.x : currentPlayerX;
+        const cameraY = Number.isFinite(this.cameraRig?.y) ? this.cameraRig.y : currentPlayerY;
+        const cameraTargetX = Number.isFinite(this.cameraRig?.targetX) ? this.cameraRig.targetX : cameraX;
+        const cameraTargetY = Number.isFinite(this.cameraRig?.targetY) ? this.cameraRig.targetY : cameraY;
+        const predictedCameraX = cameraTargetX + vx * lookAheadSec * 0.42;
+        const predictedCameraY = cameraTargetY + vy * lookAheadSec * 0.42;
+        const safeRadiusCurrent = ring.ringMin + dynamicPadding * 0.55;
+        const safeRadiusPredicted = ring.ringMin + dynamicPadding * 0.38;
+        const viewPadding = Math.max(96, this.getRunTuningValue('gameplayPreySpawnViewSafetyPadding', 180) + dynamicPadding * 0.24);
+        const pathCorridorRadius = Math.max(130, this.getFormationSpan() * 0.32 + dynamicPadding * 0.14);
+        return {
+            flow,
+            phase,
+            lookAheadSec,
+            dynamicPadding,
+            currentPlayerX,
+            currentPlayerY,
+            predictedPlayerX,
+            predictedPlayerY,
+            cameraX,
+            cameraY,
+            predictedCameraX,
+            predictedCameraY,
+            halfWidth: ring.halfWidth,
+            halfHeight: ring.halfHeight,
+            safeRadiusCurrent,
+            safeRadiusPredicted,
+            viewPadding,
+            pathCorridorRadius
+        };
+    },
+    isPointInsidePreySpawnViewRect(x, y, centerX, centerY, halfWidth, halfHeight, padding = 0) {
+        return x >= centerX - halfWidth - padding
+            && x <= centerX + halfWidth + padding
+            && y >= centerY - halfHeight - padding
+            && y <= centerY + halfHeight + padding;
+    },
+    isPreySpawnPointSafe(x, y, prediction) {
+        const currentDistance = Math.hypot(x - prediction.currentPlayerX, y - prediction.currentPlayerY);
+        if (currentDistance < prediction.safeRadiusCurrent) {
+            return false;
+        }
+        const predictedDistance = Math.hypot(x - prediction.predictedPlayerX, y - prediction.predictedPlayerY);
+        if (predictedDistance < prediction.safeRadiusPredicted) {
+            return false;
+        }
+        const insideCurrentView = this.isPointInsidePreySpawnViewRect(
+            x,
+            y,
+            prediction.cameraX,
+            prediction.cameraY,
+            prediction.halfWidth,
+            prediction.halfHeight,
+            prediction.viewPadding
+        );
+        if (insideCurrentView) {
+            return false;
+        }
+        const insidePredictedView = this.isPointInsidePreySpawnViewRect(
+            x,
+            y,
+            prediction.predictedCameraX,
+            prediction.predictedCameraY,
+            prediction.halfWidth,
+            prediction.halfHeight,
+            prediction.viewPadding
+        );
+        if (insidePredictedView) {
+            return false;
+        }
+        const corridorDistanceSq = distanceToSegmentSquared(
+            x,
+            y,
+            prediction.currentPlayerX,
+            prediction.currentPlayerY,
+            prediction.predictedPlayerX,
+            prediction.predictedPlayerY
+        );
+        return corridorDistanceSq >= prediction.pathCorridorRadius * prediction.pathCorridorRadius;
+    },
+    resolvePreySpawnPointSafety(x, y, anchor, prediction) {
+        if (this.isPreySpawnPointSafe(x, y, prediction)) {
+            return { x, y };
+        }
+
+        const baseAngle = Math.atan2(y - prediction.predictedPlayerY, x - prediction.predictedPlayerX);
+        const minDistance = Math.max(anchor.safeMinDistance || anchor.ring.ringMin, prediction.safeRadiusCurrent + 24);
+        const maxDistance = Math.max(minDistance + 140, anchor.safeMaxDistance || anchor.ring.ringMax);
+        const attempts = 10;
+
+        for (let i = 0; i < attempts; i += 1) {
+            const ratio = i / Math.max(1, attempts - 1);
+            const distance = lerp(minDistance, maxDistance, ratio) + Phaser.Math.FloatBetween(10, 84);
+            const angle = baseAngle + Phaser.Math.FloatBetween(-0.85, 0.85) + (i % 2 === 0 ? 0 : (Math.PI * 0.16 * ratio));
+            const candidateX = this.player.centroidX + Math.cos(angle) * distance;
+            const candidateY = this.player.centroidY + Math.sin(angle) * distance;
+            if (this.isPreySpawnPointSafe(candidateX, candidateY, prediction)) {
+                return { x: candidateX, y: candidateY };
+            }
+        }
+
+        const fallbackDistance = maxDistance + prediction.dynamicPadding * 0.12;
+        return {
+            x: this.player.centroidX + Math.cos(baseAngle) * fallbackDistance,
+            y: this.player.centroidY + Math.sin(baseAngle) * fallbackDistance
+        };
+    },
+    getPreySpawnAvailabilityDistance() {
+        const metrics = this.getPreySpawnViewportMetrics();
+        const encounterMul = this.getPreyEncounterDensityMul();
+        return Math.max(860, metrics.viewRadius * (1.18 + 0.42 / Math.sqrt(encounterMul)));
+    },
+    getRuleEffectiveAliveCount(ruleId, availabilityDistance) {
+        if (!ruleId) {
+            return 0;
+        }
+        const availabilitySq = availabilityDistance * availabilityDistance;
+        let effective = 0;
+        this.prey.forEach((prey) => {
+            if (prey.isObjective || prey.spawnRuleId !== ruleId) {
+                return;
+            }
+            const dx = prey.x - this.player.centroidX;
+            const dy = prey.y - this.player.centroidY;
+            const distanceSq = dx * dx + dy * dy;
+            effective += distanceSq <= availabilitySq ? 1 : 0.38;
+        });
+        return effective;
+    },
+    getEffectiveSpawnOccupancy(availabilityDistance) {
+        const availabilitySq = availabilityDistance * availabilityDistance;
+        let occupancy = 0;
+        this.prey.forEach((prey) => {
+            if (prey.isObjective) {
+                return;
+            }
+            const dx = prey.x - this.player.centroidX;
+            const dy = prey.y - this.player.centroidY;
+            const distanceSq = dx * dx + dy * dy;
+            occupancy += distanceSq <= availabilitySq ? 1 : 0.42;
+        });
+        return occupancy;
+    },
+    ensureEncounterPresence(stage, availabilityDistance, encounterMul) {
+        if (!stage?.spawnRules?.length) {
+            return;
+        }
+        this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0));
+        if (this.runState.encounterSpawnCooldown > 0) {
+            return;
+        }
+
+        const nearbyDistance = availabilityDistance * 0.88;
+        const nearbyDistanceSq = nearbyDistance * nearbyDistance;
+        let nearbyTotal = 0;
+        const nearbyByRule = {};
+        this.prey.forEach((prey) => {
+            if (prey.isObjective) {
+                return;
+            }
+            const dx = prey.x - this.player.centroidX;
+            const dy = prey.y - this.player.centroidY;
+            if (dx * dx + dy * dy > nearbyDistanceSq) {
+                return;
+            }
+            nearbyTotal += 1;
+            nearbyByRule[prey.spawnRuleId] = (nearbyByRule[prey.spawnRuleId] || 0) + 1;
+        });
+
+        const nearbyTarget = clamp(Math.round((2 + stage.spawnRules.length) * encounterMul), 2, Math.max(3, stage.spawnCap - 1));
+        if (nearbyTotal >= nearbyTarget) {
+            return;
+        }
+
+        const hardCap = Math.max(stage.spawnCap, Math.round(stage.spawnCap * 1.3));
+        if (this.prey.length >= hardCap) {
+            return;
+        }
+
+        let pickRule = stage.spawnRules[0];
+        let pickScore = Number.POSITIVE_INFINITY;
+        stage.spawnRules.forEach((rule) => {
+            const desired = Math.max(1, Math.round(rule.desired * encounterMul));
+            const nearby = nearbyByRule[rule.id] || 0;
+            const score = nearby / Math.max(1, desired);
+            if (score < pickScore) {
+                pickScore = score;
+                pickRule = rule;
+            }
+        });
+
+        const deficit = Math.max(1, nearbyTarget - nearbyTotal);
+        const burstCount = clamp(Math.min(deficit, pickRule.packMax || 2), 1, Math.min(3, hardCap - this.prey.length));
+        this.spawnConfiguredPrey(pickRule, burstCount);
+        this.runState.spawnTimers[pickRule.id] = Math.max(0.2, (pickRule.interval || 0.8) * 0.66);
+        this.runState.encounterSpawnCooldown = clamp((pickRule.interval || 0.9) * 0.58, 0.3, 1.2);
     },
     getPreySpawnFlowDirection() {
         const heading = this.player?.heading ?? (-Math.PI * 0.5);
@@ -72,6 +307,7 @@ const SceneEnemiesMixin = {
     },
     pickSpawnClusterAnchor(spawnConfig, count = 1, isObjective = false) {
         const ring = this.getPreySpawnRing(isObjective);
+        const prediction = this.getPreySpawnPredictionState(ring, isObjective);
         const flow = this.getPreySpawnFlowDirection();
         const forwardBias = clamp(this.getRunTuningValue('gameplayPreyForwardSpawnBias', 0.62), 0, 1);
         if (!Number.isFinite(this.preySpawnSweepAngle)) {
@@ -111,10 +347,16 @@ const SceneEnemiesMixin = {
 
         let best = null;
         candidateAngles.forEach((angle) => {
-            const distance = Phaser.Math.FloatBetween(ring.ringMin, ring.ringMax);
+            const distance = Phaser.Math.FloatBetween(ring.ringMin, ring.ringMax) + prediction.dynamicPadding * Phaser.Math.FloatBetween(0.12, 0.62);
             const x = this.player.centroidX + Math.cos(angle) * distance;
             const y = this.player.centroidY + Math.sin(angle) * distance;
             let score = this.scorePreySpawnCrowding(x, y, crowdRadius, spawnConfig.id || '');
+            const safe = this.isPreySpawnPointSafe(x, y, prediction);
+            if (!safe) {
+                score += 1600;
+                const predictedDistance = Math.hypot(x - prediction.predictedPlayerX, y - prediction.predictedPlayerY);
+                score += Math.max(0, prediction.safeRadiusPredicted - predictedDistance) * 4.5;
+            }
             if (flow.moving) {
                 const alignment = Math.cos(Phaser.Math.Angle.Wrap(angle - flow.angle));
                 const directionalPenalty = clamp(0.35 - alignment, 0, 1.35);
@@ -122,7 +364,7 @@ const SceneEnemiesMixin = {
             }
 
             if (!best || score < best.score) {
-                best = { x, y, angle, score, ring };
+                best = { x, y, angle, score, ring, prediction };
             }
         });
 
@@ -130,12 +372,14 @@ const SceneEnemiesMixin = {
             x: this.player.centroidX + Math.cos(this.preySpawnSweepAngle) * ring.ringMin,
             y: this.player.centroidY + Math.sin(this.preySpawnSweepAngle) * ring.ringMin,
             angle: this.preySpawnSweepAngle,
-            ring
+            ring,
+            prediction
         };
     },
     getPreyCullDistance(prey = null) {
         const metrics = this.getPreySpawnViewportMetrics();
-        const viewMul = Math.max(1.2, this.getRunTuningValue('gameplayPreyCullViewMul', 1.9));
+        const encounterMul = this.getPreyEncounterDensityMul();
+        const viewMul = Math.max(1.1, this.getRunTuningValue('gameplayPreyCullViewMul', 1.82) * (encounterMul > 1 ? 0.92 : 1.04));
         const baseDistance = Math.max(
             980,
             metrics.viewRadius * viewMul + Math.max(140, this.getFormationSpan() * 0.35 + 120)
@@ -220,13 +464,19 @@ const SceneEnemiesMixin = {
         }
 
         this.syncSpawnTimersForStage(false);
-        if (this.prey.length >= stage.spawnCap) {
+        const encounterMul = this.getPreyEncounterDensityMul();
+        const availabilityDistance = this.getPreySpawnAvailabilityDistance();
+        const effectiveOccupancy = this.getEffectiveSpawnOccupancy(availabilityDistance);
+        const hardCap = Math.max(stage.spawnCap, Math.round(stage.spawnCap * 1.3));
+        if (this.prey.length >= hardCap || effectiveOccupancy >= stage.spawnCap) {
             return;
         }
+        this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0) - simDt);
 
         stage.spawnRules.forEach((rule) => {
-            const alive = this.prey.filter((prey) => prey.spawnRuleId === rule.id && !prey.isObjective).length;
-            if (alive >= rule.desired) {
+            const desired = Math.max(1, Math.round(rule.desired * encounterMul));
+            const aliveEffective = this.getRuleEffectiveAliveCount(rule.id, availabilityDistance);
+            if (aliveEffective >= desired) {
                 this.runState.spawnTimers[rule.id] = Math.min(this.runState.spawnTimers[rule.id], rule.interval * 0.5);
                 return;
             }
@@ -236,18 +486,34 @@ const SceneEnemiesMixin = {
                 return;
             }
 
-            const deficit = Math.max(1, rule.desired - alive);
-            const packMin = Math.max(1, rule.packMin || 1);
-            const packMax = Math.max(packMin, Math.min(deficit, rule.packMax || packMin));
+            const deficit = Math.max(1, Math.round(desired - aliveEffective));
+            const packBoost = encounterMul > 1 ? 1 + (encounterMul - 1) * 0.35 : 1;
+            const packMinBase = Math.max(1, rule.packMin || 1);
+            const packMaxBase = Math.max(packMinBase, rule.packMax || packMinBase);
+            const packMin = Math.max(1, Math.min(deficit, Math.round(packMinBase * packBoost)));
+            const packMax = Math.max(packMin, Math.min(deficit, Math.round(packMaxBase * packBoost)));
             const count = Phaser.Math.Between(packMin, packMax);
             this.spawnConfiguredPrey(rule, count);
             this.runState.spawnTimers[rule.id] = rule.interval * Phaser.Math.FloatBetween(0.86, 1.14);
         });
+
+        this.ensureEncounterPresence(stage, availabilityDistance, encounterMul);
     },
     spawnConfiguredPrey(spawnConfig, count = 1, forceObjective = false) {
         const results = [];
         const isObjective = !!(forceObjective || spawnConfig.isObjective);
         const anchor = this.pickSpawnClusterAnchor(spawnConfig, count, isObjective);
+        const prediction = anchor.prediction || this.getPreySpawnPredictionState(anchor.ring, isObjective);
+        const safeMinDistance = Math.max(
+            anchor.ring.ringMin,
+            prediction.safeRadiusCurrent + Phaser.Math.FloatBetween(12, 68)
+        );
+        const safeMaxDistance = Math.max(
+            safeMinDistance + 180,
+            anchor.ring.ringMax + prediction.dynamicPadding * 0.46
+        );
+        anchor.safeMinDistance = safeMinDistance;
+        anchor.safeMaxDistance = safeMaxDistance;
         const spreadMul = Math.max(0.35, this.getRunTuningValue('gameplayPreyFieldSpreadMul', 1));
         const clusterBase = (spawnConfig.archetype === 'school'
             ? 52
@@ -267,14 +533,15 @@ const SceneEnemiesMixin = {
             const dx = x - this.player.centroidX;
             const dy = y - this.player.centroidY;
             const distance = Math.hypot(dx, dy);
-            if (distance < anchor.ring.ringMin) {
-                const pullOut = (anchor.ring.ringMin + Phaser.Math.FloatBetween(12, 58)) / Math.max(distance, 0.0001);
+            if (distance < safeMinDistance) {
+                const pullOut = (safeMinDistance + Phaser.Math.FloatBetween(12, 58)) / Math.max(distance, 0.0001);
                 x = this.player.centroidX + dx * pullOut;
                 y = this.player.centroidY + dy * pullOut;
             }
+            const safePoint = this.resolvePreySpawnPointSafety(x, y, anchor, prediction);
             const prey = this.createPrey(spawnConfig, {
-                x,
-                y,
+                x: safePoint.x,
+                y: safePoint.y,
                 groupId,
                 isObjective
             });

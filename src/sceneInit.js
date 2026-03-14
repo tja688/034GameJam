@@ -706,18 +706,48 @@ const SceneInitMixin = {
             intensity: aimState.alpha
         };
     },
+    getAutoCameraNodeViewTarget() {
+        const nodeCount = Math.max(1, this.activeNodes?.length || this.player?.chain?.length || 1);
+        const baseOffset = this.getRunTuningValue?.('cameraAutoNodeBaseOffsetWu', 0) ?? 0;
+        const width = Math.round(104.5778 * nodeCount + 960.1778 + baseOffset * 2.087);
+        const height = Math.round(50.0889 * nodeCount + 460.4889 + baseOffset);
+        return {
+            nodeCount,
+            width: Math.max(1, width),
+            height: Math.max(1, height)
+        };
+    },
+    getAutoCameraZoomTarget() {
+        const target = this.getAutoCameraNodeViewTarget();
+        const viewportWidth = Math.max(1, this.cameraRig?.viewportWidth || this.scale?.width || 1);
+        const viewportHeight = Math.max(1, this.cameraRig?.viewportHeight || this.scale?.height || 1);
+        const zoomByWidth = viewportWidth / Math.max(1, target.width);
+        const zoomByHeight = viewportHeight / Math.max(1, target.height);
+        return {
+            ...target,
+            zoom: Math.min(zoomByWidth, zoomByHeight)
+        };
+    },
     updateCamera(frameDt) {
         const T = window.TUNING || {};
         const edgePaddingPx = T.cameraEdgePadding ?? 74;
         const bounds = this.getCameraSubjectBounds();
         const span = Math.max(bounds.width, bounds.height);
         const maxZoom = T.cameraMaxZoom ?? 1.12;
+        const useAutoZoom = !!T.cameraAutoNodeZoomEnabled;
+        const manualDesiredZoom = this.cameraRig.manualZoom ?? (T.cameraDefaultZoom ?? this.cameraRig.zoom ?? 0.92);
+        const autoZoomTarget = useAutoZoom ? this.getAutoCameraZoomTarget() : null;
         const desiredZoom = clamp(
-            this.cameraRig.manualZoom ?? (T.cameraDefaultZoom ?? this.cameraRig.zoom ?? 0.92),
+            useAutoZoom ? (autoZoomTarget?.zoom ?? manualDesiredZoom) : manualDesiredZoom,
             T.cameraMinZoom ?? 0.03,
             maxZoom
         );
         this.cameraRig.manualZoom = desiredZoom;
+        this.cameraRig.autoZoomEnabled = useAutoZoom;
+        this.cameraRig.autoZoomNodeCount = autoZoomTarget?.nodeCount || 0;
+        this.cameraRig.autoZoomTargetViewWidth = autoZoomTarget?.width || 0;
+        this.cameraRig.autoZoomTargetViewHeight = autoZoomTarget?.height || 0;
+        this.cameraRig.autoZoomTarget = autoZoomTarget?.zoom || desiredZoom;
         const desiredLead = this.getCameraDesiredLead(bounds, desiredZoom, edgePaddingPx);
         const baseFocus = this.getCameraBaseFocus(bounds, span, desiredLead.intensity);
 

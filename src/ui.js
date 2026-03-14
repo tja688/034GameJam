@@ -380,10 +380,13 @@ const SceneUiMixin = {
         if (showFpsCounter) {
             const peakLabel = probe.lastPeakSection ? `${probe.lastPeakSection} ${getFiniteNumber(probe.lastPeakMs, 0).toFixed(1)} ms` : 'section --';
             const devourLabel = `devour ${Math.max(0, probe.lastDevourBurst || 0)} / batch ${Math.max(0, probe.lastDevourBatch || 0)}`;
+            const nodeCount = Math.max(0, this.activeNodes?.length ?? this.player?.chain?.length ?? 0);
+            const linkCount = Math.max(0, this.links?.length ?? 0);
             lines.push(`FPS ${actualFps.toFixed(1)}`);
             lines.push(`${frameMs.toFixed(1)} ms`);
             lines.push(peakLabel);
             lines.push(devourLabel);
+            lines.push(`mesh n ${nodeCount} | l ${linkCount}`);
         }
 
         if (showTelemetryOverlay) {
@@ -410,15 +413,23 @@ const SceneUiMixin = {
             const manualZoom = getFiniteNumber(rig.manualZoom, zoom);
             const targetZoom = getFiniteNumber(rig.targetZoom, zoom);
             const desiredZoom = getFiniteNumber(rig.desiredZoom, manualZoom);
-            const zoomSource = Math.abs(manualZoom - zoom) > 0.0005
-                ? 'wheel->manualZoom'
-                : 'steady';
+            const zoomSource = rig.autoZoomEnabled
+                ? 'auto-node'
+                : Math.abs(manualZoom - zoom) > 0.0005
+                    ? 'wheel->manualZoom'
+                    : 'steady';
 
             lines.push(`cam zoom ${zoom.toFixed(3)} | tgt ${targetZoom.toFixed(3)}`);
             lines.push(`cam wheel ${manualZoom.toFixed(3)} | want ${desiredZoom.toFixed(3)}`);
             lines.push(`cam pos ${getFiniteNumber(rig.x, 0).toFixed(1)}, ${getFiniteNumber(rig.y, 0).toFixed(1)}`);
             lines.push(`cam focus ${getFiniteNumber(rig.focusX, rig.x || 0).toFixed(1)}, ${getFiniteNumber(rig.focusY, rig.y || 0).toFixed(1)}`);
             lines.push(`cam view ${worldViewWidth.toFixed(0)} x ${worldViewHeight.toFixed(0)} wu`);
+            if (rig.autoZoomEnabled) {
+                const autoNodeCount = Math.max(0, Math.round(getFiniteNumber(rig.autoZoomNodeCount, 0)));
+                const autoViewW = Math.max(0, Math.round(getFiniteNumber(rig.autoZoomTargetViewWidth, 0)));
+                const autoViewH = Math.max(0, Math.round(getFiniteNumber(rig.autoZoomTargetViewHeight, 0)));
+                lines.push(`cam auto n ${autoNodeCount} -> ${autoViewW}x${autoViewH}`);
+            }
             lines.push(`cam wheel affects ${zoomSource}`);
         }
 

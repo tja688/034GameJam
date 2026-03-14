@@ -380,6 +380,9 @@ const SceneInputMixin = {
             return;
         }
         const T = window.TUNING || {};
+        if (T.cameraAutoNodeZoomEnabled) {
+            return;
+        }
         const wheelNotch = clamp(deltaY / 120, -4, 4);
         if (Math.abs(wheelNotch) < 0.001) {
             return;
