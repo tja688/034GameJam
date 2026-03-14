@@ -73,10 +73,10 @@ const SceneRenderMixin = {
             effects: this.add.layer().setDepth(30)
         };
         this.bakedSpritePools = {
-            fragments: { layer: this.bakedSpriteLayers.fragments, sprites: [], cursor: 0, idleFrames: 0 },
-            prey: { layer: this.bakedSpriteLayers.prey, sprites: [], cursor: 0, idleFrames: 0 },
-            predation: { layer: this.bakedSpriteLayers.predation, sprites: [], cursor: 0, idleFrames: 0 },
-            effects: { layer: this.bakedSpriteLayers.effects, sprites: [], cursor: 0, idleFrames: 0 }
+            fragments: { layer: this.bakedSpriteLayers.fragments, sprites: [], cursor: 0, idleFrames: 0, lastVisibleCount: 0 },
+            prey: { layer: this.bakedSpriteLayers.prey, sprites: [], cursor: 0, idleFrames: 0, lastVisibleCount: 0 },
+            predation: { layer: this.bakedSpriteLayers.predation, sprites: [], cursor: 0, idleFrames: 0, lastVisibleCount: 0 },
+            effects: { layer: this.bakedSpriteLayers.effects, sprites: [], cursor: 0, idleFrames: 0, lastVisibleCount: 0 }
         };
         this.bakedSpriteRendererInitialized = true;
     },
@@ -91,6 +91,7 @@ const SceneRenderMixin = {
             pool.sprites = [];
             pool.cursor = 0;
             pool.idleFrames = 0;
+            pool.lastVisibleCount = 0;
         });
     },
     trimBakedSpritePool(pool, activeCount = 0) {
@@ -107,6 +108,8 @@ const SceneRenderMixin = {
             pool.sprites[i]?.destroy();
             pool.sprites.pop();
         }
+        pool.cursor = Math.min(pool.cursor || 0, pool.sprites.length);
+        pool.lastVisibleCount = Math.min(pool.lastVisibleCount || 0, pool.sprites.length);
     },
     buildBakedRenderTextures() {
         const textureDefs = [
@@ -828,29 +831,27 @@ const SceneRenderMixin = {
         this.initBakedSpriteRenderer();
         Object.values(this.bakedSpritePools || {}).forEach((pool) => {
             pool.cursor = 0;
-            if (!enabled) {
-                pool.sprites.forEach((sprite) => {
-                    sprite.setVisible(false);
-                });
-            }
         });
     },
     endBakedSpriteFrame(enabled) {
         Object.values(this.bakedSpritePools || {}).forEach((pool) => {
-            for (let i = enabled ? pool.cursor : 0; i < pool.sprites.length; i += 1) {
+            const visibleCount = enabled ? pool.cursor : 0;
+            const previousVisibleCount = Math.min(pool.lastVisibleCount || 0, pool.sprites.length);
+            for (let i = visibleCount; i < previousVisibleCount; i += 1) {
                 pool.sprites[i].setVisible(false);
             }
+            pool.lastVisibleCount = visibleCount;
             if (!enabled) {
                 pool.idleFrames = 0;
                 return;
             }
-            if (pool.cursor >= pool.sprites.length) {
+            if (visibleCount >= pool.sprites.length) {
                 pool.idleFrames = 0;
                 return;
             }
             pool.idleFrames = (pool.idleFrames || 0) + 1;
             if (pool.idleFrames >= 180) {
-                this.trimBakedSpritePool(pool, pool.cursor);
+                this.trimBakedSpritePool(pool, visibleCount);
                 pool.idleFrames = 0;
             }
         });

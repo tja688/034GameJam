@@ -183,9 +183,11 @@ function buildSpatialHash(items, cellSize = 160, getX = (item) => item.x, getY =
     };
 }
 
-function querySpatialHash(hash, x, y, radius, predicate = null) {
+function querySpatialHash(hash, x, y, radius, predicate = null, resultBuffer = null) {
+    const results = Array.isArray(resultBuffer) ? resultBuffer : [];
+    results.length = 0;
     if (!hash?.cells || !Number.isFinite(x) || !Number.isFinite(y)) {
-        return [];
+        return results;
     }
 
     const size = Math.max(1, hash.cellSize || 1);
@@ -193,7 +195,6 @@ function querySpatialHash(hash, x, y, radius, predicate = null) {
     const maxCellX = Math.floor((x + radius) / size);
     const minCellY = Math.floor((y - radius) / size);
     const maxCellY = Math.floor((y + radius) / size);
-    const results = [];
 
     for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
         for (let cellY = minCellY; cellY <= maxCellY; cellY += 1) {

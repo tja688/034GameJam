@@ -1121,23 +1121,31 @@ const SceneEnemiesMixin = {
         const cellSize = 188;
         this.preySpatialCache = {
             nodes: buildSpatialHash(this.activeNodes, cellSize),
-            prey: buildSpatialHash(this.prey, cellSize),
-            groups: new Map()
+            prey: buildSpatialHash(this.prey, cellSize)
         };
-
-        this.prey.forEach((prey) => {
-            const groupKey = prey.groupId || prey.archetype || 'solo';
-            if (!this.preySpatialCache.groups.has(groupKey)) {
-                this.preySpatialCache.groups.set(groupKey, []);
-            }
-            this.preySpatialCache.groups.get(groupKey).push(prey);
-        });
+    },
+    insertNearestSpatialCandidate(buffer, item, distanceSq, limit) {
+        const targetLimit = Math.max(1, limit | 0);
+        let insertAt = buffer.length;
+        while (insertAt > 0 && distanceSq < buffer[insertAt - 1].distanceSq) {
+            insertAt -= 1;
+        }
+        if (insertAt >= targetLimit) {
+            return;
+        }
+        buffer.splice(insertAt, 0, { item, distanceSq });
+        if (buffer.length > targetLimit) {
+            buffer.length = targetLimit;
+        }
     },
     pickNearestNode(x, y) {
-        const candidates = querySpatialHash(this.preySpatialCache?.nodes, x, y, 260);
+        const queryBuffer = this.preyNearestNodeQueryBuffer || (this.preyNearestNodeQueryBuffer = []);
+        const candidates = querySpatialHash(this.preySpatialCache?.nodes, x, y, 260, null, queryBuffer);
         let best = null;
         let bestDistance = Infinity;
-        (candidates.length > 0 ? candidates : this.activeNodes).forEach((node) => {
+        const nodes = candidates.length > 0 ? candidates : this.activeNodes;
+        for (let i = 0; i < nodes.length; i += 1) {
+            const node = nodes[i];
             const dx = node.x - x;
             const dy = node.y - y;
             const distance = dx * dx + dy * dy;
@@ -1145,39 +1153,61 @@ const SceneEnemiesMixin = {
                 best = node;
                 bestDistance = distance;
             }
-        });
+        }
         return best;
     },
     pickNearbyNodes(x, y, limit = 4, radius = 128) {
+        const cappedLimit = Math.max(1, limit | 0);
         const radiusSq = radius * radius;
-        const candidates = [];
-        querySpatialHash(this.preySpatialCache?.nodes, x, y, radius, () => true).forEach((node) => {
+        const queryBuffer = this.preyNearbyNodesQueryBuffer || (this.preyNearbyNodesQueryBuffer = []);
+        const nearestBuffer = this.preyNearbyNodesNearestBuffer || (this.preyNearbyNodesNearestBuffer = []);
+        nearestBuffer.length = 0;
+        const candidates = querySpatialHash(this.preySpatialCache?.nodes, x, y, radius, null, queryBuffer);
+        for (let i = 0; i < candidates.length; i += 1) {
+            const node = candidates[i];
             const dx = node.x - x;
             const dy = node.y - y;
             const distanceSq = dx * dx + dy * dy;
             if (distanceSq > radiusSq) {
-                return;
+                continue;
             }
-            candidates.push({ node, distanceSq });
-        });
-
-        candidates.sort((a, b) => a.distanceSq - b.distanceSq);
-        return candidates.slice(0, limit).map((entry) => entry.node);
+            this.insertNearestSpatialCandidate(nearestBuffer, node, distanceSq, cappedLimit);
+        }
+        const results = [];
+        for (let i = 0; i < nearestBuffer.length; i += 1) {
+            results.push(nearestBuffer[i].item);
+        }
+        return results;
     },
     pickNearbyPrey(target, radius = 220, limit = 6) {
+        const cappedLimit = Math.max(1, limit | 0);
         const radiusSq = radius * radius;
-        const matches = [];
-        querySpatialHash(this.preySpatialCache?.prey, target.x, target.y, radius, (prey) => prey.id !== target.id).forEach((prey) => {
+        const queryBuffer = this.preyNearbyPreyQueryBuffer || (this.preyNearbyPreyQueryBuffer = []);
+        const nearestBuffer = this.preyNearbyPreyNearestBuffer || (this.preyNearbyPreyNearestBuffer = []);
+        nearestBuffer.length = 0;
+        const candidates = querySpatialHash(
+            this.preySpatialCache?.prey,
+            target.x,
+            target.y,
+            radius,
+            (prey) => prey.id !== target.id,
+            queryBuffer
+        );
+        for (let i = 0; i < candidates.length; i += 1) {
+            const prey = candidates[i];
             const dx = prey.x - target.x;
             const dy = prey.y - target.y;
             const distanceSq = dx * dx + dy * dy;
             if (distanceSq > radiusSq) {
-                return;
+                continue;
             }
-            matches.push({ prey, distanceSq });
-        });
-        matches.sort((a, b) => a.distanceSq - b.distanceSq);
-        return matches.slice(0, limit).map((entry) => entry.prey);
+            this.insertNearestSpatialCandidate(nearestBuffer, prey, distanceSq, cappedLimit);
+        }
+        const results = [];
+        for (let i = 0; i < nearestBuffer.length; i += 1) {
+            results.push(nearestBuffer[i].item);
+        }
+        return results;
     },
     getPreyBehaviorTuning() {
         const get = (key, fallback) => (typeof this.getRunTuningValue === 'function'
@@ -2243,6 +2273,7 @@ const SceneEnemiesMixin = {
         const tuning = this.getPreyBehaviorTuning();
         const behaviorLodDistance = this.getPreyBehaviorLodDistance();
         const simpleFleeMode = this.isPreySimpleFleeModeEnabled();
+        const behaviorProfileCache = Object.create(null);
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             const distanceFromCenter = Math.hypot(prey.x - this.player.centroidX, prey.y - this.player.centroidY);
@@ -2276,7 +2307,12 @@ const SceneEnemiesMixin = {
 
             const nearbyNodes = this.pickNearbyNodes(prey.x, prey.y, 6, 240 + prey.radius + (prey.isObjective ? 60 : 0));
             const nearbyPrey = prey.schoolRadius > 0 ? this.pickNearbyPrey(prey, prey.schoolRadius, 6) : [];
-            const profile = this.getPreyBehaviorProfile(prey, tuning);
+            const profileKey = prey.archetype || 'skittish';
+            let profile = behaviorProfileCache[profileKey];
+            if (!profile) {
+                profile = this.getPreyBehaviorProfile(prey, tuning);
+                behaviorProfileCache[profileKey] = profile;
+            }
             const threat = this.evaluatePreyThreat(prey, nearbyNodes, nearbyPrey, tuning);
             this.updatePreyStateMachine(prey, threat, profile, tuning, simDt);
             const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 2.4 : prey.shape === 'circle' ? 1.6 : 1.05) + prey.seed * 4.2;
