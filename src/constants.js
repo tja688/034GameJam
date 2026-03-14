@@ -292,8 +292,8 @@ const DEMO_STAGE_DEFS = [
         objectiveRevealNodeCount: 10,
         objectiveRevealRatio: 0.5,
         growthEconomy: { costMul: 1, biomassMul: 1, growthEnergyMul: 1 },
-        metabolism: 4.8,
-        spawnCap: 26,
+        metabolism: 2.4,
+        spawnCap: 52,
         palette: {
             arena: 0x08141c,
             grid: 0x173643,
@@ -304,11 +304,11 @@ const DEMO_STAGE_DEFS = [
         },
         growthSequence: ['source', 'shell-a', 'dart-a', 'compressor'],
         spawnRules: [
-            { id: 'forage-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'small', shape: 'triangle', desired: 8, interval: 0.56, packMin: 2, packMax: 3, sizeJitter: 0.14 },
-            { id: 'forage-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.16, packMin: 4, packMax: 6, sizeJitter: 0.12 }
+            { id: 'forage-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'small', shape: 'triangle', desired: 16, interval: 0.28, packMin: 4, packMax: 6, sizeJitter: 0.14 },
+            { id: 'forage-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 12, interval: 0.58, packMin: 8, packMax: 12, sizeJitter: 0.12 }
         ],
         eliteRules: [
-            { id: 'forage-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 6.2, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.12, radiusMul: 1.55 }
+            { id: 'forage-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 2, interval: 3.1, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.12, radiusMul: 1.55 }
         ],
         objective: {
             id: 'forage-objective',
