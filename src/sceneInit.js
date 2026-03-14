@@ -431,6 +431,7 @@ const SceneInitMixin = {
         this.pendingLootRewardSources = {};
         this.poolNodes = this.createPoolNodesFromLibrary();
         this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
+        this.resetPresentationState?.();
         this.resetLivingEnergyBarState?.();
         this.player.topology = this.rebuildTopologyFromCurrentChain();
         this.activeNodes = [];
@@ -449,6 +450,7 @@ const SceneInitMixin = {
         const frameDt = Math.min(deltaMs, 33) / 1000;
         this.beginFramePerformanceProbe(deltaMs);
         this.profileFrameSection('fpsOverlay', () => this.updateFpsOverlay?.(deltaMs));
+        this.profileFrameSection('presentation', () => this.updatePresentation?.(frameDt));
 
             if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
                 if (this.menuMode === 'pause') {
@@ -523,7 +525,7 @@ const SceneInitMixin = {
             this.profileFrameSection('intent', () => this.readIntent(frameDt));
             this.profileFrameSection('editMode', () => this.updateEditMode(frameDt));
 
-            const simDt = frameDt * this.timeScaleFactor;
+            const simDt = frameDt * this.timeScaleFactor * (this.presentationTimeScaleFactor || 1);
             this.worldTime += simDt;
 
             if (!this.player.dead) {
@@ -738,7 +740,7 @@ const SceneInitMixin = {
         const useAutoZoom = !!T.cameraAutoNodeZoomEnabled;
         const manualDesiredZoom = this.cameraRig.manualZoom ?? (T.cameraDefaultZoom ?? this.cameraRig.zoom ?? 0.92);
         const autoZoomTarget = useAutoZoom ? this.getAutoCameraZoomTarget() : null;
-        const desiredZoom = clamp(
+        let desiredZoom = clamp(
             useAutoZoom ? (autoZoomTarget?.zoom ?? manualDesiredZoom) : manualDesiredZoom,
             T.cameraMinZoom ?? 0.03,
             maxZoom
@@ -765,8 +767,16 @@ const SceneInitMixin = {
 
         this.cameraRig.leadX = damp(this.cameraRig.leadX, desiredLead.x, T.cameraLeadDamp ?? 10.5, frameDt);
         this.cameraRig.leadY = damp(this.cameraRig.leadY, desiredLead.y, T.cameraLeadDamp ?? 10.5, frameDt);
-        const desiredFocusX = baseFocus.x + this.cameraRig.leadX;
-        const desiredFocusY = baseFocus.y + this.cameraRig.leadY;
+        let desiredFocusX = baseFocus.x + this.cameraRig.leadX;
+        let desiredFocusY = baseFocus.y + this.cameraRig.leadY;
+        const presentationCamera = this.getPresentationCameraDirective?.() || null;
+        if (presentationCamera) {
+            desiredFocusX = lerp(desiredFocusX, presentationCamera.x, presentationCamera.weight || 0);
+            desiredFocusY = lerp(desiredFocusY, presentationCamera.y, presentationCamera.weight || 0);
+            desiredZoom = clamp(desiredZoom * (presentationCamera.zoomMul || 1), T.cameraMinZoom ?? 0.03, maxZoom);
+            this.cameraRig.shake = Math.max(this.cameraRig.shake || 0, presentationCamera.worldShake || 0);
+            this.cameraRig.hudShake = Math.max(this.cameraRig.hudShake || 0, presentationCamera.hudShake || 0);
+        }
         this.cameraRig.targetX = damp(this.cameraRig.targetX, desiredFocusX, T.cameraFocusTrackDamp ?? 7.2, frameDt);
         this.cameraRig.targetY = damp(this.cameraRig.targetY, desiredFocusY, T.cameraFocusTrackDamp ?? 7.2, frameDt);
         const zoomTrackRate = T.cameraZoomTrackDamp ?? 2.6;

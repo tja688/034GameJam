@@ -3,6 +3,7 @@ Object.assign(
     SceneUiMixin,
     SceneAudioMixin,
     SceneInitMixin,
+    ScenePresentationMixin,
     SceneProgressionMixin,
     SceneSaveLoadMixin,
     SceneTopologyMixin,

@@ -151,6 +151,7 @@ const SceneSaveLoadMixin = {
             index: Number.isInteger(node.index) ? node.index : index
         }));
         this.runState = this.createDefaultRunState ? this.createDefaultRunState() : null;
+        this.resetPresentationState?.();
         const T = window.TUNING || {};
         const savedCameraZoom = clamp(
             getFiniteNumber(data.camera?.zoom, this.cameraRig.manualZoom),

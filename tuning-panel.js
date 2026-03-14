@@ -580,6 +580,14 @@ const TUNING_FALLBACKS = {
     cameraMaxZoom: 1.12,
     cameraSpanPadding: 110,
     cameraEdgePadding: 74,
+    presentationStylePreset: 1,
+    presentationPaletteBoost: 1,
+    presentationHeroImpactBoost: 1,
+    presentationBgmDuck: 0.2,
+    presentationMotionOverlayEnabled: true,
+    presentationHeroMomentsEnabled: true,
+    presentationHeroTimeScaleEnabled: true,
+    presentationStageSweepEnabled: true,
 
     // ─── 显示平滑 ────────────────────────────────
     displayDamping: 18,
@@ -1399,6 +1407,16 @@ const TUNING_DEFS = [
     { key: 'cameraSpanPadding', label: '主体构图缓冲', desc: '计算镜头构图基准时，围绕集群本体额外留多少世界空间', min: 0, max: 300, step: 5 },
     { key: 'cameraEdgePadding', label: '屏幕边缘留白', desc: '屏幕四周预留多少像素边距', min: 0, max: 160, step: 2 },
 
+    { section: '风格覆层与英雄镜头', sectionDesc: '给整局加一层更动感的风格分级，并把精英击杀 / objective 吞食 / 晋级做成可切的英雄镜头。', defaultOpen: true },
+    { key: 'presentationStylePreset', label: '风格预设', desc: '0=克制，1=Juicy，2=Hyper。保留现有关卡主题色，只放大速度感、亮度和冲击感。', min: 0, max: 2, step: 1 },
+    { key: 'presentationPaletteBoost', label: '配色推进倍率', desc: '整体提亮 stage palette 的脉冲感和对比。越高越明快。', min: 0, max: 2.4, step: 0.05 },
+    { key: 'presentationHeroImpactBoost', label: '英雄镜头倍率', desc: '统一放大 elite / objective / 转场的镜头冲击、几何爆发和闪光。', min: 0.2, max: 2.5, step: 0.05 },
+    { key: 'presentationBgmDuck', label: 'BGM 压低量', desc: '英雄镜头期间把 BGM 压下去多少，让击杀与转场 stinger 更站出来。', min: 0, max: 0.7, step: 0.01 },
+    { key: 'presentationMotionOverlayEnabled', label: '全局动势覆层', desc: '在追猎、爆发和 objective 压力期间叠加屏幕级几何速度带和边缘动势。', type: 'toggle' },
+    { key: 'presentationHeroMomentsEnabled', label: '英雄镜头总开关', desc: '控制精英击杀、objective 吞食、晋级和胜利的英雄镜头几何演出。', type: 'toggle' },
+    { key: 'presentationHeroTimeScaleEnabled', label: '英雄慢速时流', desc: '允许英雄镜头短时压低时流；关闭后只保留镜头和画面冲击。', type: 'toggle' },
+    { key: 'presentationStageSweepEnabled', label: '关卡幕帘转场', desc: '晋级和胜利时叠加大块矩形幕帘与角落冲刷，强化“吞下去就切关”的爽感。', type: 'toggle' },
+
     { section: '渲染后期平滑', sectionDesc: '抽离物理层和绘制层，使之无断层表现' },
     { key: 'displayDamping', label: '骨架拟合插值率', desc: '越低越拖出果冻物理粘丝缓冲感', min: 1, max: 60, step: 1 },
     { key: 'pulseGlowDecay', label: '脉冲亮光淡出', desc: '-', min: 0.5, max: 10, step: 0.1 },
@@ -1741,7 +1759,10 @@ const MINIMAL_RENDER_TOGGLE_KEYS = [
     'graphicsRenderPreyAttachmentMarksEnabled',
     'graphicsRenderPreyAttachmentHaloEnabled',
     'graphicsRenderPredationLinksEnabled',
-    'graphicsRenderFormationGlowEnabled'
+    'graphicsRenderFormationGlowEnabled',
+    'presentationMotionOverlayEnabled',
+    'presentationHeroMomentsEnabled',
+    'presentationStageSweepEnabled'
 ];
 
 function applyMinimalRenderMode(enabled, allRows = []) {

@@ -962,6 +962,7 @@ const SceneRenderMixin = {
                 this.drawEffects(midGraphics);
             }
         }
+        this.drawPresentationWorld?.(midGraphics);
         if ((this.player.edit.active || this.player.edit.ambience > 0.01)
             && this.isGraphicsToggleEnabled('graphicsRenderEditOverlayEnabled', true)) {
             this.drawEditOverlay(midGraphics);
@@ -973,6 +974,7 @@ const SceneRenderMixin = {
         if (this.isGraphicsToggleEnabled('graphicsRenderHudEnabled', true)) {
             this.drawHud(hudGraphics);
         }
+        this.drawPresentationHud?.(hudGraphics);
         this.endBakedSpriteFrame(useBakedSpriteRenderer);
     },
     renderEffectSprites() {

@@ -599,6 +599,42 @@ const AUDIO_EVENT_REGISTRY = Object.freeze([
         defaults: { bus: 'sfx', volume: 0.36, cooldown: 0.02, maxVoices: 10, assetPool: ['loot_absorb_biomass_01', 'loot_absorb_biomass_02'] }
     },
     {
+        id: 'hero_elite_kill',
+        label: 'Hero Elite Kill',
+        group: 'progression',
+        module: 'scenePresentation.js',
+        scene: 'core-demo',
+        anchor: 'triggerPresentationMoment(eliteKill)',
+        description: 'Hero-shot stinger when an elite prey is devoured.',
+        status: 'wired',
+        defaults: {
+            bus: 'sfx',
+            volume: 0.78,
+            cooldown: 0.08,
+            maxVoices: 2,
+            strategy: 'random',
+            assetPool: ['snd_bubblegun_critical_shoot_01', 'snd_bubblegun_critical_shoot_02', 'snd_bubblegun_critical_shoot_03']
+        }
+    },
+    {
+        id: 'hero_objective_devoured',
+        label: 'Hero Objective Devoured',
+        group: 'progression',
+        module: 'scenePresentation.js',
+        scene: 'core-demo',
+        anchor: 'triggerPresentationMoment(objectiveBreak)',
+        description: 'Big objective-devour stinger before stage transition.',
+        status: 'wired',
+        defaults: {
+            bus: 'ui',
+            volume: 0.84,
+            cooldown: 0.18,
+            maxVoices: 1,
+            strategy: 'random',
+            assetPool: ['snd_special_jellyfish_capture', 'snd_transition_circle_end_in', 'snd_ui_biome_title_in']
+        }
+    },
+    {
         id: 'objective_spawn',
         label: 'Objective Spawn',
         group: 'progression',

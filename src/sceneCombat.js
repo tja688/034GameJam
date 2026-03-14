@@ -566,6 +566,29 @@ const SceneCombatMixin = {
             nodeIndex: node?.index ?? -1,
             mode: attachment?.mode || ''
         });
+        if (prey.isObjective) {
+            this.triggerPresentationMoment?.('objectiveBreak', {
+                x: prey.x,
+                y: prey.y,
+                radius: prey.radius + 160,
+                color: prey.signalColor || prey.color,
+                accent: node?.color || this.getRunPalette?.().signal || COLORS.core,
+                shape: prey.shape || 'circle',
+                dirX: node?.attackDirX ?? prey.vx,
+                dirY: node?.attackDirY ?? prey.vy
+            });
+        } else if (prey.isElite) {
+            this.triggerPresentationMoment?.('eliteKill', {
+                x: prey.x,
+                y: prey.y,
+                radius: prey.radius + 100,
+                color: prey.signalColor || prey.color,
+                accent: node?.color || this.getRunPalette?.().pulse || COLORS.pulse,
+                shape: prey.shape || 'circle',
+                dirX: node?.attackDirX ?? prey.vx,
+                dirY: node?.attackDirY ?? prey.vy
+            });
+        }
         if (node) {
             node.feedPulse = Math.max(node.feedPulse || 0, attachment.mode === 'feed' ? 1.56 : 1.08);
             node.hookTension = Math.max(node.hookTension || 0, attachment.mode === 'hook' ? 1.02 : 0.46);

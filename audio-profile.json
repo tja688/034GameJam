@@ -215,6 +215,38 @@
         "snd_star_spawn"
       ]
     },
+    "hero_elite_kill": {
+      "enabled": true,
+      "bus": "sfx",
+      "volume": 0.78,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.08,
+      "maxVoices": 2,
+      "strategy": "random",
+      "assetPool": [
+        "snd_bubblegun_critical_shoot_01",
+        "snd_bubblegun_critical_shoot_02",
+        "snd_bubblegun_critical_shoot_03"
+      ]
+    },
+    "hero_objective_devoured": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.84,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.18,
+      "maxVoices": 1,
+      "strategy": "random",
+      "assetPool": [
+        "snd_special_jellyfish_capture",
+        "snd_transition_circle_end_in",
+        "snd_ui_biome_title_in"
+      ]
+    },
     "objective_spawn": {
       "enabled": true,
       "bus": "ui",
@@ -241,6 +273,7 @@
       "maxVoices": 1,
       "strategy": "random",
       "assetPool": [
+        "snd_ui_biome_title_in",
         "snd_transition_circle_out",
         "snd_transition_square_out"
       ]

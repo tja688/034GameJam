@@ -306,7 +306,7 @@ const SceneProgressionMixin = {
         };
     },
     getRunPalette() {
-        return this.getCurrentStageDef()?.palette || {
+        const basePalette = this.getCurrentStageDef()?.palette || {
             arena: COLORS.arena,
             grid: COLORS.grid,
             mist: COLORS.link,
@@ -314,6 +314,9 @@ const SceneProgressionMixin = {
             signal: COLORS.core,
             threat: COLORS.health
         };
+        return typeof this.styleRunPalette === 'function'
+            ? this.styleRunPalette(basePalette)
+            : basePalette;
     },
     ensureRunProgressionState() {
         if (!this.runState) {
@@ -1066,6 +1069,14 @@ const SceneProgressionMixin = {
         this.runState.objectivePulse = 1;
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.8);
         this.createRing(objective.x, objective.y, objective.radius + 34, stage.palette.signal, 0.28, 3, 'objective-spawn');
+        this.triggerPresentationMoment?.('objectiveSpawn', {
+            x: objective.x,
+            y: objective.y,
+            radius: objective.radius + 90,
+            color: objective.signalColor || stage.palette.signal,
+            accent: stage.palette.pulse,
+            shape: objective.shape || 'circle'
+        });
         this.playAudioEvent?.('objective_spawn', {
             stageIndex: this.runState.stageIndex || 0,
             objectiveId: objective.id,
@@ -1101,6 +1112,14 @@ const SceneProgressionMixin = {
             'stage'
         );
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3, 'stage-advance');
+        this.triggerPresentationMoment?.('stageAdvance', {
+            x: this.player.centroidX,
+            y: this.player.centroidY,
+            radius: this.getFormationSpan() + 150,
+            color: this.getRunPalette().signal,
+            accent: this.getRunPalette().threat,
+            shape: 'circle'
+        });
         this.playAudioEvent?.('stage_advance', {
             fromStage: previousStageIndex,
             toStage: this.runState.stageIndex || 0
@@ -1122,6 +1141,14 @@ const SceneProgressionMixin = {
         this.applyEnergyDelta(this.player.maxEnergy, 0.6, 'victory');
         this.player.victoryPulse = 1;
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 84, this.getRunPalette().signal, 0.36, 4, 'player-victory');
+        this.triggerPresentationMoment?.('victory', {
+            x: this.player.centroidX,
+            y: this.player.centroidY,
+            radius: this.getFormationSpan() + 200,
+            color: this.getRunPalette().signal,
+            accent: this.getRunPalette().pulse,
+            shape: 'circle'
+        });
         this.playAudioEvent?.('game_victory', {
             stageIndex: this.runState.stageIndex || 0,
             totalProgress: this.runState.totalProgress || 0

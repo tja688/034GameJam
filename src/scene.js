@@ -16,6 +16,7 @@ class CoreDemoScene extends Phaser.Scene {
         this.graphics.setDepth(20);
         this.graphicsHud = this.add.graphics();
         this.graphicsHud.setDepth(40);
+        this.initPresentationSystem?.();
         this.initBakedSpriteRenderer?.();
         this.initInfiniteMapBackgrounds?.('geometric'); // Options: 'geometric', 'flow', 'grid'
         this.input.mouse?.disableContextMenu();
