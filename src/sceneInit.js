@@ -442,6 +442,7 @@ const SceneInitMixin = {
         this.expandHoldTimer = 0;
         this.expandAddCount = 0;
         this.nextExpandThreshold = 0;
+        this.syncSceneBgm?.({ source: startSession ? 'reset-session' : 'reset-idle' });
         this.refreshMenuState();
     },
     update(_, deltaMs) {

@@ -1073,6 +1073,7 @@ const SceneProgressionMixin = {
             fromStage: previousStageIndex,
             toStage: this.runState.stageIndex || 0
         });
+        this.syncSceneBgm?.({ source: 'stage-advance' });
     },
     triggerVictory() {
         if (this.runState.complete) {

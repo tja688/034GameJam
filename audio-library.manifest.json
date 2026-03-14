@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-14T06:50:19Z",
+  "generatedAt": "2026-03-14T07:15:42Z",
   "basePath": "assets/audio",
   "preloadLimit": 24,
   "assets": [
@@ -3877,6 +3877,62 @@
       "preload": false,
       "files": [
         "纯电子DEM配乐1.mp3"
+      ]
+    },
+    {
+      "id": "dem_2",
+      "label": "纯电子dem配乐2",
+      "group": "misc",
+      "tags": [
+        "dem",
+        "dem_2",
+        "misc"
+      ],
+      "preload": false,
+      "files": [
+        "纯电子DEM配乐2.mp3"
+      ]
+    },
+    {
+      "id": "dem_3",
+      "label": "纯电子dem配乐3",
+      "group": "misc",
+      "tags": [
+        "dem",
+        "dem_3",
+        "misc"
+      ],
+      "preload": false,
+      "files": [
+        "纯电子DEM配乐3.mp3"
+      ]
+    },
+    {
+      "id": "dem_4",
+      "label": "纯电子dem配乐4",
+      "group": "misc",
+      "tags": [
+        "dem",
+        "dem_4",
+        "misc"
+      ],
+      "preload": false,
+      "files": [
+        "纯电子DEM配乐4.mp3"
+      ]
+    },
+    {
+      "id": "dem_5",
+      "label": "纯电子dem配乐5",
+      "group": "misc",
+      "tags": [
+        "dem",
+        "dem_5",
+        "misc"
+      ],
+      "preload": false,
+      "files": [
+        "纯电子DEM配乐5.mp3"
       ]
     }
   ]

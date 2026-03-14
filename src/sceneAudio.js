@@ -1,3 +1,14 @@
+const STAGE_BGM_EVENT_ID = 'bgm_main';
+const STAGE_BGM_ASSET_IDS = Object.freeze(['dem_1', 'dem_2', 'dem_3', 'dem_4', 'dem_5']);
+const STAGE_BGM_VOLUME_MUL_BY_ASSET_ID = Object.freeze({
+    dem_1: 2
+});
+
+function clampStageBgmIndex(stageIndex) {
+    const normalized = Number.isFinite(stageIndex) ? Math.round(stageIndex) : 0;
+    return Math.max(0, Math.min(STAGE_BGM_ASSET_IDS.length - 1, normalized));
+}
+
 const SceneAudioMixin = {
     initAudioSystem() {
         if (this.audioManager) {
@@ -30,12 +41,48 @@ const SceneAudioMixin = {
         }
 
         this.playAudioEvent('system_boot', { source: 'scene-create' }, { forceReplay: true });
-        this.playAudioEvent('bgm_main', { source: 'scene-create' }, { forceReplay: true });
+        this.syncSceneBgm({ source: 'scene-create' });
         return this.audioManager;
     },
 
     ensureAudioSystem() {
         return this.audioManager || this.initAudioSystem();
+    },
+
+    getSceneBgmSpec() {
+        const isMainMenu = this.menuMode === 'main';
+        const stageIndex = isMainMenu ? 0 : clampStageBgmIndex(this.runState?.stageIndex || 0);
+        const assetId = STAGE_BGM_ASSET_IDS[stageIndex] || STAGE_BGM_ASSET_IDS[0];
+        return {
+            eventId: STAGE_BGM_EVENT_ID,
+            assetId,
+            stageIndex,
+            volumeMul: STAGE_BGM_VOLUME_MUL_BY_ASSET_ID[assetId] || 1,
+            source: isMainMenu ? 'main-menu' : 'stage'
+        };
+    },
+
+    syncSceneBgm(options = {}) {
+        const manager = this.ensureAudioSystem();
+        if (!manager) {
+            return Promise.resolve(false);
+        }
+        const spec = this.getSceneBgmSpec();
+        const currentAssetId = manager.getCurrentAssetIdForEvent?.(spec.eventId) || '';
+        if (!options.forceReplay && currentAssetId === spec.assetId) {
+            return Promise.resolve(true);
+        }
+        return manager.playEvent(spec.eventId, {
+            forceReplay: true,
+            assetId: spec.assetId,
+            volumeMul: spec.volumeMul,
+            meta: {
+                ...(options.meta && typeof options.meta === 'object' ? options.meta : {}),
+                source: options.source || spec.source,
+                stageIndex: spec.stageIndex,
+                bgmAssetId: spec.assetId
+            }
+        });
     },
 
     playAudioEvent(eventId, meta = null, options = {}) {

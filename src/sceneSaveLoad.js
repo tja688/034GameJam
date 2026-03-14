@@ -267,6 +267,7 @@ const SceneSaveLoadMixin = {
         this.rebalancePulseRunners();
         this.updateDisplay(0);
         this.menuMode = null;
+        this.syncSceneBgm?.({ source: 'apply-save-data' });
         this.refreshMenuState();
         return true;
     },
@@ -308,6 +309,7 @@ const SceneSaveLoadMixin = {
         if (wasInMenu) {
             this.playAudioEvent?.('ui_menu_close', { mode: 'resume' });
         }
+        this.syncSceneBgm?.({ source: 'resume-game' });
         this.refreshMenuState();
     },
     handleExitGame() {

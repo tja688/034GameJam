@@ -391,6 +391,23 @@ class CoreAudioManager {
         return next;
     }
 
+    getCurrentVoiceForEvent(eventId) {
+        const voices = this.getActiveVoicesForEvent(eventId);
+        if (!Array.isArray(voices) || voices.length <= 0) {
+            return null;
+        }
+        return voices.reduce((latest, record) => {
+            if (!latest) {
+                return record;
+            }
+            return (record?.startedAt || 0) >= (latest?.startedAt || 0) ? record : latest;
+        }, null);
+    }
+
+    getCurrentAssetIdForEvent(eventId) {
+        return this.getCurrentVoiceForEvent(eventId)?.assetId || '';
+    }
+
     enforceVoiceLimit(eventId, maxVoices) {
         const voices = this.getActiveVoicesForEvent(eventId);
         while (voices.length >= maxVoices) {

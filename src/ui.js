@@ -334,6 +334,7 @@ const SceneUiMixin = {
         this.menuMode = 'main';
         this.paused = true;
         this.playAudioEvent?.('ui_menu_open_main', { mode: 'main' });
+        this.syncSceneBgm?.({ source: 'show-main-menu' });
         this.refreshMenuState();
     },
 
