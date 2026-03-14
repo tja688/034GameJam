@@ -737,11 +737,22 @@ class CoreAudioManager {
         this.previewVoices.delete(record);
     }
 
-    scheduleStop(record, fadeOutMs = 0) {
+    scheduleStop(record, fadeOutMs = 0, options = {}) {
         if (!record || !record.sound || record.ended) {
             return;
         }
         const sound = record.sound;
+        const destroyAfterStop = options.destroy !== false;
+        const finalizeStop = () => {
+            this.onVoiceEnded(record);
+            if (destroyAfterStop && sound && !sound.isDestroyed) {
+                try {
+                    sound.destroy();
+                } catch (error) {
+                    console.warn('Audio voice destroy failed.', error);
+                }
+            }
+        };
         if (fadeOutMs > 0 && this.scene?.tweens) {
             this.scene.tweens.add({
                 targets: sound,
@@ -749,13 +760,54 @@ class CoreAudioManager {
                 duration: fadeOutMs,
                 onComplete: () => {
                     if (sound && !sound.isDestroyed) {
-                        sound.stop();
+                        try {
+                            sound.stop();
+                        } catch (error) {
+                            console.warn('Audio voice fade-stop failed.', error);
+                        }
                     }
+                    finalizeStop();
                 }
             });
             return;
         }
-        sound.stop();
+        if (sound && !sound.isDestroyed) {
+            try {
+                sound.stop();
+            } catch (error) {
+                console.warn('Audio voice stop failed.', error);
+            }
+        }
+        finalizeStop();
+    }
+
+    stopVoicesByPredicate(predicate, options = {}) {
+        if (typeof predicate !== 'function') {
+            return;
+        }
+        const fadeOutMs = Number.isFinite(options.fadeOutMs) ? options.fadeOutMs : 0;
+        const destroy = options.destroy !== false;
+        [...this.activeVoices].forEach((record) => {
+            if (!record || record.ended) {
+                return;
+            }
+            if (!predicate(record)) {
+                return;
+            }
+            this.scheduleStop(record, fadeOutMs, { destroy });
+        });
+    }
+
+    ensureExclusiveBgmVoice(playback) {
+        if (!playback || playback.preview || playback.bus !== 'bgm') {
+            return;
+        }
+        this.stopVoicesByPredicate((record) => (
+            !!record
+            && !record.ended
+            && record.bus === 'bgm'
+            && !record.preview
+        ), { fadeOutMs: 0, destroy: true });
     }
 
     playEvent(eventId, options = {}) {
@@ -803,12 +855,26 @@ class CoreAudioManager {
                 this.recordEvent(eventId, 'skipped', 'asset_not_loaded', assetId, options.meta);
                 return false;
             }
+            if (typeof options.playGuard === 'function') {
+                let allow = false;
+                try {
+                    allow = !!options.playGuard();
+                } catch (error) {
+                    allow = false;
+                    console.warn('Audio play guard check failed.', error);
+                }
+                if (!allow) {
+                    this.recordEvent(eventId, 'skipped', 'play_guard_rejected', assetId, options.meta);
+                    return false;
+                }
+            }
             if (!this.sound) {
                 this.recordEvent(eventId, 'skipped', 'sound_unavailable', assetId, options.meta);
                 return false;
             }
-            this.enforceVoiceLimit(eventId, config.maxVoices);
             const playback = this.computePlaybackConfig(config, eventId, assetId, options);
+            this.ensureExclusiveBgmVoice(playback);
+            this.enforceVoiceLimit(eventId, config.maxVoices);
             let sound;
             try {
                 sound = this.sound.add(asset.key);
@@ -828,6 +894,7 @@ class CoreAudioManager {
                 bus: playback.bus,
                 baseVolume: playback.baseVolume,
                 preview: playback.preview,
+                loop: playback.loop,
                 startedAt: now,
                 ended: false
             };
@@ -884,22 +951,22 @@ class CoreAudioManager {
     stopPreview(options = {}) {
         const fadeOutMs = Number.isFinite(options.fadeOutMs) ? options.fadeOutMs : 80;
         [...this.previewVoices].forEach((record) => {
-            this.scheduleStop(record, fadeOutMs);
+            this.scheduleStop(record, fadeOutMs, { destroy: true });
         });
     }
 
     stopEvent(eventId, options = {}) {
         const fadeOutMs = Number.isFinite(options.fadeOutMs) ? options.fadeOutMs : 0;
-        const voices = this.getActiveVoicesForEvent(eventId);
-        voices.forEach((record) => {
-            this.scheduleStop(record, fadeOutMs);
+        this.stopVoicesByPredicate((record) => record?.eventId === eventId, {
+            fadeOutMs,
+            destroy: true
         });
     }
 
     stopAll(options = {}) {
         const fadeOutMs = Number.isFinite(options.fadeOutMs) ? options.fadeOutMs : 0;
         [...this.activeVoices].forEach((record) => {
-            this.scheduleStop(record, fadeOutMs);
+            this.scheduleStop(record, fadeOutMs, { destroy: true });
         });
     }
 

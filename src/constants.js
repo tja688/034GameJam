@@ -318,7 +318,7 @@ const DEMO_STAGE_DEFS = [
             sizeKey: 'large',
             shape: 'circle',
             color: COLORS.core,
-            radiusMul: 1.26,
+            radiusMul: 1.56,
             energyBonus: 18,
             biomassBonus: 3.6,
             growthBonus: 1
@@ -358,7 +358,7 @@ const DEMO_STAGE_DEFS = [
             sizeKey: 'large',
             shape: 'circle',
             color: COLORS.core,
-            radiusMul: 1.28,
+            radiusMul: 1.6,
             energyBonus: 20,
             biomassBonus: 4.2,
             growthBonus: 1
@@ -399,7 +399,7 @@ const DEMO_STAGE_DEFS = [
             sizeKey: 'large',
             shape: 'circle',
             color: COLORS.core,
-            radiusMul: 1.32,
+            radiusMul: 1.64,
             energyBonus: 24,
             biomassBonus: 5.4,
             growthBonus: 1
@@ -441,7 +441,7 @@ const DEMO_STAGE_DEFS = [
             sizeKey: 'large',
             shape: 'circle',
             color: COLORS.core,
-            radiusMul: 1.36,
+            radiusMul: 1.68,
             energyBonus: 28,
             biomassBonus: 6.2,
             growthBonus: 2
@@ -483,7 +483,7 @@ const DEMO_STAGE_DEFS = [
             sizeKey: 'large',
             shape: 'circle',
             color: COLORS.core,
-            radiusMul: 1.42,
+            radiusMul: 1.72,
             energyBonus: 34,
             biomassBonus: 8.4,
             growthBonus: 2

@@ -201,7 +201,7 @@
   "gameplayEliteGlobalHealthMul": 1.24,
   "gameplayEliteGlobalSpeedMul": 0.94,
   "gameplayEliteGlobalYieldMul": 1.18,
-  "gameplayObjectiveGlobalSizeMul": 1.1,
+  "gameplayObjectiveGlobalSizeMul": 2.2,
   "gameplayObjectiveGlobalHealthMul": 1,
   "gameplayObjectiveGlobalSpeedMul": 1,
   "gameplayObjectiveGlobalYieldMul": 1,

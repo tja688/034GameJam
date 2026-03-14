@@ -130,11 +130,14 @@ const SceneAudioMixin = {
                 source: options.source || spec.source,
                 stageIndex: spec.stageIndex,
                 bgmAssetId: spec.assetId
+            },
+            playGuard: () => {
+                const liveState = this.ensureBgmState();
+                return liveState.requestSerial === requestSerial && liveState.requestedAssetId === spec.assetId;
             }
         }).then((played) => {
             const liveState = this.ensureBgmState();
             if (liveState.requestSerial !== requestSerial) {
-                manager.stopEvent(spec.eventId, { fadeOutMs: 0 });
                 return false;
             }
             liveState.mode = played ? BGM_STATE_MODE.playing : BGM_STATE_MODE.idle;
