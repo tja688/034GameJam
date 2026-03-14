@@ -246,6 +246,17 @@ const SceneCombatMixin = {
             directionX: node.attackDirX || -nx,
             directionY: node.attackDirY || -ny
         });
+        const latchEventId = profile.mode === 'hook'
+            ? 'prey_latched_hook'
+            : profile.mode === 'grind'
+                ? 'prey_latched_grind'
+                : 'prey_latched_feed';
+        this.playAudioEvent?.(latchEventId, {
+            preyId: prey.id,
+            preySize: prey.sizeKey,
+            nodeIndex: node.index,
+            mode: profile.mode
+        });
         return attachment;
     },
     getPreyPressure(prey, nodeByIndex = null) {
@@ -445,6 +456,17 @@ const SceneCombatMixin = {
             prey.y - node.y
         );
         this.damagePrey(prey, amount, biteDir.x, biteDir.y, node, attachment);
+        const biteEventId = attachment.mode === 'hook'
+            ? 'prey_bite_hook'
+            : attachment.mode === 'grind'
+                ? 'prey_bite_grind'
+                : 'prey_bite_feed';
+        this.playAudioEvent?.(biteEventId, {
+            preyId: prey.id,
+            preySize: prey.sizeKey,
+            mode: attachment.mode,
+            amount
+        });
         attachment.chewTimer = attachment.mode === 'grind' ? 0.08 : attachment.mode === 'hook' ? 0.11 : 0.07;
         node.predationWindow = Math.max(0, (node.predationWindow || 0) - (attachment.mode === 'feed' ? 0.02 : 0.04));
         node.biteGlow = Math.max(node.biteGlow || 0, 1);
@@ -545,6 +567,20 @@ const SceneCombatMixin = {
             prey.sizeKey === 'large' ? 0.8 : prey.sizeKey === 'medium' ? 0.46 : 0.24,
             prey.sizeKey === 'large' ? 0.95 : prey.sizeKey === 'medium' ? 0.56 : 0.3
         );
+        const devourEventId = prey.isObjective
+            ? 'prey_devoured_objective'
+            : prey.sizeKey === 'large'
+                ? 'prey_devoured_large'
+                : prey.sizeKey === 'medium'
+                    ? 'prey_devoured_medium'
+                    : 'prey_devoured_small';
+        this.playAudioEvent?.(devourEventId, {
+            preyId: prey.id,
+            preySize: prey.sizeKey,
+            isObjective: !!prey.isObjective,
+            nodeIndex: node?.index ?? -1,
+            mode: attachment?.mode || ''
+        });
         if (node) {
             node.feedPulse = Math.max(node.feedPulse || 0, attachment.mode === 'feed' ? 1.56 : 1.08);
             node.hookTension = Math.max(node.hookTension || 0, attachment.mode === 'hook' ? 1.02 : 0.46);
@@ -1012,6 +1048,13 @@ const SceneCombatMixin = {
             node.absorbFlash = clamp((node.absorbFlash || 0) + 0.3 + rewardMagnitude * 0.3, 0, 2.8);
         }
         this.bumpFeastMeter(fragment.kind === 'energy' ? 0.08 : 0.04);
+        this.playAudioEvent?.(fragment.kind === 'energy' ? 'loot_absorb_energy' : 'loot_absorb_biomass', {
+            kind: fragment.kind,
+            nodeIndex: node?.index ?? -1,
+            rewardEnergy: fragment.rewardEnergy || 0,
+            rewardBiomass: fragment.rewardBiomass || 0,
+            rewardProgress: fragment.rewardProgress || 0
+        });
         if (typeof this.absorbFragment === 'function') {
             this.absorbFragment(fragment);
         }
@@ -1037,6 +1080,11 @@ const SceneCombatMixin = {
         }
         node.vx -= dirX * push * 0.2;
         node.vy -= dirY * push * 0.2;
+        this.playAudioEvent?.('player_hit_guard', {
+            nodeIndex: node?.index ?? -1,
+            amount,
+            push
+        });
         if (typeof this.applyEnergyDelta === 'function') {
             this.applyEnergyDelta(-Math.max(0.12, amount * 2.2), 0.08, 'hit');
         }

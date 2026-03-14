@@ -1,6 +1,7 @@
 Object.assign(
     CoreDemoScene.prototype,
     SceneUiMixin,
+    SceneAudioMixin,
     SceneInitMixin,
     SceneProgressionMixin,
     SceneSaveLoadMixin,

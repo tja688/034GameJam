@@ -1934,6 +1934,7 @@ function buildTuningPanel() {
         </div>
         <div class="header-btns">
             <button id="tuning-add-node" style="background: rgba(54, 214, 255, 0.12); border-color: rgba(54, 214, 255, 0.35); color: #36d6ff; padding: 4px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s;">➕ 新增节点 (E)</button>
+            <button class="export-btn" id="tuning-audio-panel">🔊 音频面板</button>
             <button class="apply-btn" id="tuning-write-json">写入 JSON</button>
             <button class="export-btn" id="tuning-copy-json">📋 复制 JSON</button>
             <button class="export-btn" id="tuning-export">📋 复制差异</button>
@@ -2215,6 +2216,35 @@ function buildTuningPanel() {
     });
 
     // ─── 全部重置 ──────────────────────────────────
+    const syncAudioPanelButtonState = () => {
+        const button = document.getElementById('tuning-audio-panel');
+        if (!button) {
+            return;
+        }
+        const panel = window.audioDebugPanel;
+        const ready = !!panel && typeof panel.togglePanel === 'function';
+        const isOpen = ready && typeof panel.isOpen === 'function' ? panel.isOpen() : false;
+        button.disabled = !ready;
+        button.textContent = isOpen ? '🔊 收起音频' : '🔊 音频面板';
+        button.title = ready ? '打开/关闭音频调试面板' : '音频系统尚未初始化';
+    };
+
+    document.getElementById('tuning-audio-panel').addEventListener('click', () => {
+        if (!window.audioDebugPanel && typeof window.activeScene?.initAudioSystem === 'function') {
+            window.activeScene.initAudioSystem();
+        }
+        const panel = window.audioDebugPanel;
+        if (!panel || typeof panel.togglePanel !== 'function') {
+            syncAudioPanelButtonState();
+            return;
+        }
+        panel.togglePanel();
+        syncAudioPanelButtonState();
+    });
+    window.addEventListener('audio:panel-state', syncAudioPanelButtonState);
+    setInterval(syncAudioPanelButtonState, 1000);
+    syncAudioPanelButtonState();
+
     document.getElementById('tuning-add-node').addEventListener('mousedown', () => { if (window.activeScene) window.activeScene.addDebugNode(); });
 
     document.getElementById('tuning-reset-all').addEventListener('click', () => {

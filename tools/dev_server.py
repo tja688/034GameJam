@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_JSON_FILES = {
     "tuning-profile.json": ROOT / "tuning-profile.json",
     "save-slot.json": ROOT / "save-slot.json",
+    "audio-profile.json": ROOT / "audio-profile.json",
 }
 
 

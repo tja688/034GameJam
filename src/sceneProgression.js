@@ -18,6 +18,7 @@ const SceneProgressionMixin = {
             energyBeat: 0,
             hudJolt: 0,
             lowEnergyPulse: 0,
+            lowEnergyWarned: false,
             complete: false,
             completeTimer: 0,
             deathCause: '',
@@ -724,6 +725,11 @@ const SceneProgressionMixin = {
                 'growth'
             );
             this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 28, this.getRunPalette().pulse, 0.18, 2, 'player-growth');
+            this.playAudioEvent?.('player_growth', {
+                grownCount: grown,
+                nodeCount: this.activeNodes?.length || 0,
+                stageIndex: this.runState.stageIndex || 0
+            });
         }
         return grown;
     },
@@ -753,9 +759,16 @@ const SceneProgressionMixin = {
         this.runState.objectivePulse = 1;
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 0.8);
         this.createRing(objective.x, objective.y, objective.radius + 34, stage.palette.signal, 0.28, 3, 'objective-spawn');
+        this.playAudioEvent?.('objective_spawn', {
+            stageIndex: this.runState.stageIndex || 0,
+            objectiveId: objective.id,
+            archetype: objective.archetype || stage.objective?.archetype || '',
+            sizeKey: objective.sizeKey || stage.objective?.sizeKey || ''
+        });
         return objective;
     },
     advanceStage() {
+        const previousStageIndex = this.runState.stageIndex || 0;
         if ((this.runState.stageIndex || 0) >= this.getStageCount() - 1) {
             this.triggerVictory();
             return;
@@ -781,6 +794,10 @@ const SceneProgressionMixin = {
             'stage'
         );
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3, 'stage-advance');
+        this.playAudioEvent?.('stage_advance', {
+            fromStage: previousStageIndex,
+            toStage: this.runState.stageIndex || 0
+        });
     },
     triggerVictory() {
         if (this.runState.complete) {
@@ -797,6 +814,10 @@ const SceneProgressionMixin = {
         this.applyEnergyDelta(this.player.maxEnergy, 0.6, 'victory');
         this.player.victoryPulse = 1;
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 84, this.getRunPalette().signal, 0.36, 4, 'player-victory');
+        this.playAudioEvent?.('game_victory', {
+            stageIndex: this.runState.stageIndex || 0,
+            totalProgress: this.runState.totalProgress || 0
+        });
     },
     triggerPlayerDeath(reason = 'starved') {
         if (this.player.dead) {
@@ -817,6 +838,11 @@ const SceneProgressionMixin = {
             node.vy += dir.y * (42 + node.order * 8);
         });
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 38, COLORS.health, 0.24, 3, 'player-death');
+        this.playAudioEvent?.('game_death', {
+            reason,
+            stageIndex: this.runState.stageIndex || 0,
+            energy: this.player.energy || 0
+        });
     },
     updateRunState(simDt) {
         this.ensureRunProgressionState();
@@ -895,6 +921,22 @@ const SceneProgressionMixin = {
             }
         }
 
-        this.runState.lowEnergyPulse = damp(this.runState.lowEnergyPulse || 0, this.getEnergyRatio() < lowEnergyThreshold ? 1 : 0, 3.2, simDt);
+        const energyRatio = this.getEnergyRatio();
+        const lowEnergyActive = energyRatio < lowEnergyThreshold && !this.player.dead && !this.runState.complete;
+        if (lowEnergyActive && !this.runState.lowEnergyWarned) {
+            this.runState.lowEnergyWarned = true;
+            this.playAudioEvent?.('player_low_energy_warning', {
+                energyRatio,
+                threshold: lowEnergyThreshold,
+                stageIndex: this.runState.stageIndex || 0
+            });
+        } else if (
+            !lowEnergyActive
+            || energyRatio > Math.min(0.98, lowEnergyThreshold + 0.06)
+        ) {
+            this.runState.lowEnergyWarned = false;
+        }
+
+        this.runState.lowEnergyPulse = damp(this.runState.lowEnergyPulse || 0, lowEnergyActive ? 1 : 0, 3.2, simDt);
     }
 };

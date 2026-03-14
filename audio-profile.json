@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "savedAt": 0,
+  "manifestPath": "audio-library.manifest.json",
+  "busVolumes": {
+    "master": 1,
+    "bgm": 0.72,
+    "sfx": 0.9,
+    "ui": 0.9,
+    "ambience": 0.62
+  },
+  "appliedEventBindings": {
+    "system_boot": {
+      "assetPool": [
+        "snd_logo_entrance"
+      ]
+    },
+    "game_start_new_run": {
+      "assetPool": [
+        "snd_transition_circle_in"
+      ]
+    },
+    "game_restart": {
+      "assetPool": [
+        "snd_transition_square_in"
+      ]
+    },
+    "ui_click": {
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_ui_button_click",
+        "snd_click",
+        "snd_select"
+      ]
+    },
+    "ui_menu_open_main": {
+      "assetPool": [
+        "snd_inventory_open",
+        "snd_ui_submarine_open",
+        "snd_ui_skilltree_open"
+      ]
+    },
+    "ui_menu_open_pause": {
+      "assetPool": [
+        "snd_pause"
+      ]
+    },
+    "ui_menu_close": {
+      "assetPool": [
+        "snd_unpause",
+        "snd_inventory_close"
+      ]
+    },
+    "ui_toast_success": {
+      "assetPool": [
+        "snd_ui_task_completed",
+        "snd_select"
+      ]
+    },
+    "ui_toast_error": {
+      "assetPool": [
+        "snd_tool_no_ammo",
+        "snd_player_hurt"
+      ]
+    },
+    "save_success": {
+      "assetPool": [
+        "snd_ui_task_completed"
+      ]
+    },
+    "save_error": {
+      "assetPool": [
+        "snd_tool_no_ammo"
+      ]
+    },
+    "load_success": {
+      "assetPool": [
+        "snd_ui_task_completed"
+      ]
+    },
+    "load_error": {
+      "assetPool": [
+        "snd_tool_no_ammo"
+      ]
+    },
+    "prey_spawn_batch": {
+      "assetPool": [
+        "snd_jellyfish_spawn",
+        "snd_robot_spawn",
+        "snd_star_spawn"
+      ]
+    },
+    "objective_spawn": {
+      "assetPool": [
+        "snd_jellyfish_spawn",
+        "snd_transition_circle_in"
+      ]
+    },
+    "stage_advance": {
+      "assetPool": [
+        "snd_transition_circle_out",
+        "snd_transition_square_out"
+      ]
+    },
+    "game_victory": {
+      "assetPool": [
+        "snd_ui_task_completed",
+        "snd_transition_circle_end_in"
+      ]
+    },
+    "game_death": {
+      "assetPool": [
+        "snd_player_suffocates",
+        "snd_player_hurt"
+      ]
+    },
+    "player_low_energy_warning": {
+      "assetPool": [
+        "snd_player_hurt"
+      ]
+    },
+    "player_hit_guard": {
+      "assetPool": [
+        "snd_player_hurt"
+      ]
+    }
+  },
+  "runtimeOverrides": {}
+}

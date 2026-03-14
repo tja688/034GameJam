@@ -8,12 +8,14 @@ const SceneInputMixin = {
         const ambience = edit.ambience;
         const history = Array.isArray(edit.history) ? edit.history : [];
         Object.assign(edit, this.createDefaultEditState(), { active: true, ambience, history });
+        this.playAudioEvent?.('edit_mode_enter', { source: 'enterEditMode' });
     },
     exitEditMode() {
         const edit = this.player.edit;
         const ambience = edit.ambience;
         const history = Array.isArray(edit.history) ? edit.history : [];
         Object.assign(edit, this.createDefaultEditState(), { active: false, ambience, history });
+        this.playAudioEvent?.('edit_mode_exit', { source: 'exitEditMode' });
     },
     captureEditSnapshot() {
         return {
@@ -157,7 +159,11 @@ const SceneInputMixin = {
         this.discardPendingEditSnapshot();
         const snapshot = history.pop();
         edit.history = history;
-        return this.applyEditSnapshot(snapshot);
+        const ok = this.applyEditSnapshot(snapshot);
+        if (ok) {
+            this.playAudioEvent?.('edit_undo', { source: 'undoLastEditAction' });
+        }
+        return ok;
     },
     getUniqueNodeSelection(indices) {
         return [...new Set((Array.isArray(indices) ? indices : []).filter((index) => Number.isInteger(index)))];
@@ -274,6 +280,7 @@ const SceneInputMixin = {
         edit.pointerNode = -1;
         edit.pointerLink = '';
         edit.dragNode = -1;
+        this.playAudioEvent?.('edit_delete_start', { index });
     },
     deleteSelectedLinksOrTarget(linkId) {
         const targetIds = this.isEditLinkSelected(linkId) && this.player.edit.selectedLinks.length > 0
@@ -285,6 +292,7 @@ const SceneInputMixin = {
         if (removed) {
             this.pushEditHistorySnapshot(snapshot);
             this.clearEditSelection();
+            this.playAudioEvent?.('edit_delete_commit', { type: 'links', count: targetIds.length });
         }
         return removed;
     },
@@ -309,6 +317,7 @@ const SceneInputMixin = {
         if (changed) {
             this.pushEditHistorySnapshot(snapshot);
             this.clearEditSelection();
+            this.playAudioEvent?.('edit_delete_commit', { type: 'selection', nodes: nodeIds.length, links: survivingLinks.length });
         }
         return changed;
     },
@@ -828,7 +837,10 @@ const SceneInputMixin = {
         this.resetBoxSelectionState();
 
         if (draggedNode >= 0) {
-            this.commitPendingEditSnapshot();
+            const committed = this.commitPendingEditSnapshot();
+            if (committed) {
+                this.playAudioEvent?.('edit_drag_commit', { nodeIndex: draggedNode });
+            }
             return;
         }
 
@@ -852,6 +864,7 @@ const SceneInputMixin = {
                 this.clearEditSelection();
             } else {
                 this.setEditSelection([pointerNode], []);
+                this.playAudioEvent?.('edit_selection_node', { nodeIndex: pointerNode });
             }
             return;
         }
@@ -861,6 +874,7 @@ const SceneInputMixin = {
                 this.clearEditSelection();
             } else {
                 this.setEditSelection([], [pointerLink]);
+                this.playAudioEvent?.('edit_selection_link', { linkId: pointerLink });
             }
             return;
         }
@@ -904,6 +918,7 @@ const SceneInputMixin = {
                 edit.dragNode = edit.pointerNode;
                 this.setEditSelection([edit.dragNode], []);
                 this.resetBoxSelectionState();
+                this.playAudioEvent?.('edit_drag_start', { nodeIndex: edit.dragNode });
             }
         }
 
@@ -944,6 +959,7 @@ const SceneInputMixin = {
                 if (removed) {
                     this.pushEditHistorySnapshot(snapshot);
                     this.clearEditSelection();
+                    this.playAudioEvent?.('edit_delete_commit', { type: 'hold-delete', count: edit.deleteNodes.length });
                 }
             }
         }
@@ -999,6 +1015,7 @@ const SceneInputMixin = {
         }
         this.rebuildFormation();
         this.resetPulseFlow();
+        this.playAudioEvent?.('topology_node_added', { nodeIndex: index, templateId: template.id, silent: !!options.silent });
         return true;
     },
 };

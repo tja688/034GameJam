@@ -427,6 +427,7 @@ const SceneMovementMixin = {
     triggerNode(node, edge) {
         if (edge.kind === 'inverse') {
             this.player.agitation = clamp(this.player.agitation + 0.22, 0, 2);
+            this.playAudioEvent?.('player_pulse_inverse', { nodeIndex: node.index, role: node.role });
         } else if (edge.kind === 'steady') {
             this.player.stability = Math.min(1.3, this.player.stability + 0.12);
         }
@@ -435,26 +436,32 @@ const SceneMovementMixin = {
             case 'source':
                 this.player.stability = Math.min(1.2, this.player.stability + 0.08);
                 this.pulseFeed(node, edge, 'source');
+                this.playAudioEvent?.('player_pulse_source', { nodeIndex: node.index, edgeKind: edge.kind });
                 break;
             case 'compressor':
                 this.player.tempoBoost = clamp(this.player.tempoBoost + 0.5, 0, 1);
                 this.player.agitation = clamp(this.player.agitation + 0.2, 0, 2);
                 this.pulseFeed(node, edge, 'compressor');
+                this.playAudioEvent?.('player_pulse_compressor', { nodeIndex: node.index, edgeKind: edge.kind });
                 break;
             case 'shell':
                 this.player.stability = Math.min(1.4, this.player.stability + 0.18);
                 this.player.turnAssist = Math.max(this.player.turnAssist, 0.18);
                 this.performGrind(node, edge, 'shell');
+                this.playAudioEvent?.('player_pulse_shell', { nodeIndex: node.index, edgeKind: edge.kind });
                 break;
             case 'prism':
                 this.player.turnAssist = Math.min(1.2, this.player.turnAssist + 0.45);
                 this.performGrind(node, edge, 'prism');
+                this.playAudioEvent?.('player_pulse_prism', { nodeIndex: node.index, edgeKind: edge.kind });
                 break;
             case 'dart':
                 this.performHookStrike(node, edge, 'dart');
+                this.playAudioEvent?.('player_pulse_dart', { nodeIndex: node.index, edgeKind: edge.kind });
                 break;
             case 'blade':
                 this.performHookStrike(node, edge, 'blade');
+                this.playAudioEvent?.('player_pulse_blade', { nodeIndex: node.index, edgeKind: edge.kind });
                 break;
             default:
                 break;

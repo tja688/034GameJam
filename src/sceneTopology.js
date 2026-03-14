@@ -359,7 +359,9 @@ const SceneTopologyMixin = {
         if (this.getTopologyEdgeCount(a, b) > 0) {
             return false;
         }
-        this.player.topology.edges.push(this.createTopologyEdgeDescriptor(a, b, kind));
+        const edge = this.createTopologyEdgeDescriptor(a, b, kind);
+        this.player.topology.edges.push(edge);
+        this.playAudioEvent?.('topology_edge_created', { edgeId: edge.id, a, b, kind });
         return true;
     },
     removeTopologyEdges(edgeIds) {
@@ -378,6 +380,7 @@ const SceneTopologyMixin = {
             this.syncEditSelectionState();
         }
         this.rebuildFormation();
+        this.playAudioEvent?.('topology_edge_deleted', { count: edgeIdSet.size });
         return true;
     },
     removeTopologyEdge(edgeId) {
@@ -409,6 +412,7 @@ const SceneTopologyMixin = {
         }
         this.rebuildFormation();
         this.resetPulseFlow();
+        this.playAudioEvent?.('topology_node_removed', { count: indexSet.size });
         return true;
     },
     removeNodeFromTopology(index) {

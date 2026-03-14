@@ -118,6 +118,7 @@ const SceneSaveLoadMixin = {
         const ok = writeStoredJson(STORAGE_KEYS.saveSlot, this.buildSaveData());
         this.refreshMenuState();
         this.showToast(ok ? '单通道存档已写入 save-slot.json。' : '保存失败，无法写入 save-slot.json（请用 start-dev 启动）。', !ok);
+        this.playAudioEvent?.(ok ? 'save_success' : 'save_error', { ok });
         return ok;
     },
     applySaveData(data) {
@@ -279,10 +280,12 @@ const SceneSaveLoadMixin = {
 
         const ok = this.applySaveData(data);
         this.showToast(ok ? '单通道存档已读取。' : '读档失败，存档数据不可用。', !ok);
+        this.playAudioEvent?.(ok ? 'load_success' : 'load_error', { ok });
         return ok;
     },
     startNewGame() {
         this.resetSimulation(true);
+        this.playAudioEvent?.('game_start_new_run', { source: 'startNewGame' });
         this.resumeGame();
     },
     handleMainContinue() {
@@ -298,9 +301,13 @@ const SceneSaveLoadMixin = {
             return;
         }
 
+        const wasInMenu = !!this.menuMode;
         this.debugMenuAutoPaused = false;
         this.menuMode = null;
         this.paused = false;
+        if (wasInMenu) {
+            this.playAudioEvent?.('ui_menu_close', { mode: 'resume' });
+        }
         this.refreshMenuState();
     },
     handleExitGame() {

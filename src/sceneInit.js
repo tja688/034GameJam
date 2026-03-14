@@ -480,6 +480,7 @@ const SceneInitMixin = {
                 this.player.deathTimer -= frameDt;
                 if (Phaser.Input.Keyboard.JustDown(this.keys.restart) || Phaser.Input.Keyboard.JustDown(this.keys.cancel) || this.player.deathTimer <= 0) {
                     this.endFramePerformanceProbe();
+                    this.playAudioEvent?.('game_restart', { source: 'death-restart' });
                     this.resetSimulation(true);
                     this.resumeGame();
                     return;
@@ -512,6 +513,7 @@ const SceneInitMixin = {
             }
             if (!this.player.dead && !this.player.edit.active && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
                 this.endFramePerformanceProbe();
+                this.playAudioEvent?.('game_restart', { source: 'manual-restart' });
                 this.resetSimulation(true);
                 return;
             }

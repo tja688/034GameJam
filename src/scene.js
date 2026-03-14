@@ -8,6 +8,7 @@ class CoreDemoScene extends Phaser.Scene {
         window.activeScene = this;
         window.dumpEcoTelemetry = () => window.activeScene?.getEcoTelemetrySnapshot?.();
         ensureGameUiStyles();
+        this.initAudioSystem?.();
         this.cameras.main.setBackgroundColor(COLORS.background);
         this.graphicsWorld = this.add.graphics();
         this.graphicsWorld.setDepth(0);

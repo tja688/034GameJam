@@ -220,13 +220,34 @@ const SceneUiMixin = {
             mainMenuButton: overlay.querySelector('#menu-main-menu-btn')
         };
 
-        this.ui.startButton.addEventListener('click', () => this.startNewGame());
-        this.ui.mainContinueButton.addEventListener('click', () => this.handleMainContinue());
-        this.ui.exitButton.addEventListener('click', () => this.handleExitGame());
-        this.ui.pauseContinueButton.addEventListener('click', () => this.resumeGame());
-        this.ui.saveButton.addEventListener('click', () => this.saveGameToSlot());
-        this.ui.loadButton.addEventListener('click', () => this.loadGameFromSlot());
-        this.ui.mainMenuButton.addEventListener('click', () => this.showMainMenu());
+        this.ui.startButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-start-btn' });
+            this.startNewGame();
+        });
+        this.ui.mainContinueButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-main-continue-btn' });
+            this.handleMainContinue();
+        });
+        this.ui.exitButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-exit-btn' });
+            this.handleExitGame();
+        });
+        this.ui.pauseContinueButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-pause-continue-btn' });
+            this.resumeGame();
+        });
+        this.ui.saveButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-save-btn' });
+            this.saveGameToSlot();
+        });
+        this.ui.loadButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-load-btn' });
+            this.loadGameFromSlot();
+        });
+        this.ui.mainMenuButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'menu-main-menu-btn' });
+            this.showMainMenu();
+        });
     },
 
     refreshMenuState() {
@@ -285,6 +306,7 @@ const SceneUiMixin = {
         this.ui.toast.textContent = message;
         this.ui.toast.classList.toggle('error', isError);
         this.ui.toast.classList.add('visible');
+        this.playAudioEvent?.(isError ? 'ui_toast_error' : 'ui_toast_success', { message, isError });
         this.toastTimer = window.setTimeout(() => {
             this.ui.toast.classList.remove('visible');
         }, 1800);
@@ -299,6 +321,7 @@ const SceneUiMixin = {
         this.debugMenuAutoPaused = false;
         this.menuMode = 'pause';
         this.paused = true;
+        this.playAudioEvent?.('ui_menu_open_pause', { mode: 'pause' });
         this.refreshMenuState();
     },
 
@@ -310,6 +333,7 @@ const SceneUiMixin = {
         this.debugMenuAutoPaused = false;
         this.menuMode = 'main';
         this.paused = true;
+        this.playAudioEvent?.('ui_menu_open_main', { mode: 'main' });
         this.refreshMenuState();
     },
 

@@ -1,7 +1,8 @@
 const STORAGE_WRITE_JSON_ENDPOINT = '/__api/write-json';
 
 const REPO_JSON_STORAGE_MAP = {
-    [STORAGE_KEYS.saveSlot]: 'save-slot.json'
+    [STORAGE_KEYS.saveSlot]: 'save-slot.json',
+    [STORAGE_KEYS.audioProfile]: 'audio-profile.json'
 };
 
 function canUseRepoJsonStorage() {

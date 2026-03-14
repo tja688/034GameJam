@@ -4,6 +4,144 @@ const SceneEnemiesMixin = {
         const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
         return Math.max(rule.packMin || 1, Math.round(rule.desired * density) + bonus);
     },
+    getPreySpawnViewportMetrics() {
+        const viewportWidth = Math.max(1, this.cameraRig?.viewportWidth || this.scale?.width || 1280);
+        const viewportHeight = Math.max(1, this.cameraRig?.viewportHeight || this.scale?.height || 720);
+        const zoom = Math.max(0.03, this.cameraRig?.zoom || 1);
+        const referenceZoomFloor = Math.max(0.35, this.getRunTuningValue('gameplayPreySpawnReferenceZoomMin', 0.68));
+        // Keep spawn/cull distances stable even if debug zoom is pulled very far out.
+        const spawnZoom = Math.max(zoom, referenceZoomFloor);
+        const halfWidth = viewportWidth * 0.5 / spawnZoom;
+        const halfHeight = viewportHeight * 0.5 / spawnZoom;
+        return {
+            viewportWidth,
+            viewportHeight,
+            zoom,
+            spawnZoom,
+            halfWidth,
+            halfHeight,
+            viewRadius: Math.hypot(halfWidth, halfHeight)
+        };
+    },
+    getPreySpawnRing(isObjective = false) {
+        const metrics = this.getPreySpawnViewportMetrics();
+        const hidePadding = Math.max(90, this.getRunTuningValue('gameplayPreySpawnHidePadding', 170));
+        const formationSafety = Math.max(130, this.getFormationSpan() + 90);
+        const ringMin = Math.max(formationSafety, metrics.viewRadius + hidePadding);
+        const ringThickness = Math.max(180, Math.min(620, metrics.viewRadius * (isObjective ? 0.62 : 0.44)));
+        const ringMax = ringMin + ringThickness;
+        return {
+            ...metrics,
+            ringMin,
+            ringMax,
+            ringThickness
+        };
+    },
+    getPreySpawnFlowDirection() {
+        const heading = this.player?.heading ?? (-Math.PI * 0.5);
+        const baseForward = vectorFromAngle(heading);
+        const flow = normalize(
+            this.intent?.flowX ?? baseForward.x,
+            this.intent?.flowY ?? baseForward.y,
+            baseForward.x,
+            baseForward.y
+        );
+        return {
+            x: flow.x,
+            y: flow.y,
+            angle: Math.atan2(flow.y, flow.x),
+            moving: flow.length > 0.08
+        };
+    },
+    scorePreySpawnCrowding(x, y, radius, spawnRuleId = '') {
+        const radiusSq = radius * radius;
+        let crowding = 0;
+        for (let i = 0; i < this.prey.length; i += 1) {
+            const prey = this.prey[i];
+            const dx = prey.x - x;
+            const dy = prey.y - y;
+            const distanceSq = dx * dx + dy * dy;
+            if (distanceSq >= radiusSq) {
+                continue;
+            }
+            const distance = Math.sqrt(distanceSq);
+            const sameRuleWeight = spawnRuleId && prey.spawnRuleId === spawnRuleId ? 1.35 : 1;
+            crowding += (1 - distance / Math.max(1, radius)) * sameRuleWeight;
+        }
+        return crowding;
+    },
+    pickSpawnClusterAnchor(spawnConfig, count = 1, isObjective = false) {
+        const ring = this.getPreySpawnRing(isObjective);
+        const flow = this.getPreySpawnFlowDirection();
+        const forwardBias = clamp(this.getRunTuningValue('gameplayPreyForwardSpawnBias', 0.62), 0, 1);
+        if (!Number.isFinite(this.preySpawnSweepAngle)) {
+            this.preySpawnSweepAngle = Math.random() * Math.PI * 2;
+        }
+        this.preySpawnSweepAngle = Phaser.Math.Angle.Wrap(this.preySpawnSweepAngle + GOLDEN_ANGLE * 0.58);
+
+        const candidateAngles = [];
+        const candidateCount = Math.min(8, 4 + Math.max(0, count - 1));
+        for (let i = 0; i < candidateCount; i += 1) {
+            candidateAngles.push(
+                Phaser.Math.Angle.Wrap(
+                    this.preySpawnSweepAngle
+                    + (Math.PI * 2 * i) / Math.max(1, candidateCount)
+                    + Phaser.Math.FloatBetween(-0.2, 0.2)
+                )
+            );
+        }
+
+        if (flow.moving && Math.random() < forwardBias) {
+            const fan = isObjective ? Math.PI * 0.52 : Math.PI * 0.66;
+            for (let i = 0; i < 4; i += 1) {
+                candidateAngles.push(
+                    Phaser.Math.Angle.Wrap(flow.angle + Phaser.Math.FloatBetween(-fan, fan))
+                );
+            }
+        }
+
+        const spacingBase = spawnConfig.archetype === 'school'
+            ? 240
+            : spawnConfig.sizeKey === 'large'
+                ? 190
+                : spawnConfig.sizeKey === 'medium'
+                    ? 220
+                    : 260;
+        const crowdRadius = Math.max(180, spacingBase + count * 34);
+
+        let best = null;
+        candidateAngles.forEach((angle) => {
+            const distance = Phaser.Math.FloatBetween(ring.ringMin, ring.ringMax);
+            const x = this.player.centroidX + Math.cos(angle) * distance;
+            const y = this.player.centroidY + Math.sin(angle) * distance;
+            let score = this.scorePreySpawnCrowding(x, y, crowdRadius, spawnConfig.id || '');
+            if (flow.moving) {
+                const alignment = Math.cos(Phaser.Math.Angle.Wrap(angle - flow.angle));
+                const directionalPenalty = clamp(0.35 - alignment, 0, 1.35);
+                score += directionalPenalty * 0.55;
+            }
+
+            if (!best || score < best.score) {
+                best = { x, y, angle, score, ring };
+            }
+        });
+
+        return best || {
+            x: this.player.centroidX + Math.cos(this.preySpawnSweepAngle) * ring.ringMin,
+            y: this.player.centroidY + Math.sin(this.preySpawnSweepAngle) * ring.ringMin,
+            angle: this.preySpawnSweepAngle,
+            ring
+        };
+    },
+    getPreyCullDistance(prey = null) {
+        const metrics = this.getPreySpawnViewportMetrics();
+        const viewMul = Math.max(1.2, this.getRunTuningValue('gameplayPreyCullViewMul', 1.9));
+        const baseDistance = Math.max(
+            980,
+            metrics.viewRadius * viewMul + Math.max(140, this.getFormationSpan() * 0.35 + 120)
+        );
+        return prey?.isObjective ? baseDistance * 1.22 : baseDistance;
+    },
     seedConfiguredPrey(spawnConfig, count = 1) {
         const results = [];
         const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
@@ -31,6 +169,16 @@ const SceneEnemiesMixin = {
             });
             this.prey.push(prey);
             results.push(prey);
+        }
+
+        if (results.length > 0) {
+            this.playAudioEvent?.('prey_spawn_batch', {
+                source: 'seed',
+                count: results.length,
+                archetype: spawnConfig.archetype || '',
+                sizeKey: spawnConfig.sizeKey || '',
+                isObjective: !!spawnConfig.isObjective
+            });
         }
 
         return results;
@@ -98,26 +246,50 @@ const SceneEnemiesMixin = {
     },
     spawnConfiguredPrey(spawnConfig, count = 1, forceObjective = false) {
         const results = [];
-        const side = Phaser.Utils.Array.GetRandom(['left', 'right', 'top', 'bottom']);
-        const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
-        const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
-        const isHorizontal = side === 'left' || side === 'right';
-        const axisBase = isHorizontal
-            ? Phaser.Math.Between(this.player.centroidY - worldHalfHeight, this.player.centroidY + worldHalfHeight)
-            : Phaser.Math.Between(this.player.centroidX - worldHalfWidth, this.player.centroidX + worldHalfWidth);
+        const isObjective = !!(forceObjective || spawnConfig.isObjective);
+        const anchor = this.pickSpawnClusterAnchor(spawnConfig, count, isObjective);
+        const spreadMul = Math.max(0.35, this.getRunTuningValue('gameplayPreyFieldSpreadMul', 1));
+        const clusterBase = (spawnConfig.archetype === 'school'
+            ? 52
+            : spawnConfig.sizeKey === 'large'
+                ? 32
+                : spawnConfig.sizeKey === 'medium'
+                    ? 72
+                    : 96) * spreadMul * (isObjective ? 0.72 : 1);
         const groupId = count > 1 ? `${spawnConfig.id || spawnConfig.archetype}-${this.preyIdCounter}` : '';
 
         for (let i = 0; i < count; i += 1) {
-            const spread = (i - (count - 1) * 0.5) * (spawnConfig.isObjective || forceObjective ? 42 : 64);
-            const axis = axisBase + spread + Phaser.Math.Between(-18, 18);
+            const ring = Math.sqrt((i + 0.35) / Math.max(1, count));
+            const angle = anchor.angle + (Math.PI * 2 * i) / Math.max(1, count) + Phaser.Math.FloatBetween(-0.55, 0.55);
+            const offset = clusterBase * ring;
+            let x = anchor.x + Math.cos(angle) * offset + Phaser.Math.FloatBetween(-22, 22);
+            let y = anchor.y + Math.sin(angle) * offset + Phaser.Math.FloatBetween(-22, 22);
+            const dx = x - this.player.centroidX;
+            const dy = y - this.player.centroidY;
+            const distance = Math.hypot(dx, dy);
+            if (distance < anchor.ring.ringMin) {
+                const pullOut = (anchor.ring.ringMin + Phaser.Math.FloatBetween(12, 58)) / Math.max(distance, 0.0001);
+                x = this.player.centroidX + dx * pullOut;
+                y = this.player.centroidY + dy * pullOut;
+            }
             const prey = this.createPrey(spawnConfig, {
-                side,
-                axis,
+                x,
+                y,
                 groupId,
-                isObjective: !!(forceObjective || spawnConfig.isObjective)
+                isObjective
             });
             this.prey.push(prey);
             results.push(prey);
+        }
+
+        if (results.length > 0) {
+            this.playAudioEvent?.('prey_spawn_batch', {
+                source: 'spawn',
+                count: results.length,
+                archetype: spawnConfig.archetype || '',
+                sizeKey: spawnConfig.sizeKey || '',
+                isObjective
+            });
         }
 
         return results;
@@ -946,6 +1118,12 @@ const SceneEnemiesMixin = {
             prey.pushCharge *= 0.4;
             prey.alertPulse = Math.max(prey.alertPulse || 0, 0.92);
             this.createRing(prey.x, prey.y, prey.radius + 24, prey.signalColor || prey.color, 0.14, 2, 'prey-guard');
+            this.playAudioEvent?.('prey_guard_pulse', {
+                preyId: prey.id,
+                archetype: prey.archetype || '',
+                sizeKey: prey.sizeKey || '',
+                threat: threat.threat
+            });
         }
     },
     updatePreyStateMachine(prey, threat, profile, tuning, simDt) {
@@ -1036,6 +1214,14 @@ const SceneEnemiesMixin = {
                 prey.burstTimer = profile.burstDuration * (0.86 + prey.stamina * 0.32);
                 prey.stamina = Math.max(0, prey.stamina - 0.34);
                 prey.alarm = Math.max(prey.alarm || 0, 1.1);
+                this.playAudioEvent?.('prey_state_burst', {
+                    preyId: prey.id,
+                    fromState: state,
+                    threat: threat.threat,
+                    gapNorm: threat.gapNorm,
+                    archetype: prey.archetype || '',
+                    sizeKey: prey.sizeKey || ''
+                });
                 if (this.ecoTelemetry?.prey?.activeChases?.[prey.id]) {
                     this.ecoTelemetry.prey.activeChases[prey.id].burstCount += 1;
                 }
@@ -1056,10 +1242,12 @@ const SceneEnemiesMixin = {
     updatePrey(simDt) {
         this.refreshPreySpatialCache();
         const tuning = this.getPreyBehaviorTuning();
+        const baseCullDistance = this.getPreyCullDistance();
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             const distanceFromCenter = Math.hypot(prey.x - this.player.centroidX, prey.y - this.player.centroidY);
-            if (distanceFromCenter > 3200) {
+            const cullDistance = prey.isObjective ? baseCullDistance * 1.22 : baseCullDistance;
+            if (distanceFromCenter > cullDistance) {
                 this.finishPreyChaseTelemetry(prey, 'escaped', { reason: 'out-of-range' });
                 // swap-and-pop: O(1) removal instead of splice O(n)
                 const last = this.prey.length - 1;
