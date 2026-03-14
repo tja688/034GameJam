@@ -426,6 +426,74 @@ const SceneProgressionMixin = {
         const ruleMul = this.getPreyRuleSizeMultiplier(spawnConfig?.id || prey?.spawnRuleId || '');
         return Math.max(0.2, globalMul * sizeMul * ruleMul);
     },
+    getPreyCombatViewMetrics() {
+        const viewportWidth = Math.max(1, this.cameraRig?.viewportWidth || this.scale?.width || 1280);
+        const viewportHeight = Math.max(1, this.cameraRig?.viewportHeight || this.scale?.height || 720);
+        const zoom = Math.max(0.03, this.cameraRig?.zoom || 1);
+        const worldViewWidth = viewportWidth / zoom;
+        const worldViewHeight = viewportHeight / zoom;
+        return {
+            worldViewWidth,
+            worldViewHeight,
+            worldViewDiagonal: Math.hypot(worldViewWidth, worldViewHeight)
+        };
+    },
+    getPreyRelativeVolumeByRadius(radius) {
+        const metrics = this.getPreyCombatViewMetrics();
+        const projectionExponent = clamp(this.getRunTuningValue('gameplayPreyVolumeProjectionExponent', 2), 1, 3.5);
+        const safeRadius = Math.max(0.1, radius || 0);
+        const relativeViewSize = (safeRadius * 2) / Math.max(1, metrics.worldViewDiagonal);
+        return {
+            relativeViewSize,
+            relativeVolume: Math.pow(Math.max(0.00001, relativeViewSize), projectionExponent)
+        };
+    },
+    getPreyVolumeHealthProfile(prey) {
+        const biteDps = Math.max(0.1, this.getRunTuningValue('gameplayPreySimpleBiteDps', 18));
+        const smallTtk = Math.max(0.1, this.getRunTuningValue('gameplayPreySimpleTTKSmall', 1.35));
+        const largeTtk = Math.max(smallTtk, this.getRunTuningValue('gameplayPreySimpleTTKLarge', 4.8));
+        const smallRefRadius = Math.max(1, this.getRunTuningValue('gameplayPreyVolumeRefSmallRadius', PREY_SIZE_DEFS.small.radius));
+        const largeRefRadius = Math.max(smallRefRadius + 0.01, this.getRunTuningValue('gameplayPreyVolumeRefLargeRadius', PREY_SIZE_DEFS.large.radius));
+        const smallRef = this.getPreyRelativeVolumeByRadius(smallRefRadius);
+        const largeRef = this.getPreyRelativeVolumeByRadius(largeRefRadius);
+        const target = this.getPreyRelativeVolumeByRadius(prey?.radius || smallRefRadius);
+        const smallHealth = biteDps * smallTtk;
+        const largeHealth = biteDps * largeTtk;
+        const safeSmallVolume = Math.max(0.0000001, smallRef.relativeVolume);
+        const safeLargeVolume = Math.max(safeSmallVolume + 0.0000001, largeRef.relativeVolume);
+        const safeTargetVolume = Math.max(0.0000001, target.relativeVolume);
+        const safeSmallHealth = Math.max(0.0001, smallHealth);
+        const safeLargeHealth = Math.max(safeSmallHealth, largeHealth);
+        const anchorVolumeRatio = safeLargeVolume / safeSmallVolume;
+        const anchorHealthRatio = safeLargeHealth / safeSmallHealth;
+        const growthExponent = anchorVolumeRatio > 1.000001 && anchorHealthRatio > 1.000001
+            ? Math.log(anchorHealthRatio) / Math.log(anchorVolumeRatio)
+            : 1;
+        const targetVolumeRatio = safeTargetVolume / safeSmallVolume;
+        const maxHealth = Math.max(1, safeSmallHealth * Math.pow(targetVolumeRatio, growthExponent));
+        return {
+            biteDps,
+            maxHealth,
+            relativeViewSize: target.relativeViewSize,
+            relativeVolume: target.relativeVolume,
+            targetTimeToKill: maxHealth / biteDps
+        };
+    },
+    syncPreyVolumeHealth(prey, preserveRatio = true) {
+        if (!prey) {
+            return null;
+        }
+        const previousMaxHealth = Math.max(1, prey.maxHealth || 1);
+        const previousHealth = Number.isFinite(prey.health) ? prey.health : previousMaxHealth;
+        const previousRatio = preserveRatio ? clamp(previousHealth / previousMaxHealth, 0, 1) : 1;
+        const profile = this.getPreyVolumeHealthProfile(prey);
+        prey.maxHealth = profile.maxHealth;
+        prey.health = clamp(profile.maxHealth * previousRatio, 0, profile.maxHealth);
+        prey.relativeViewSize = profile.relativeViewSize;
+        prey.relativeVolume = profile.relativeVolume;
+        prey.targetTimeToKill = profile.targetTimeToKill;
+        return profile;
+    },
     getPreyYieldMultiplier(prey) {
         const visualScale = Math.max(0.25, prey?.visualScale || 1);
         const scaleYield = Math.max(0.65, Math.pow(visualScale, 0.32));
@@ -468,7 +536,6 @@ const SceneProgressionMixin = {
         const encounterClass = spawnAdjustment.encounterClass || (spawnConfig.isObjective ? 'objective' : spawnConfig.tier === 'elite' ? 'elite' : 'basic');
         const sizeFactor = prey.sizeKey === 'large' ? 1.95 : prey.sizeKey === 'medium' ? 1.35 : 1;
         const speciesSizeMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'size', 1);
-        const speciesHealthMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'health', 1);
         const speciesSpeedMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'speed', 1);
         const speciesYieldMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'yield', 1);
         const jitterDefault = encounterClass === 'basic'
@@ -508,11 +575,7 @@ const SceneProgressionMixin = {
         prey.radius *= visualScale;
         prey.baseRadius = prey.radius;
         prey.chunkBurst = Math.max(1, Math.round(prey.chunkBurst * Math.max(1, Math.pow(visualScale, 0.62))));
-        prey.maxHealth *= spawnAdjustment.healthMul
-            * speciesHealthMul
-            * (spawnConfig.healthMul ?? 1)
-            * Math.max(0.82, Math.pow(visualScale, encounterClass === 'basic' ? 0.88 : prey.isObjective ? 0.56 : 0.42));
-        prey.health = prey.maxHealth;
+        this.syncPreyVolumeHealth(prey, false);
         prey.speed *= archetype.speedMul * spawnAdjustment.speedMul * speciesSpeedMul * (spawnConfig.speedMul ?? 1);
         prey.accel *= archetype.accelMul * spawnAdjustment.speedMul * speciesSpeedMul * (spawnConfig.speedMul ?? 1);
         prey.fleeMul *= archetype.fleeMul;
@@ -605,38 +668,7 @@ const SceneProgressionMixin = {
         return clamp(Math.max(angularAccess, encircle * encircleAssist + compression * compressionAssist), 0, 1);
     },
     getPreyDamageMultiplier(prey, node, attachment, pressure) {
-        if (!prey) {
-            return 1;
-        }
-
-        const encircle = clamp(pressure?.encirclement || 0, 0, 1);
-        const compressionAccess = this.getCompressionAccess(prey, pressure);
-        const weakAccess = this.getWeakspotAccess(prey, node, pressure);
-        let multiplier = 1;
-
-        if (prey.behaviorId === 'elite-spinner') {
-            multiplier *= prey.spinHazardActive
-                ? this.getRunTuningValue('gameplayEliteSpinnerSpinDamageMul', 0.72)
-                : this.getRunTuningValue('gameplayEliteSpinnerRestDamageMul', 1.12);
-        } else if (prey.behaviorId === 'elite-brute') {
-            multiplier *= this.getRunTuningValue('gameplayEliteBruteBaseDamageMul', 0.82)
-                + encircle * this.getRunTuningValue('gameplayEliteBruteEncircleDamageMul', 0.24)
-                + clamp((pressure?.cutterCount || 0) / 4, 0, 1) * this.getRunTuningValue('gameplayEliteBruteCutterDamageMul', 0.26);
-        } else if (prey.behaviorId === 'elite-dart') {
-            multiplier *= this.getRunTuningValue('gameplayEliteDartBaseDamageMul', 0.68)
-                + encircle * this.getRunTuningValue('gameplayEliteDartEncircleDamageMul', 0.54)
-                + clamp((pressure?.pressure || 0) / 1.2, 0, 1) * this.getRunTuningValue('gameplayEliteDartPressureDamageMul', 0.3);
-            if (attachment?.mode === 'feed' && encircle < this.getRunTuningValue('gameplayEliteDartFeedEncircleGate', 0.34)) {
-                multiplier *= this.getRunTuningValue('gameplayEliteDartFeedPenalty', 0.52);
-            }
-        }
-
-        if (prey.isObjective) {
-            multiplier *= this.getRunTuningValue('gameplayObjectiveCutterBase', 0.92)
-                + clamp((pressure?.cutterCount || 0) / 4, 0, 1) * this.getRunTuningValue('gameplayObjectiveCutterPerCount', 0.18);
-        }
-
-        return multiplier;
+        return 1;
     },
     getPulseMetabolismPhaseMultiplier(phase) {
         switch (phase) {
