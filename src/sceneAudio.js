@@ -1,5 +1,5 @@
 const STAGE_BGM_EVENT_ID = 'bgm_main';
-const STAGE_BGM_ASSET_IDS = Object.freeze(['dem_1', 'dem_2', 'dem_3', 'dem_4', 'dem_5']);
+const STAGE_BGM_ASSET_IDS = Object.freeze(['dem_1', 'dem_2', 'dem_3', 'dem_4', 'dem_6']);
 const STAGE_BGM_VOLUME_MUL_BY_ASSET_ID = Object.freeze({});
 const STAGE_BGM_START_SEEK_BY_ASSET_ID = Object.freeze({
     // Manual musical-entry cuts so stage swaps land on the groove instead of the cold intro.
@@ -7,7 +7,8 @@ const STAGE_BGM_START_SEEK_BY_ASSET_ID = Object.freeze({
     dem_2: 4.6,
     dem_3: 4.9,
     dem_4: 4.4,
-    dem_5: 4.2
+    dem_5: 4.2,
+    dem_6: 0
 });
 const BGM_STATE_MODE = Object.freeze({
     idle: 'idle',

@@ -3934,6 +3934,20 @@
       "files": [
         "纯电子DEM配乐5.mp3"
       ]
+    },
+    {
+      "id": "dem_6",
+      "label": "纯电子dem配乐6",
+      "group": "misc",
+      "tags": [
+        "dem",
+        "dem_6",
+        "misc"
+      ],
+      "preload": false,
+      "files": [
+        "纯电子DEM配乐6.mp3"
+      ]
     }
   ]
 }
