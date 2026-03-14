@@ -72,7 +72,7 @@
 当前仓库已经不再是单纯 playtest playground，而是一个“正式 demo 基底 + 完整开发态工具”的混合体：
 
 - 正式 demo 循环已落地
-- 四阶段 progression 已落地
+- 五阶段非线性 progression 已落地
 - 猎物 archetype 已落地
 - 无文字 HUD 与阶段反馈已落地
 - 主菜单 / 暂停 / 单槽存档已接回
@@ -115,7 +115,7 @@
 - 高密度追猎循环
 - 体量成长
 - 姿态博弈
-- 4 个阶段的小关卡递进
+- 5 个阶段的非线性节点递进
 
 ---
 
@@ -206,9 +206,9 @@
 4. 通过追猎基础 prey 维持能量
 5. 通过吞食积累 growthBuffer
 6. 达到成长门槛后自动长出新节点
-7. 达到本阶段 progressGoal 后刷新 objective
-8. 吞食 objective 晋级下一阶段
-9. 最终阶段吞食 apex objective 获胜
+7. 达到本阶段的 objective 亮相节点，或亮相进度阈值后，提前刷新 objective
+8. 玩家自行决定继续刷场，或吞食 objective 晋级下一阶段
+9. 最终阶段吞食终局 objective 获胜
 10. 若能量耗尽则死亡并快速重开
 
 ### 2. 小循环
@@ -224,7 +224,7 @@
 
 当前这套小循环大多数时候应该在 5 到 12 秒内完成一次，节奏不能拖。
 
-### 3. 当前四阶段与策划映射
+### 3. 当前五阶段与策划映射
 
 当前阶段定义在 `src/constants.js` 的 `DEMO_STAGE_DEFS` 中。
 
@@ -232,6 +232,8 @@
 
 - 设计意图：教玩家追、贴、吞
 - 体验关键词：求生、初次追猎
+- 节点带：`6 / 12 / 16 / 18 / 20`
+- objective 亮相：`节点 >= 10` 或 `progressGoal * 0.50`
 - 主要 prey：`skittish` + 小型 `school`
 - objective：大型 `skittish`
 
@@ -239,22 +241,37 @@
 
 - 设计意图：教玩家体量扩张后的扫荡感，以及“不是一直铺开就最优”
 - 体验关键词：扩张、第一层压制
+- 节点带：`16 / 24 / 30 / 34 / 36`
+- objective 亮相：`节点 >= 22` 或 `progressGoal * 0.52`
 - 主要 prey：`school` + `skittish` + 初次 `bulwark`
 - objective：大型 `bulwark`
+
+#### `pressure`
+
+- 设计意图：把中局压力从“能追到”推进到“能咬穿”
+- 体验关键词：施压、厚壳、中局硬目标
+- 节点带：`30 / 40 / 48 / 54 / 58`
+- objective 亮相：`节点 >= 36` 或 `progressGoal * 0.50`
+- 主要 prey：中型 `school` + 中型 `skittish` + 大型 `bulwark`
+- objective：大型 `weakspot`
 
 #### `encircle`
 
 - 设计意图：教玩家包围、绕后、逼弱点
 - 体验关键词：围猎、堵位
-- 主要 prey：`weakspot` + `bulwark` + `school`
-- objective：大型 `weakspot`
+- 节点带：`48 / 60 / 72 / 80 / 84`
+- objective 亮相：`节点 >= 56` 或 `progressGoal * 0.48`
+- 主要 prey：`weakspot` + `bulwark` + `school` + 首个 `apex`
+- objective：大型 `apex`
 
 #### `saturation`
 
 - 设计意图：把追、缩、铺、扑全部串起来，形成终局压力
 - 体验关键词：过饱和、巨构捕食
-- 主要 prey：`school` + `bulwark` + `weakspot`
-- objective：大型 `apex`
+- 节点带：`72 / 88 / 96 / 100 / 100`
+- objective 亮相：`节点 >= 82` 或 `progressGoal * 0.45`
+- 主要 prey：大型 `school` + 大型 `bulwark` + 大型 `weakspot` + `apex`
+- objective：最大号 `apex`
 
 ---
 
@@ -1050,7 +1067,7 @@ prey 受击、撕裂或死亡时会生成 fragments。
 
 这里非常关键：
 
-当前程序不会直接把 `DEMO_STAGE_DEFS` 原样拿来跑，而是会在运行时构造一个“带 gameplay 全局倍率”的 stage 副本。
+当前程序不会直接把 `DEMO_STAGE_DEFS` 原样拿来跑，而是会在运行时构造一个“带 gameplay 全局倍率、阶段节点带、提前亮相阈值与成长经济”的 stage 副本。
 
 这意味着：
 
@@ -1077,12 +1094,30 @@ prey 受击、撕裂或死亡时会生成 fragments。
 - `spawn interval` 倍率
 - `maxNodes` 补正
 
+#### 阶段节点曲线
+
+- 每关 `entry / earlyExit / idealExit / overstay / max`
+- objective 提前亮相节点
+- objective 提前亮相进度比
+
 #### 成长经济
 
 - 成长基础成本
 - 每节点增量
 - 成本上限
 - 长节点返还能量
+
+#### 成长加速
+
+- 每关成长成本倍率
+- 每关 biomass 进账倍率
+- 每关长节点回能倍率
+
+#### 猎场承载力
+
+- 普通猎物密度与收益的节点带倍率
+- 每关 common carry 基础倍率
+- 每关 elite / objective 的尺寸、生命、速度倍率
 
 #### 碎片收益
 
@@ -1520,5 +1555,5 @@ window.CORE_DEMO_DEBUG = false
 
 如果要把当前项目讲给一个刚进组的人，最准确的版本是：
 
-> 这是一个围绕“集群牵引移动”建立起来的短局生态捕食 demo。玩家输入的是意图场，而不是坐标；主角是一团由圆、方、三角节点组成的生物组织，通过脉冲巡游、节点抓地、连线张力、体积舒张和保形约束向前侵袭。正式循环已经包含四阶段 progression、猎物 archetype、能量与成长、objective 晋级、无文字 HUD，以及主菜单、存档、调参和慢放编辑态等完整开发工具。后续开发的主线，不是推翻这套东西重做，而是围绕它继续丰富 prey、阶段、反馈、编辑器和整体质感。  
+> 这是一个围绕“集群牵引移动”建立起来的短局生态捕食 demo。玩家输入的是意图场，而不是坐标；主角是一团由圆、方、三角节点组成的生物组织，通过脉冲巡游、节点抓地、连线张力、体积舒张和保形约束向前侵袭。正式循环已经包含五阶段非线性 progression、猎物 archetype、能量与成长、objective 提前亮相与晋级、无文字 HUD，以及主菜单、存档、调参和慢放编辑态等完整开发工具。后续开发的主线，不是推翻这套东西重做，而是围绕它继续丰富 prey、阶段、反馈、编辑器和整体质感。  
 

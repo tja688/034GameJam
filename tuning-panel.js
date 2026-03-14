@@ -8,6 +8,243 @@ const LEGACY_TUNING_STORAGE_KEY = 'bio-core-tuning-profile';
 const DEV_WRITE_JSON_ENDPOINT = '/__api/write-json';
 const DEV_WRITE_PING_ENDPOINT = '/__api/ping';
 
+const STAGE_GAMEPLAY_TUNING_META = [
+    {
+        id: 'forage',
+        label: '觅食',
+        nodeTargets: { entry: 6, earlyExit: 12, idealExit: 16, overstay: 18, max: 20 },
+        objectiveRevealNode: 10,
+        objectiveRevealRatio: 0.5,
+        growthEconomy: { costMul: 1, biomassMul: 1, growthEnergyMul: 1 }
+    },
+    {
+        id: 'bloom',
+        label: '扩张',
+        nodeTargets: { entry: 16, earlyExit: 24, idealExit: 30, overstay: 34, max: 36 },
+        objectiveRevealNode: 22,
+        objectiveRevealRatio: 0.52,
+        growthEconomy: { costMul: 0.9, biomassMul: 1.18, growthEnergyMul: 1.08 }
+    },
+    {
+        id: 'pressure',
+        label: '施压',
+        nodeTargets: { entry: 30, earlyExit: 40, idealExit: 48, overstay: 54, max: 58 },
+        objectiveRevealNode: 36,
+        objectiveRevealRatio: 0.5,
+        growthEconomy: { costMul: 0.8, biomassMul: 1.4, growthEnergyMul: 1.18 }
+    },
+    {
+        id: 'encircle',
+        label: '围猎',
+        nodeTargets: { entry: 48, earlyExit: 60, idealExit: 72, overstay: 80, max: 84 },
+        objectiveRevealNode: 56,
+        objectiveRevealRatio: 0.48,
+        growthEconomy: { costMul: 0.68, biomassMul: 1.66, growthEnergyMul: 1.3 }
+    },
+    {
+        id: 'saturation',
+        label: '过饱和',
+        nodeTargets: { entry: 72, earlyExit: 88, idealExit: 96, overstay: 100, max: 100 },
+        objectiveRevealNode: 82,
+        objectiveRevealRatio: 0.45,
+        growthEconomy: { costMul: 0.56, biomassMul: 1.94, growthEnergyMul: 1.44 }
+    }
+];
+
+const PREY_RULE_SIZE_TUNING_META = [
+    { id: 'forage-runner', label: '觅食·跑者', max: 4 },
+    { id: 'forage-school', label: '觅食·群球', max: 4 },
+    { id: 'forage-hunter', label: '觅食·中型猎手', max: 4.5 },
+    { id: 'forage-core', label: '觅食·晋级核心', max: 5 },
+    { id: 'bloom-school', label: '扩张·群球', max: 4 },
+    { id: 'bloom-runner', label: '扩张·中型跑者', max: 4.5 },
+    { id: 'bloom-bulwark', label: '扩张·壁垒方块', max: 4.8 },
+    { id: 'bloom-bulwark-core', label: '扩张·方核目标', max: 5.2 },
+    { id: 'pressure-school', label: '施压·群球', max: 4.6 },
+    { id: 'pressure-runner', label: '施压·中型跑者', max: 4.6 },
+    { id: 'pressure-bulwark', label: '施压·厚壳方块', max: 5.2 },
+    { id: 'pressure-core', label: '施压·压迫核心', max: 5.4 },
+    { id: 'encircle-school', label: '围猎·群球', max: 4.6 },
+    { id: 'encircle-bulwark', label: '围猎·壁垒方块', max: 4.8 },
+    { id: 'encircle-weakspot', label: '围猎·大弱点', max: 5.2 },
+    { id: 'encircle-apex', label: '围猎·顶级猎体', max: 5.4 },
+    { id: 'encircle-crown', label: '围猎·冠核目标', max: 5.6 },
+    { id: 'saturation-school', label: '过饱和·巨群', max: 5 },
+    { id: 'saturation-bulwark', label: '过饱和·重壳', max: 5.2 },
+    { id: 'saturation-weakspot', label: '过饱和·巨弱点', max: 5.4 },
+    { id: 'saturation-apex', label: '过饱和·母体猎体', max: 5.6 },
+    { id: 'saturation-heart', label: '过饱和·终局心核', max: 6 }
+];
+
+function buildStageGameplayFallbacks() {
+    const fallback = {
+        gameplayCarryDensityUnderweight: 1.1,
+        gameplayCarryDensityComfort: 1,
+        gameplayCarryDensityHeavy: 0.82,
+        gameplayCarryDensityOversized: 0.66,
+        gameplayCarryYieldUnderweight: 1.06,
+        gameplayCarryYieldComfort: 1,
+        gameplayCarryYieldHeavy: 0.86,
+        gameplayCarryYieldOversized: 0.72,
+        gameplayEliteBandSizeUnderweight: 1.12,
+        gameplayEliteBandSizeComfort: 1,
+        gameplayEliteBandSizeHeavy: 0.98,
+        gameplayEliteBandSizeOversized: 0.94,
+        gameplayEliteBandHealthUnderweight: 1.15,
+        gameplayEliteBandHealthComfort: 1,
+        gameplayEliteBandHealthHeavy: 1.04,
+        gameplayEliteBandHealthOversized: 1,
+        gameplayEliteBandSpeedUnderweight: 1.06,
+        gameplayEliteBandSpeedComfort: 1,
+        gameplayEliteBandSpeedHeavy: 1,
+        gameplayEliteBandSpeedOversized: 1,
+        gameplayObjectiveBandSizeUnderweight: 1.06,
+        gameplayObjectiveBandSizeComfort: 1,
+        gameplayObjectiveBandSizeHeavy: 1,
+        gameplayObjectiveBandSizeOversized: 1,
+        gameplayObjectiveBandHealthUnderweight: 1.08,
+        gameplayObjectiveBandHealthComfort: 1,
+        gameplayObjectiveBandHealthHeavy: 1,
+        gameplayObjectiveBandHealthOversized: 1,
+        gameplayObjectiveBandSpeedUnderweight: 1,
+        gameplayObjectiveBandSpeedComfort: 1,
+        gameplayObjectiveBandSpeedHeavy: 1,
+        gameplayObjectiveBandSpeedOversized: 1
+    };
+
+    STAGE_GAMEPLAY_TUNING_META.forEach((stage) => {
+        fallback[`gameplayStageNodeEntry__${stage.id}`] = stage.nodeTargets.entry;
+        fallback[`gameplayStageNodeEarlyExit__${stage.id}`] = stage.nodeTargets.earlyExit;
+        fallback[`gameplayStageNodeIdealExit__${stage.id}`] = stage.nodeTargets.idealExit;
+        fallback[`gameplayStageNodeOverstay__${stage.id}`] = stage.nodeTargets.overstay;
+        fallback[`gameplayStageNodeMax__${stage.id}`] = stage.nodeTargets.max;
+        fallback[`gameplayStageObjectiveRevealNode__${stage.id}`] = stage.objectiveRevealNode;
+        fallback[`gameplayStageObjectiveRevealRatio__${stage.id}`] = stage.objectiveRevealRatio;
+        fallback[`gameplayStageGrowthCostMul__${stage.id}`] = stage.growthEconomy.costMul;
+        fallback[`gameplayStageGrowthBiomassMul__${stage.id}`] = stage.growthEconomy.biomassMul;
+        fallback[`gameplayStageGrowthEnergyMul__${stage.id}`] = stage.growthEconomy.growthEnergyMul;
+        fallback[`gameplayStageCommonCarryDensity__${stage.id}`] = 1;
+        fallback[`gameplayStageCommonCarryYield__${stage.id}`] = 1;
+        fallback[`gameplayStageEliteSize__${stage.id}`] = 1;
+        fallback[`gameplayStageEliteHealth__${stage.id}`] = 1;
+        fallback[`gameplayStageEliteSpeed__${stage.id}`] = 1;
+        fallback[`gameplayStageObjectiveSize__${stage.id}`] = 1;
+        fallback[`gameplayStageObjectiveHealth__${stage.id}`] = 1;
+        fallback[`gameplayStageObjectiveSpeed__${stage.id}`] = 1;
+    });
+
+    return fallback;
+}
+
+function buildPreyRuleSizeFallbacks() {
+    const fallback = {};
+    PREY_RULE_SIZE_TUNING_META.forEach((rule) => {
+        fallback[`gameplayPreySize__${rule.id}`] = 1;
+    });
+    return fallback;
+}
+
+function buildStageNodeCurveDefs() {
+    const defs = [
+        { section: '阶段节点曲线', sectionDesc: '每关的入场、早走、理想、赖关与封顶节点带。目标会按“节点数或阶段进度”提前亮相。', defaultOpen: false }
+    ];
+
+    STAGE_GAMEPLAY_TUNING_META.forEach((stage, index) => {
+        defs.push({ section: `${stage.label} 节点带`, sectionDesc: `${stage.label}阶段的节点节奏与 objective 亮相节点。`, defaultOpen: index === 0 });
+        defs.push({ key: `gameplayStageNodeEntry__${stage.id}`, label: `${stage.label} 入口节点`, desc: '设计上的本关起步规模。', min: 6, max: 120, step: 1 });
+        defs.push({ key: `gameplayStageNodeEarlyExit__${stage.id}`, label: `${stage.label} 早走节点`, desc: '达到这里后，技术流已经能试着提前转场。', min: 6, max: 120, step: 1 });
+        defs.push({ key: `gameplayStageNodeIdealExit__${stage.id}`, label: `${stage.label} 理想节点`, desc: '本关最舒适的离场节点带；progressGoal 会围绕它计算。', min: 6, max: 120, step: 1 });
+        defs.push({ key: `gameplayStageNodeOverstay__${stage.id}`, label: `${stage.label} 赖关节点`, desc: '超过这里后，普通猎物会明显开始养不起你。', min: 6, max: 120, step: 1 });
+        defs.push({ key: `gameplayStageNodeMax__${stage.id}`, label: `${stage.label} 节点封顶`, desc: '这一关允许长到的最终节点数。', min: 6, max: 120, step: 1 });
+        defs.push({ key: `gameplayStageObjectiveRevealNode__${stage.id}`, label: `${stage.label} 亮相节点`, desc: '达到这个节点数时，就算进度没满也会亮出 objective。', min: 6, max: 120, step: 1 });
+        defs.push({ key: `gameplayStageObjectiveRevealRatio__${stage.id}`, label: `${stage.label} 亮相进度`, desc: '达到本关 progressGoal 的多少后就提前亮出 objective。', min: 0.1, max: 1, step: 0.01 });
+    });
+
+    return defs;
+}
+
+function buildStageGrowthEconomyDefs() {
+    const defs = [
+        { section: '成长加速', sectionDesc: '把成长成本、biomass 进账和长节点回能按关卡拆开，做出前慢后快的非线性曲线。', defaultOpen: false }
+    ];
+
+    STAGE_GAMEPLAY_TUNING_META.forEach((stage) => {
+        defs.push({ section: `${stage.label} 成长倍率`, sectionDesc: `${stage.label}阶段专属成长经济。`, defaultOpen: false });
+        defs.push({ key: `gameplayStageGrowthCostMul__${stage.id}`, label: `${stage.label} 成本倍率`, desc: '本关成长成本的阶段倍率。越低越容易暴涨。', min: 0.2, max: 1.5, step: 0.01 });
+        defs.push({ key: `gameplayStageGrowthBiomassMul__${stage.id}`, label: `${stage.label} 成长摄入`, desc: '所有 biomass 进入 growthBuffer 的阶段倍率。', min: 0.2, max: 3, step: 0.02 });
+        defs.push({ key: `gameplayStageGrowthEnergyMul__${stage.id}`, label: `${stage.label} 长点回能`, desc: '每次长出节点时的能量返还倍率。', min: 0.2, max: 3, step: 0.02 });
+    });
+
+    return defs;
+}
+
+function buildStageCarryTuningDefs() {
+    const defs = [
+        { section: '猎场承载力', sectionDesc: '普通猎物的养分与密度会随当前节点带变化；elite / objective 则按节点带获得更强压迫。', defaultOpen: false },
+        { section: '节点带全局倍率', sectionDesc: '先用这一组调总体曲线，再按每关微调。', defaultOpen: false },
+        { key: 'gameplayCarryDensityUnderweight', label: '欠体量密度', desc: '低于早走节点时，普通猎物密度倍率。', min: 0.3, max: 1.8, step: 0.01 },
+        { key: 'gameplayCarryDensityComfort', label: '舒适密度', desc: '处于理想节点带时，普通猎物密度倍率。', min: 0.3, max: 1.8, step: 0.01 },
+        { key: 'gameplayCarryDensityHeavy', label: '偏重密度', desc: '开始赖关后，普通猎物密度倍率。', min: 0.2, max: 1.5, step: 0.01 },
+        { key: 'gameplayCarryDensityOversized', label: '超载密度', desc: '超出赖关带后，普通猎物密度倍率。', min: 0.1, max: 1.2, step: 0.01 },
+        { key: 'gameplayCarryYieldUnderweight', label: '欠体量收益', desc: '低于早走节点时，普通猎物收益倍率。', min: 0.3, max: 1.8, step: 0.01 },
+        { key: 'gameplayCarryYieldComfort', label: '舒适收益', desc: '处于理想节点带时，普通猎物收益倍率。', min: 0.3, max: 1.8, step: 0.01 },
+        { key: 'gameplayCarryYieldHeavy', label: '偏重收益', desc: '开始赖关后，普通猎物收益倍率。', min: 0.2, max: 1.5, step: 0.01 },
+        { key: 'gameplayCarryYieldOversized', label: '超载收益', desc: '超出赖关带后，普通猎物收益倍率。', min: 0.1, max: 1.2, step: 0.01 },
+        { key: 'gameplayEliteBandSizeUnderweight', label: 'Elite 欠体量尺寸', desc: '体型偏小时，新刷 elite 的尺寸倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandSizeComfort', label: 'Elite 舒适尺寸', desc: '处于理想节点带时，新刷 elite 的尺寸倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandSizeHeavy', label: 'Elite 偏重尺寸', desc: '开始赖关后，新刷 elite 的尺寸倍率。', min: 0.6, max: 1.6, step: 0.01 },
+        { key: 'gameplayEliteBandSizeOversized', label: 'Elite 超载尺寸', desc: '超出赖关带后，新刷 elite 的尺寸倍率。', min: 0.6, max: 1.6, step: 0.01 },
+        { key: 'gameplayEliteBandHealthUnderweight', label: 'Elite 欠体量生命', desc: '体型偏小时，新刷 elite 的生命倍率。', min: 0.6, max: 2, step: 0.01 },
+        { key: 'gameplayEliteBandHealthComfort', label: 'Elite 舒适生命', desc: '处于理想节点带时，新刷 elite 的生命倍率。', min: 0.6, max: 2, step: 0.01 },
+        { key: 'gameplayEliteBandHealthHeavy', label: 'Elite 偏重生命', desc: '开始赖关后，新刷 elite 的生命倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandHealthOversized', label: 'Elite 超载生命', desc: '超出赖关带后，新刷 elite 的生命倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandSpeedUnderweight', label: 'Elite 欠体量速度', desc: '体型偏小时，新刷 elite 的速度倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandSpeedComfort', label: 'Elite 舒适速度', desc: '处于理想节点带时，新刷 elite 的速度倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandSpeedHeavy', label: 'Elite 偏重速度', desc: '开始赖关后，新刷 elite 的速度倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayEliteBandSpeedOversized', label: 'Elite 超载速度', desc: '超出赖关带后，新刷 elite 的速度倍率。', min: 0.6, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSizeUnderweight', label: 'Objective 欠体量尺寸', desc: '在 elite 欠体量倍率之外，objective 额外再吃多少尺寸。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSizeComfort', label: 'Objective 舒适尺寸', desc: '处于理想节点带时，objective 的额外尺寸倍率。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSizeHeavy', label: 'Objective 偏重尺寸', desc: '开始赖关后，objective 的额外尺寸倍率。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSizeOversized', label: 'Objective 超载尺寸', desc: '超出赖关带后，objective 的额外尺寸倍率。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandHealthUnderweight', label: 'Objective 欠体量生命', desc: '在 elite 欠体量倍率之外，objective 额外再吃多少生命。', min: 0.8, max: 2, step: 0.01 },
+        { key: 'gameplayObjectiveBandHealthComfort', label: 'Objective 舒适生命', desc: '处于理想节点带时，objective 的额外生命倍率。', min: 0.8, max: 2, step: 0.01 },
+        { key: 'gameplayObjectiveBandHealthHeavy', label: 'Objective 偏重生命', desc: '开始赖关后，objective 的额外生命倍率。', min: 0.8, max: 2, step: 0.01 },
+        { key: 'gameplayObjectiveBandHealthOversized', label: 'Objective 超载生命', desc: '超出赖关带后，objective 的额外生命倍率。', min: 0.8, max: 2, step: 0.01 },
+        { key: 'gameplayObjectiveBandSpeedUnderweight', label: 'Objective 欠体量速度', desc: '体型偏小时，objective 的额外速度倍率。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSpeedComfort', label: 'Objective 舒适速度', desc: '处于理想节点带时，objective 的额外速度倍率。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSpeedHeavy', label: 'Objective 偏重速度', desc: '开始赖关后，objective 的额外速度倍率。', min: 0.8, max: 1.8, step: 0.01 },
+        { key: 'gameplayObjectiveBandSpeedOversized', label: 'Objective 超载速度', desc: '超出赖关带后，objective 的额外速度倍率。', min: 0.8, max: 1.8, step: 0.01 }
+    ];
+
+    STAGE_GAMEPLAY_TUNING_META.forEach((stage) => {
+        defs.push({ section: `${stage.label} 承载倍率`, sectionDesc: `${stage.label}阶段对普通猎场与高价值目标的基础偏置。`, defaultOpen: false });
+        defs.push({ key: `gameplayStageCommonCarryDensity__${stage.id}`, label: `${stage.label} 普通密度`, desc: '本关普通猎物密度的基础倍率。', min: 0.3, max: 2.2, step: 0.02 });
+        defs.push({ key: `gameplayStageCommonCarryYield__${stage.id}`, label: `${stage.label} 普通收益`, desc: '本关普通猎物收益的基础倍率。', min: 0.3, max: 2.2, step: 0.02 });
+        defs.push({ key: `gameplayStageEliteSize__${stage.id}`, label: `${stage.label} Elite 尺寸`, desc: '本关 elite 的基础尺寸倍率。', min: 0.4, max: 2.5, step: 0.02 });
+        defs.push({ key: `gameplayStageEliteHealth__${stage.id}`, label: `${stage.label} Elite 生命`, desc: '本关 elite 的基础生命倍率。', min: 0.4, max: 3, step: 0.02 });
+        defs.push({ key: `gameplayStageEliteSpeed__${stage.id}`, label: `${stage.label} Elite 速度`, desc: '本关 elite 的基础速度倍率。', min: 0.4, max: 2.2, step: 0.02 });
+        defs.push({ key: `gameplayStageObjectiveSize__${stage.id}`, label: `${stage.label} Objective 尺寸`, desc: '本关 objective 的基础尺寸倍率。', min: 0.4, max: 3, step: 0.02 });
+        defs.push({ key: `gameplayStageObjectiveHealth__${stage.id}`, label: `${stage.label} Objective 生命`, desc: '本关 objective 的基础生命倍率。', min: 0.4, max: 3.5, step: 0.02 });
+        defs.push({ key: `gameplayStageObjectiveSpeed__${stage.id}`, label: `${stage.label} Objective 速度`, desc: '本关 objective 的基础速度倍率。', min: 0.4, max: 2.2, step: 0.02 });
+    });
+
+    return defs;
+}
+
+function buildStageRuleSizeTuningDefs() {
+    return [
+        { section: '现有关卡猎物尺寸清单', sectionDesc: '按关卡和规则逐个拉大或压小猎物体量。这里保留细粒度 rule 级入口。', defaultOpen: false },
+        ...PREY_RULE_SIZE_TUNING_META.map((rule) => ({
+            key: `gameplayPreySize__${rule.id}`,
+            label: rule.label,
+            desc: 'rule 级猎物尺寸倍率。',
+            min: 0.4,
+            max: rule.max,
+            step: 0.02
+        }))
+    ];
+}
+
 const TUNING_FALLBACKS = {
     // ─── 移动能力对比 ─────────────────────────────
     feelClusterBloom: 0.52,
@@ -242,6 +479,7 @@ const TUNING_FALLBACKS = {
     gameplayStageSpawnDensityMul: 1,
     gameplayStageSpawnIntervalMul: 1,
     gameplayStageMaxNodesBonus: 0,
+    ...buildStageGameplayFallbacks(),
 
     // ─── Gameplay：成长经济 ─────────────────────
     gameplayGrowthCostBase: 2.8,
@@ -273,22 +511,7 @@ const TUNING_FALLBACKS = {
     gameplayPreySmallSizeMul: 1.62,
     gameplayPreyMediumSizeMul: 1.84,
     gameplayPreyLargeSizeMul: 2.16,
-    'gameplayPreySize__forage-runner': 1,
-    'gameplayPreySize__forage-school': 1,
-    'gameplayPreySize__forage-hunter': 1,
-    'gameplayPreySize__forage-core': 1,
-    'gameplayPreySize__bloom-school': 1,
-    'gameplayPreySize__bloom-runner': 1,
-    'gameplayPreySize__bloom-bulwark': 1,
-    'gameplayPreySize__bloom-bulwark-core': 1,
-    'gameplayPreySize__encircle-weakspot': 1,
-    'gameplayPreySize__encircle-bulwark': 1,
-    'gameplayPreySize__encircle-school': 1,
-    'gameplayPreySize__encircle-crown': 1,
-    'gameplayPreySize__saturation-school': 1,
-    'gameplayPreySize__saturation-bulwark': 1,
-    'gameplayPreySize__saturation-weakspot': 1,
-    'gameplayPreySize__saturation-apex': 1,
+    ...buildPreyRuleSizeFallbacks(),
     gameplayPreyEnergyYieldMul: 1.18,
     gameplayPreyBiomassYieldMul: 1.42,
     gameplayPreyProgressYieldMul: 1.2,
@@ -1032,6 +1255,7 @@ const TUNING_DEFS = [
     { key: 'gameplayStageSpawnDensityMul', label: '刷怪密度倍率', desc: '统一缩放各 spawn rule 的 desired / pack。', min: 0.25, max: 8, step: 0.05 },
     { key: 'gameplayStageSpawnIntervalMul', label: '刷怪间隔倍率', desc: '统一缩放各 spawn rule 的 interval。越低越快。', min: 0.25, max: 3, step: 0.05 },
     { key: 'gameplayStageMaxNodesBonus', label: '阶段节点上限补正', desc: '给所有阶段的 maxNodes 统一加减。现在范围已放开，方便做 100 节点级别实验。', min: -12, max: 240, step: 1 },
+    ...buildStageNodeCurveDefs(),
 
     { section: '猎物铺场', sectionDesc: '先把猎场塞满，再决定是否允许持续补怪。默认关闭持续刷怪，初始给多少就是多少。' },
     { key: 'gameplayPreySpawnEnabled', label: '猎物生成总开关', desc: '统一控制初始铺场、阶段目标和后续补怪。关掉后局内不会再生成任何 prey。', type: 'toggle' },
@@ -1053,6 +1277,7 @@ const TUNING_DEFS = [
     { key: 'gameplayGrowthCostCap', label: '成长成本上限', desc: '单次成长的最高消耗封顶。', min: 2, max: 120, step: 0.5 },
     { key: 'gameplayGrowthEnergyBase', label: '成长回能基础值', desc: '长出节点后立刻返还的基础能量。', min: 0, max: 20, step: 0.1 },
     { key: 'gameplayGrowthEnergyPerNode', label: '成长回能增量', desc: '每次成长额外按节点数返还能量。', min: 0, max: 5, step: 0.05 },
+    ...buildStageGrowthEconomyDefs(),
 
     { section: '猎物体积与收益', sectionDesc: '把猎物做大、做肥，并直接控制它们对成长节奏和碎块喷发的贡献。' },
     { key: 'gameplayPreyGlobalSizeMul', label: '猎物总尺寸倍率', desc: '所有 prey 的总放大倍率。先拧它，再拧下面单体。', min: 0.4, max: 3.5, step: 0.02 },
@@ -1074,6 +1299,7 @@ const TUNING_DEFS = [
     { key: 'gameplayPreyFragmentBurstCap', label: '单次碎块上限', desc: '一次撕裂/吞噬最多生成多少碎块，防止爆发式卡顿。', min: 4, max: 80, step: 1 },
     { key: 'gameplayPreyFragmentActiveCap', label: '场上碎块上限', desc: '同时存在的碎块总数上限，超过后新碎块不会继续生成。', min: 16, max: 240, step: 1 },
     { key: 'gameplayPreyFragmentCollectPerFrameCap', label: '单帧回收上限', desc: '一帧里最多吸收多少碎块，避免猎杀后回收洪峰把模拟拖卡。', min: 1, max: 24, step: 1 },
+    ...buildStageCarryTuningDefs(),
 
     { section: 'Graphics 定位总开关', sectionDesc: '这些都只影响 Graphics 渲染，不改模拟结果，适合先大范围二分定位。' },
     { key: 'graphicsUseBakedSpriteRenderer', label: '预烘焙贴图渲染', desc: '主菜单启动时先生成基础几何贴图，之后用精灵池复用渲染猎物/碎块/附着/圆环，尽量绕开 Graphics path fill。', type: 'toggle' },
@@ -1107,23 +1333,7 @@ const TUNING_DEFS = [
     { key: 'graphicsRenderPreyGuardRingsVisible', label: '守卫脉冲环', desc: 'bulwark/apex 触发的 guard pulse ring。', type: 'toggle' },
     { key: 'graphicsRenderPreyDeathRingsVisible', label: '猎物死亡环', desc: 'finishPreyDevour 里那三圈死亡 ring。', type: 'toggle' },
 
-    { section: '现有猎物尺寸清单', sectionDesc: '当前 demo 里所有可被狩猎对象都在这里，方便你逐个微调。', defaultOpen: false },
-    { key: 'gameplayPreySize__forage-runner', label: '觅食·跑者', desc: '第一关小三角跑者。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__forage-school', label: '觅食·群球', desc: '第一关小圆群聚猎物。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__forage-hunter', label: '觅食·中型猎手', desc: '第一关中型追逃目标。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__forage-core', label: '觅食·晋级核心', desc: '第一关 objective。', min: 0.4, max: 4.5, step: 0.02 },
-    { key: 'gameplayPreySize__bloom-school', label: '扩张·群球', desc: '第二关群聚球。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__bloom-runner', label: '扩张·跑者', desc: '第二关小跑者。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__bloom-bulwark', label: '扩张·壁垒方块', desc: '第二关中型 bulwark。', min: 0.4, max: 4.5, step: 0.02 },
-    { key: 'gameplayPreySize__bloom-bulwark-core', label: '扩张·方核目标', desc: '第二关 objective。', min: 0.4, max: 5, step: 0.02 },
-    { key: 'gameplayPreySize__encircle-weakspot', label: '围猎·弱点三角', desc: '第三关中型 weakspot。', min: 0.4, max: 4.5, step: 0.02 },
-    { key: 'gameplayPreySize__encircle-bulwark', label: '围猎·壁垒方块', desc: '第三关中型 bulwark。', min: 0.4, max: 4.5, step: 0.02 },
-    { key: 'gameplayPreySize__encircle-school', label: '围猎·群球', desc: '第三关补给群。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__encircle-crown', label: '围猎·冠核目标', desc: '第三关 objective。', min: 0.4, max: 5, step: 0.02 },
-    { key: 'gameplayPreySize__saturation-school', label: '过饱和·群球', desc: '第四关群球。', min: 0.4, max: 4, step: 0.02 },
-    { key: 'gameplayPreySize__saturation-bulwark', label: '过饱和·壁垒方块', desc: '第四关中型 bulwark。', min: 0.4, max: 4.5, step: 0.02 },
-    { key: 'gameplayPreySize__saturation-weakspot', label: '过饱和·弱点三角', desc: '第四关中型 weakspot。', min: 0.4, max: 4.5, step: 0.02 },
-    { key: 'gameplayPreySize__saturation-apex', label: '过饱和·终局母体', desc: '第四关 apex objective。', min: 0.4, max: 5.5, step: 0.02 },
+    ...buildStageRuleSizeTuningDefs(),
 
     { section: '碎片收益', sectionDesc: '猎物碎片对能量和 biomass 的回流。' },
     { key: 'gameplayFragmentEnergyGain', label: '能量碎片回能', desc: '吃到 energy 碎片直接回多少能量。', min: 0, max: 20, step: 0.1 },

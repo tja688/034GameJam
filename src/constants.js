@@ -208,13 +208,39 @@ const PREY_ARCHETYPE_DEFS = {
     }
 };
 
+function createStageNodeTargets(entry, earlyExit, idealExit, overstay, max) {
+    return { entry, earlyExit, idealExit, overstay, max };
+}
+
+function createDemoStageDef(config) {
+    const nodeTargets = { ...config.nodeTargets };
+    return {
+        ...config,
+        nodeTargets,
+        progressGoal: Math.max(1, Math.round(nodeTargets.idealExit * 1.35)),
+        maxNodes: nodeTargets.max,
+        spawnRules: (config.spawnRules || []).map((rule) => ({
+            tier: 'common',
+            ...rule
+        })),
+        objective: config.objective
+            ? {
+                tier: 'objective',
+                ...config.objective
+            }
+            : null
+    };
+}
+
 const DEMO_STAGE_DEFS = [
-    {
+    createDemoStageDef({
         id: 'forage',
-        progressGoal: 10.5,
-        maxNodes: 9,
-        metabolism: 5.1,
-        spawnCap: 20,
+        nodeTargets: createStageNodeTargets(6, 12, 16, 18, 20),
+        objectiveRevealNodeCount: 10,
+        objectiveRevealRatio: 0.5,
+        growthEconomy: { costMul: 1, biomassMul: 1, growthEnergyMul: 1 },
+        metabolism: 4.8,
+        spawnCap: 26,
         palette: {
             arena: 0x08141c,
             grid: 0x173643,
@@ -223,11 +249,11 @@ const DEMO_STAGE_DEFS = [
             signal: 0xf4f0d7,
             threat: 0x7de977
         },
-        growthSequence: ['source', 'shell-a', 'dart-a'],
+        growthSequence: ['source', 'shell-a', 'dart-a', 'compressor'],
         spawnRules: [
-            { id: 'forage-runner', archetype: 'skittish', sizeKey: 'small', shape: 'triangle', desired: 7, interval: 0.56, packMin: 1, packMax: 2 },
-            { id: 'forage-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.34, packMin: 3, packMax: 4 },
-            { id: 'forage-hunter', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 1, interval: 2.9, packMin: 1, packMax: 1 }
+            { id: 'forage-runner', archetype: 'skittish', sizeKey: 'small', shape: 'triangle', desired: 8, interval: 0.52, packMin: 1, packMax: 2, tier: 'common' },
+            { id: 'forage-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.18, packMin: 3, packMax: 4, tier: 'common' },
+            { id: 'forage-hunter', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 2, interval: 2.7, packMin: 1, packMax: 1, tier: 'elite' }
         ],
         objective: {
             id: 'forage-core',
@@ -239,13 +265,15 @@ const DEMO_STAGE_DEFS = [
             biomassBonus: 3.6,
             growthBonus: 1
         }
-    },
-    {
+    }),
+    createDemoStageDef({
         id: 'bloom',
-        progressGoal: 18,
-        maxNodes: 13,
-        metabolism: 5.9,
-        spawnCap: 24,
+        nodeTargets: createStageNodeTargets(16, 24, 30, 34, 36),
+        objectiveRevealNodeCount: 22,
+        objectiveRevealRatio: 0.52,
+        growthEconomy: { costMul: 0.9, biomassMul: 1.18, growthEnergyMul: 1.08 },
+        metabolism: 5.3,
+        spawnCap: 34,
         palette: {
             arena: 0x0b1614,
             grid: 0x24443b,
@@ -254,11 +282,11 @@ const DEMO_STAGE_DEFS = [
             signal: 0xffd147,
             threat: 0xff8b73
         },
-        growthSequence: ['shell-b', 'compressor', 'prism', 'dart-a'],
+        growthSequence: ['shell-b', 'compressor', 'prism', 'dart-a', 'source'],
         spawnRules: [
-            { id: 'bloom-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 1.18, packMin: 3, packMax: 5 },
-            { id: 'bloom-runner', archetype: 'skittish', sizeKey: 'small', shape: 'triangle', desired: 5, interval: 0.72, packMin: 1, packMax: 2 },
-            { id: 'bloom-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 2, interval: 2.7, packMin: 1, packMax: 1 }
+            { id: 'bloom-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 1.08, packMin: 3, packMax: 5, tier: 'common' },
+            { id: 'bloom-runner', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.78, packMin: 1, packMax: 2, tier: 'common' },
+            { id: 'bloom-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 2, interval: 2.58, packMin: 1, packMax: 1, tier: 'elite' }
         ],
         objective: {
             id: 'bloom-bulwark-core',
@@ -270,13 +298,48 @@ const DEMO_STAGE_DEFS = [
             biomassBonus: 4.2,
             growthBonus: 1
         }
-    },
-    {
+    }),
+    createDemoStageDef({
+        id: 'pressure',
+        nodeTargets: createStageNodeTargets(30, 40, 48, 54, 58),
+        objectiveRevealNodeCount: 36,
+        objectiveRevealRatio: 0.5,
+        growthEconomy: { costMul: 0.8, biomassMul: 1.4, growthEnergyMul: 1.18 },
+        metabolism: 5.9,
+        spawnCap: 44,
+        palette: {
+            arena: 0x12120e,
+            grid: 0x4a4b2c,
+            mist: 0x8f7f43,
+            pulse: 0xffe0a3,
+            signal: 0xf4f0d7,
+            threat: 0xff8b73
+        },
+        growthSequence: ['shell-a', 'shell-b', 'compressor', 'prism', 'dart-b'],
+        spawnRules: [
+            { id: 'pressure-school', archetype: 'school', sizeKey: 'medium', shape: 'circle', desired: 7, interval: 1.16, packMin: 2, packMax: 3, tier: 'common' },
+            { id: 'pressure-runner', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.84, packMin: 1, packMax: 2, tier: 'common' },
+            { id: 'pressure-bulwark', archetype: 'bulwark', sizeKey: 'large', shape: 'square', desired: 2, interval: 2.64, packMin: 1, packMax: 1, tier: 'elite' }
+        ],
+        objective: {
+            id: 'pressure-core',
+            archetype: 'weakspot',
+            sizeKey: 'large',
+            shape: 'triangle',
+            color: 0xf4f0d7,
+            energyBonus: 24,
+            biomassBonus: 5.4,
+            growthBonus: 1
+        }
+    }),
+    createDemoStageDef({
         id: 'encircle',
-        progressGoal: 25,
-        maxNodes: 17,
-        metabolism: 6.8,
-        spawnCap: 28,
+        nodeTargets: createStageNodeTargets(48, 60, 72, 80, 84),
+        objectiveRevealNodeCount: 56,
+        objectiveRevealRatio: 0.48,
+        growthEconomy: { costMul: 0.68, biomassMul: 1.66, growthEnergyMul: 1.3 },
+        metabolism: 6.6,
+        spawnCap: 56,
         palette: {
             arena: 0x130f16,
             grid: 0x433347,
@@ -285,29 +348,32 @@ const DEMO_STAGE_DEFS = [
             signal: 0xf4f0d7,
             threat: 0xff6d57
         },
-        growthSequence: ['prism', 'blade', 'shell-a', 'compressor'],
+        growthSequence: ['prism', 'blade', 'shell-a', 'compressor', 'dart-a', 'source'],
         spawnRules: [
-            { id: 'encircle-weakspot', archetype: 'weakspot', sizeKey: 'medium', shape: 'triangle', desired: 2, interval: 2.6, packMin: 1, packMax: 1 },
-            { id: 'encircle-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 2, interval: 2.9, packMin: 1, packMax: 1 },
-            { id: 'encircle-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.1, packMin: 3, packMax: 4 }
+            { id: 'encircle-school', archetype: 'school', sizeKey: 'medium', shape: 'circle', desired: 6, interval: 1.02, packMin: 3, packMax: 4, tier: 'common' },
+            { id: 'encircle-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 4, interval: 2.36, packMin: 1, packMax: 1, tier: 'common' },
+            { id: 'encircle-weakspot', archetype: 'weakspot', sizeKey: 'large', shape: 'triangle', desired: 3, interval: 2.28, packMin: 1, packMax: 1, tier: 'elite' },
+            { id: 'encircle-apex', archetype: 'apex', sizeKey: 'large', shape: 'circle', desired: 1, interval: 3.18, packMin: 1, packMax: 1, tier: 'elite' }
         ],
         objective: {
             id: 'encircle-crown',
-            archetype: 'weakspot',
+            archetype: 'apex',
             sizeKey: 'large',
             shape: 'triangle',
             color: 0xf4f0d7,
-            energyBonus: 22,
-            biomassBonus: 4.8,
-            growthBonus: 1
+            energyBonus: 28,
+            biomassBonus: 6.2,
+            growthBonus: 2
         }
-    },
-    {
+    }),
+    createDemoStageDef({
         id: 'saturation',
-        progressGoal: 34,
-        maxNodes: 22,
-        metabolism: 7.8,
-        spawnCap: 34,
+        nodeTargets: createStageNodeTargets(72, 88, 96, 100, 100),
+        objectiveRevealNodeCount: 82,
+        objectiveRevealRatio: 0.45,
+        growthEconomy: { costMul: 0.56, biomassMul: 1.94, growthEnergyMul: 1.44 },
+        metabolism: 7.4,
+        spawnCap: 72,
         palette: {
             arena: 0x16120d,
             grid: 0x57422a,
@@ -316,23 +382,25 @@ const DEMO_STAGE_DEFS = [
             signal: 0xf4f0d7,
             threat: 0xff5663
         },
-        growthSequence: ['blade', 'prism', 'compressor', 'shell-b', 'dart-b'],
+        growthSequence: ['blade', 'prism', 'compressor', 'shell-b', 'dart-b', 'source'],
         spawnRules: [
-            { id: 'saturation-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 0.98, packMin: 4, packMax: 6 },
-            { id: 'saturation-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 3, interval: 2.2, packMin: 1, packMax: 1 },
-            { id: 'saturation-weakspot', archetype: 'weakspot', sizeKey: 'medium', shape: 'triangle', desired: 3, interval: 2.36, packMin: 1, packMax: 1 }
+            { id: 'saturation-school', archetype: 'school', sizeKey: 'large', shape: 'circle', desired: 8, interval: 0.94, packMin: 4, packMax: 6, tier: 'common' },
+            { id: 'saturation-bulwark', archetype: 'bulwark', sizeKey: 'large', shape: 'square', desired: 4, interval: 2.1, packMin: 1, packMax: 1, tier: 'common' },
+            { id: 'saturation-weakspot', archetype: 'weakspot', sizeKey: 'large', shape: 'triangle', desired: 3, interval: 2.22, packMin: 1, packMax: 1, tier: 'elite' },
+            { id: 'saturation-apex', archetype: 'apex', sizeKey: 'large', shape: 'circle', desired: 2, interval: 2.86, packMin: 1, packMax: 1, tier: 'elite' }
         ],
         objective: {
-            id: 'saturation-apex',
+            id: 'saturation-heart',
             archetype: 'apex',
             sizeKey: 'large',
             shape: 'circle',
             color: 0xf4f0d7,
-            energyBonus: 28,
-            biomassBonus: 6.5,
+            radiusMul: 1.18,
+            energyBonus: 34,
+            biomassBonus: 8.4,
             growthBonus: 2
         }
-    }
+    })
 ];
 
 const DEFAULT_BASE_CHAIN = [0, 2, 5, 4, 1, 7];

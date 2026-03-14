@@ -95,6 +95,153 @@ const SceneProgressionMixin = {
     getStageCount() {
         return DEMO_STAGE_DEFS.length;
     },
+    getStageScopedTuningValue(baseKey, stageId, fallback) {
+        if (!stageId) {
+            return fallback;
+        }
+        return this.getRunTuningValue(`${baseKey}__${stageId}`, fallback);
+    },
+    getBandScopedTuningValue(baseKey, band, fallback) {
+        if (!band) {
+            return fallback;
+        }
+        const bandKey = `${band.charAt(0).toUpperCase()}${band.slice(1)}`;
+        return this.getRunTuningValue(`${baseKey}${bandKey}`, fallback);
+    },
+    getRuntimeStageNodeTargets(baseStage, maxNodesBonus = 0) {
+        const baseNodes = DEFAULT_BASE_CHAIN.length;
+        const targets = baseStage?.nodeTargets || {};
+        const entry = Math.max(baseNodes, Math.round(this.getStageScopedTuningValue('gameplayStageNodeEntry', baseStage?.id, targets.entry ?? baseNodes)));
+        const earlyExit = Math.max(entry, Math.round(this.getStageScopedTuningValue('gameplayStageNodeEarlyExit', baseStage?.id, targets.earlyExit ?? entry)));
+        const idealExit = Math.max(earlyExit, Math.round(this.getStageScopedTuningValue('gameplayStageNodeIdealExit', baseStage?.id, targets.idealExit ?? earlyExit)));
+        const overstay = Math.max(idealExit, Math.round(this.getStageScopedTuningValue('gameplayStageNodeOverstay', baseStage?.id, targets.overstay ?? idealExit)));
+        const tunedMax = Math.max(overstay, Math.round(this.getStageScopedTuningValue('gameplayStageNodeMax', baseStage?.id, targets.max ?? overstay)));
+        return {
+            entry,
+            earlyExit,
+            idealExit,
+            overstay,
+            max: Math.max(overstay, tunedMax + maxNodesBonus)
+        };
+    },
+    getStageGrowthEconomy(baseStage) {
+        return {
+            costMul: Math.max(0.1, this.getStageScopedTuningValue('gameplayStageGrowthCostMul', baseStage?.id, baseStage?.growthEconomy?.costMul ?? 1)),
+            biomassMul: Math.max(0.1, this.getStageScopedTuningValue('gameplayStageGrowthBiomassMul', baseStage?.id, baseStage?.growthEconomy?.biomassMul ?? 1)),
+            growthEnergyMul: Math.max(0.1, this.getStageScopedTuningValue('gameplayStageGrowthEnergyMul', baseStage?.id, baseStage?.growthEconomy?.growthEnergyMul ?? 1))
+        };
+    },
+    getCurrentStageNodeBand(nodeCount = this.getPlayerNodeCount(), stage = this.getCurrentStageDef()) {
+        const targets = stage?.nodeTargets;
+        if (!targets) {
+            return 'comfort';
+        }
+        if (nodeCount < targets.earlyExit) {
+            return 'underweight';
+        }
+        if (nodeCount <= targets.idealExit) {
+            return 'comfort';
+        }
+        if (nodeCount <= targets.overstay) {
+            return 'heavy';
+        }
+        return 'oversized';
+    },
+    getCurrentStageCarryProfile(stage = this.getCurrentStageDef(), nodeCount = this.getPlayerNodeCount()) {
+        const band = this.getCurrentStageNodeBand(nodeCount, stage);
+        const densityFallbacks = { underweight: 1.1, comfort: 1, heavy: 0.82, oversized: 0.66 };
+        const yieldFallbacks = { underweight: 1.06, comfort: 1, heavy: 0.86, oversized: 0.72 };
+        return {
+            band,
+            densityMul: Math.max(
+                0.2,
+                this.getStageScopedTuningValue('gameplayStageCommonCarryDensity', stage?.id, 1)
+                * this.getBandScopedTuningValue('gameplayCarryDensity', band, densityFallbacks[band] ?? 1)
+            ),
+            yieldMul: Math.max(
+                0.2,
+                this.getStageScopedTuningValue('gameplayStageCommonCarryYield', stage?.id, 1)
+                * this.getBandScopedTuningValue('gameplayCarryYield', band, yieldFallbacks[band] ?? 1)
+            )
+        };
+    },
+    getStageEncounterProfile(stage = this.getCurrentStageDef(), nodeCount = this.getPlayerNodeCount()) {
+        const band = this.getCurrentStageNodeBand(nodeCount, stage);
+        const eliteSizeFallbacks = { underweight: 1.12, comfort: 1, heavy: 0.98, oversized: 0.94 };
+        const eliteHealthFallbacks = { underweight: 1.15, comfort: 1, heavy: 1.04, oversized: 1 };
+        const eliteSpeedFallbacks = { underweight: 1.06, comfort: 1, heavy: 1, oversized: 1 };
+        const objectiveSizeFallbacks = { underweight: 1.06, comfort: 1, heavy: 1, oversized: 1 };
+        const objectiveHealthFallbacks = { underweight: 1.08, comfort: 1, heavy: 1, oversized: 1 };
+        const objectiveSpeedFallbacks = { underweight: 1, comfort: 1, heavy: 1, oversized: 1 };
+        const eliteBase = {
+            size: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageEliteSize', stage?.id, 1)),
+            health: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageEliteHealth', stage?.id, 1)),
+            speed: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageEliteSpeed', stage?.id, 1))
+        };
+        const objectiveBase = {
+            size: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageObjectiveSize', stage?.id, 1)),
+            health: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageObjectiveHealth', stage?.id, 1)),
+            speed: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageObjectiveSpeed', stage?.id, 1))
+        };
+        const eliteBand = {
+            size: this.getBandScopedTuningValue('gameplayEliteBandSize', band, eliteSizeFallbacks[band] ?? 1),
+            health: this.getBandScopedTuningValue('gameplayEliteBandHealth', band, eliteHealthFallbacks[band] ?? 1),
+            speed: this.getBandScopedTuningValue('gameplayEliteBandSpeed', band, eliteSpeedFallbacks[band] ?? 1)
+        };
+        const objectiveBand = {
+            size: this.getBandScopedTuningValue('gameplayObjectiveBandSize', band, objectiveSizeFallbacks[band] ?? 1),
+            health: this.getBandScopedTuningValue('gameplayObjectiveBandHealth', band, objectiveHealthFallbacks[band] ?? 1),
+            speed: this.getBandScopedTuningValue('gameplayObjectiveBandSpeed', band, objectiveSpeedFallbacks[band] ?? 1)
+        };
+        return {
+            band,
+            elite: {
+                sizeMul: eliteBase.size * eliteBand.size,
+                healthMul: eliteBase.health * eliteBand.health,
+                speedMul: eliteBase.speed * eliteBand.speed
+            },
+            objective: {
+                sizeMul: objectiveBase.size * eliteBand.size * objectiveBand.size,
+                healthMul: objectiveBase.health * eliteBand.health * objectiveBand.health,
+                speedMul: objectiveBase.speed * eliteBand.speed * objectiveBand.speed
+            }
+        };
+    },
+    getPreySpawnTierAdjustment(spawnConfig, isObjective = false, stage = this.getCurrentStageDef(), nodeCount = this.getPlayerNodeCount()) {
+        const tier = isObjective ? 'objective' : (spawnConfig?.tier || 'common');
+        const encounter = this.getStageEncounterProfile(stage, nodeCount);
+        if (tier === 'elite') {
+            return {
+                band: encounter.band,
+                tier,
+                sizeMul: encounter.elite.sizeMul,
+                healthMul: encounter.elite.healthMul,
+                speedMul: encounter.elite.speedMul
+            };
+        }
+        if (tier === 'objective') {
+            return {
+                band: encounter.band,
+                tier,
+                sizeMul: encounter.objective.sizeMul,
+                healthMul: encounter.objective.healthMul,
+                speedMul: encounter.objective.speedMul
+            };
+        }
+        return {
+            band: encounter.band,
+            tier: 'common',
+            sizeMul: 1,
+            healthMul: 1,
+            speedMul: 1
+        };
+    },
+    getCurrentStageObjectiveRevealProgress(stage = this.getCurrentStageDef()) {
+        if (!stage) {
+            return 0;
+        }
+        return Math.max(1, (stage.progressGoal || 1) * clamp(stage.objectiveRevealRatio || 1, 0.1, 1));
+    },
     getCurrentStageDef() {
         const stageIndex = this.runState
             ? clamp(this.runState.stageIndex || 0, 0, DEMO_STAGE_DEFS.length - 1)
@@ -106,11 +253,34 @@ const SceneProgressionMixin = {
         const progressGoalMul = Math.max(0.25, this.getRunTuningValue('gameplayStageProgressGoalMul', 1));
         const metabolismMul = Math.max(0.25, this.getRunTuningValue('gameplayStageMetabolismMul', 1));
         const maxNodesBonus = Math.round(this.getRunTuningValue('gameplayStageMaxNodesBonus', 0));
+        const nodeTargets = this.getRuntimeStageNodeTargets(baseStage, maxNodesBonus);
+        const growthEconomy = this.getStageGrowthEconomy(baseStage);
+        const progressGoalBase = Math.max(1, Math.round(nodeTargets.idealExit * 1.35));
+        const objectiveRevealRatio = clamp(
+            this.getStageScopedTuningValue('gameplayStageObjectiveRevealRatio', baseStage.id, baseStage.objectiveRevealRatio ?? 1),
+            0.1,
+            1
+        );
+        const objectiveRevealNodeCount = clamp(
+            Math.round(
+                this.getStageScopedTuningValue(
+                    'gameplayStageObjectiveRevealNode',
+                    baseStage.id,
+                    baseStage.objectiveRevealNodeCount ?? nodeTargets.earlyExit
+                )
+            ),
+            nodeTargets.entry,
+            nodeTargets.max
+        );
 
         return {
             ...baseStage,
-            progressGoal: Math.max(1, baseStage.progressGoal * progressGoalMul),
-            maxNodes: Math.max(DEFAULT_BASE_CHAIN.length, baseStage.maxNodes + maxNodesBonus),
+            nodeTargets,
+            progressGoal: Math.max(1, progressGoalBase * progressGoalMul),
+            maxNodes: nodeTargets.max,
+            objectiveRevealRatio,
+            objectiveRevealNodeCount,
+            growthEconomy,
             metabolism: Math.max(0.1, baseStage.metabolism * metabolismMul),
             spawnCap: Math.max(1, Math.round(baseStage.spawnCap * spawnCapMul)),
             spawnRules: baseStage.spawnRules.map((rule) => {
@@ -126,7 +296,7 @@ const SceneProgressionMixin = {
                     interval: Math.max(0.12, rule.interval * spawnIntervalMul)
                 };
             }),
-            objective: baseStage.objective ? { ...baseStage.objective } : null
+            objective: baseStage.objective ? { ...baseStage.objective, tier: baseStage.objective.tier || 'objective' } : null
         };
     },
     getRunPalette() {
@@ -210,7 +380,8 @@ const SceneProgressionMixin = {
         const baseCost = this.getRunTuningValue('gameplayGrowthCostBase', 3.2);
         const perNodeCost = this.getRunTuningValue('gameplayGrowthCostPerNode', 0.92);
         const cap = Math.max(1, this.getRunTuningValue('gameplayGrowthCostCap', 18));
-        return Math.min(cap, baseCost + Math.max(0, nodeCount - DEFAULT_BASE_CHAIN.length) * perNodeCost);
+        const stageCostMul = Math.max(0.1, this.getCurrentStageDef()?.growthEconomy?.costMul || 1);
+        return Math.min(cap, (baseCost + Math.max(0, nodeCount - DEFAULT_BASE_CHAIN.length) * perNodeCost) * stageCostMul);
     },
     getEnergyRatio() {
         return clamp((this.player.energy || 0) / Math.max(1, this.player.maxEnergy || 100), 0, 1);
@@ -261,6 +432,7 @@ const SceneProgressionMixin = {
     applySpawnConfigToPrey(prey, spawnConfig, groupId = '') {
         const stage = this.getCurrentStageDef();
         const archetype = PREY_ARCHETYPE_DEFS[spawnConfig.archetype] || PREY_ARCHETYPE_DEFS.skittish;
+        const spawnAdjustment = this.getPreySpawnTierAdjustment(spawnConfig, !!spawnConfig.isObjective, stage);
         const sizeFactor = prey.sizeKey === 'large' ? 1.95 : prey.sizeKey === 'medium' ? 1.35 : 1;
         const healthMul = spawnConfig.archetype === 'bulwark'
             ? this.getRunTuningValue('gameplayBulwarkHealthMul', 1.42)
@@ -282,21 +454,25 @@ const SceneProgressionMixin = {
 
         prey.archetype = spawnConfig.archetype;
         prey.spawnRuleId = spawnConfig.id || spawnConfig.archetype;
+        prey.spawnTier = spawnAdjustment.tier;
+        prey.spawnBand = spawnAdjustment.band;
         prey.groupId = groupId;
         prey.isObjective = !!spawnConfig.isObjective;
         prey.stageId = stage.id;
         prey.color = spawnConfig.color ?? prey.color;
         prey.baseColor = prey.color;
         prey.signalColor = spawnConfig.signalColor ?? (prey.isObjective ? stage.palette.signal : stage.palette.pulse);
-        const visualScale = this.getPreyVisualMultiplier(prey, spawnConfig) * (spawnConfig.radiusMul ?? (prey.isObjective ? 1.08 : 1));
+        const visualScale = this.getPreyVisualMultiplier(prey, spawnConfig)
+            * (spawnConfig.radiusMul ?? (prey.isObjective ? 1.08 : 1))
+            * spawnAdjustment.sizeMul;
         prey.visualScale = visualScale;
         prey.radius *= visualScale;
         prey.baseRadius = prey.radius;
         prey.chunkBurst = Math.max(1, Math.round(prey.chunkBurst * Math.max(1, Math.pow(visualScale, 0.62))));
-        prey.maxHealth *= healthMul * objectiveMul * Math.max(0.85, Math.pow(visualScale, 0.28));
+        prey.maxHealth *= healthMul * objectiveMul * spawnAdjustment.healthMul * Math.max(0.85, Math.pow(visualScale, 0.28));
         prey.health = prey.maxHealth;
-        prey.speed *= archetype.speedMul;
-        prey.accel *= archetype.accelMul;
+        prey.speed *= archetype.speedMul * spawnAdjustment.speedMul;
+        prey.accel *= archetype.accelMul * spawnAdjustment.speedMul;
         prey.fleeMul *= archetype.fleeMul;
         prey.wander *= archetype.wanderMul;
         prey.mass *= (spawnConfig.archetype === 'bulwark' ? bulwarkMassMul : spawnConfig.archetype === 'apex' ? apexMassMul : 1)
@@ -545,23 +721,29 @@ const SceneProgressionMixin = {
     },
     gainBiomass(amount) {
         this.ensureRunProgressionState();
-        this.player.growthBuffer = (this.player.growthBuffer || 0) + Math.max(0, amount);
-        this.runState.growthPulse = Math.max(this.runState.growthPulse || 0, 0.16 + amount * 0.02);
-        if (amount > 0) {
-            this.emitLivingEnergyBarEvent?.('biomass', 0.08 + amount * 0.06);
+        const stageBiomassMul = Math.max(0.1, this.getCurrentStageDef()?.growthEconomy?.biomassMul || 1);
+        const applied = Math.max(0, amount) * stageBiomassMul;
+        this.player.growthBuffer = (this.player.growthBuffer || 0) + applied;
+        this.runState.growthPulse = Math.max(this.runState.growthPulse || 0, 0.16 + applied * 0.02);
+        if (applied > 0) {
+            this.emitLivingEnergyBarEvent?.('biomass', 0.08 + applied * 0.06);
         }
+        return applied;
     },
     buildPreyDevourRewardPayload(prey) {
         if (!prey) {
             return null;
         }
+        const rewardMul = (prey.spawnTier || '') === 'common'
+            ? this.getCurrentStageCarryProfile()?.yieldMul || 1
+            : 1;
         return {
             sourceId: prey.id,
             stageId: prey.stageId || '',
             isObjective: !!prey.isObjective,
-            energyValue: prey.energyValue || 0,
-            biomassValue: (prey.biomassValue || 0) + (prey.growthBonus || 0),
-            progressValue: prey.progressValue || 0
+            energyValue: (prey.energyValue || 0) * rewardMul,
+            biomassValue: ((prey.biomassValue || 0) + (prey.growthBonus || 0)) * rewardMul,
+            progressValue: (prey.progressValue || 0) * rewardMul
         };
     },
     ensureLootRewardSourceState() {
@@ -687,6 +869,10 @@ const SceneProgressionMixin = {
         if (!prey) {
             return;
         }
+        const reward = this.buildPreyDevourRewardPayload(prey);
+        if (!reward) {
+            return;
+        }
 
         if (prey.isObjective) {
             this.flushPendingDevourRewards();
@@ -699,9 +885,9 @@ const SceneProgressionMixin = {
         }
 
         this.pendingDevourRewards.push({
-            energyValue: prey.energyValue || 0,
-            biomassValue: (prey.biomassValue || 0) + (prey.growthBonus || 0),
-            progressValue: prey.progressValue || 0
+            energyValue: reward.energyValue || 0,
+            biomassValue: reward.biomassValue || 0,
+            progressValue: reward.progressValue || 0
         });
     },
     flushPendingDevourRewards() {
@@ -764,12 +950,15 @@ const SceneProgressionMixin = {
             grown += 1;
         }
         if (grown > 0) {
+            const growthEnergyMul = Math.max(0.1, this.getCurrentStageDef()?.growthEconomy?.growthEnergyMul || 1);
             this.syncPlayerEnergyCapacity(true);
             this.runState.growthPulse = Math.max(this.runState.growthPulse || 0, 0.8);
             this.emitLivingEnergyBarEvent?.('growth', 0.3 + grown * 0.28);
             this.applyEnergyDelta(
-                this.getRunTuningValue('gameplayGrowthEnergyBase', 6)
-                + grown * this.getRunTuningValue('gameplayGrowthEnergyPerNode', 1.5),
+                (
+                    this.getRunTuningValue('gameplayGrowthEnergyBase', 6)
+                    + grown * this.getRunTuningValue('gameplayGrowthEnergyPerNode', 1.5)
+                ) * growthEnergyMul,
                 0.16,
                 'growth'
             );
@@ -906,6 +1095,7 @@ const SceneProgressionMixin = {
         const compression = clamp(this.intent?.centerCompression ?? this.clusterVolume?.compression ?? 0, 0, 1);
         const objectivePulseDamp = Math.max(0.1, this.getRunTuningValue('gameplayObjectivePulseDamp', 3.6));
         const lowEnergyThreshold = clamp(this.getRunTuningValue('gameplayLowEnergyThreshold', 0.28), 0.01, 0.95);
+        const objectiveRevealProgress = this.getCurrentStageObjectiveRevealProgress(stage);
 
         this.runState.stageFlash = Math.max(0, (this.runState.stageFlash || 0) - simDt * 0.64);
         this.runState.stageSignal += simDt * (0.8 + (this.runState.stageIndex || 0) * 0.18);
@@ -962,7 +1152,13 @@ const SceneProgressionMixin = {
                 this.player.nextGrowthCost = this.getGrowthCostForNodeCount(this.activeNodes?.length || currentNodeCount);
             }
 
-            if (!this.runState.objectiveSpawned && this.runState.stageProgress >= stage.progressGoal) {
+            if (
+                !this.runState.objectiveSpawned
+                && (
+                    this.runState.stageProgress >= objectiveRevealProgress
+                    || nodeCount >= (stage.objectiveRevealNodeCount || stage.nodeTargets?.earlyExit || stage.maxNodes || nodeCount)
+                )
+            ) {
                 this.spawnStageObjective();
             }
 

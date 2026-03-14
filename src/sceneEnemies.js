@@ -1,9 +1,17 @@
 const SceneEnemiesMixin = {
     getStageInitialSpawnCount(rule) {
+        const stage = this.getCurrentStageDef?.();
         const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1));
         const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
         const viewScale = this.getPreyInitialPopulationScale?.() || 1;
-        return Math.max(rule.packMin || 1, Math.round(rule.desired * density * viewScale) + bonus);
+        const carryDensity = this.getRuleCarryDensityMul?.(rule, stage) || 1;
+        return Math.max(rule.packMin || 1, Math.round(rule.desired * density * viewScale * carryDensity) + bonus);
+    },
+    getRuleCarryDensityMul(rule, stage = this.getCurrentStageDef?.(), nodeCount = this.getPlayerNodeCount?.()) {
+        if ((rule?.tier || 'common') !== 'common') {
+            return 1;
+        }
+        return this.getCurrentStageCarryProfile?.(stage, nodeCount)?.densityMul || 1;
     },
     getPreyEncounterDensityMul() {
         return clamp(this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1), 0.35, 8);
@@ -36,7 +44,8 @@ const SceneEnemiesMixin = {
     getPreyStagePopulationBudget(stage, encounterMul = this.getPreyEncounterDensityMul()) {
         const baseCap = Math.max(1, stage?.spawnCap || 1);
         const viewScale = this.getPreyCameraPopulationViewScale();
-        const budgetScale = Math.max(1, encounterMul * viewScale);
+        const carryDensity = this.getCurrentStageCarryProfile?.(stage)?.densityMul || 1;
+        const budgetScale = Math.max(0.55, encounterMul * viewScale * carryDensity);
         const softCap = Math.max(baseCap, Math.round(baseCap * budgetScale));
         const hardCapMul = Math.max(1.12, this.getRunTuningValue('gameplayPreyHardCapMul', 1.28));
         const hardCap = Math.max(softCap + 4, Math.round(softCap * hardCapMul));
@@ -308,7 +317,7 @@ const SceneEnemiesMixin = {
         let pickRule = stage.spawnRules[0];
         let pickScore = Number.POSITIVE_INFINITY;
         stage.spawnRules.forEach((rule) => {
-            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale));
+            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale * this.getRuleCarryDensityMul(rule, stage)));
             const nearby = nearbyByRule[rule.id] || 0;
             const score = nearby / Math.max(1, desired);
             if (score < pickScore) {
@@ -536,7 +545,7 @@ const SceneEnemiesMixin = {
         this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0) - simDt);
 
         stage.spawnRules.forEach((rule) => {
-            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale));
+            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale * this.getRuleCarryDensityMul(rule, stage)));
             const aliveEffective = this.getRuleEffectiveAliveCount(rule.id, availabilityDistance);
             if (aliveEffective >= desired) {
                 this.runState.spawnTimers[rule.id] = Math.min(this.runState.spawnTimers[rule.id], rule.interval * 0.5);
@@ -752,13 +761,16 @@ const SceneEnemiesMixin = {
         };
     },
     getTelemetryClusterBucket(nodeCount = this.activeNodes?.length || this.player?.chain?.length || DEFAULT_BASE_CHAIN.length) {
-        if (nodeCount <= 8) {
+        if (nodeCount <= 20) {
             return 'small';
         }
-        if (nodeCount <= 14) {
+        if (nodeCount <= 58) {
             return 'medium';
         }
-        return 'large';
+        if (nodeCount <= 84) {
+            return 'large';
+        }
+        return 'colossal';
     },
     getTelemetryPhaseBucket(phase = this.intent?.pointerDrivePhase || this.intent?.burstPhase || 'cruise') {
         switch (phase) {

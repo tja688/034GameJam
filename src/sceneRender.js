@@ -343,7 +343,19 @@ const SceneRenderMixin = {
         const maxNodesBonus = Math.round(this.getRunTuningValue?.('gameplayStageMaxNodesBonus', 0) || 0);
         const maxNodes = DEMO_STAGE_DEFS.reduce((highest, stage) => Math.max(
             highest,
-            Math.max(baseNodes, (stage.maxNodes || baseNodes) + maxNodesBonus)
+            Math.max(
+                baseNodes,
+                (
+                    this.getStageScopedTuningValue?.(
+                        'gameplayStageNodeMax',
+                        stage.id,
+                        stage.nodeTargets?.max || stage.maxNodes || baseNodes
+                    )
+                    || stage.nodeTargets?.max
+                    || stage.maxNodes
+                    || baseNodes
+                ) + maxNodesBonus
+            )
         ), baseNodes);
         const currentNodes = this.activeNodes?.length || this.player?.chain?.length || baseNodes;
         const growthLead = clamp(this.getGrowthRatio ? this.getGrowthRatio() : 0, 0, 1) * 0.75;
