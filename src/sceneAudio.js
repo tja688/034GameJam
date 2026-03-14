@@ -3,6 +3,21 @@ const STAGE_BGM_ASSET_IDS = Object.freeze(['dem_1', 'dem_2', 'dem_3', 'dem_4', '
 const STAGE_BGM_VOLUME_MUL_BY_ASSET_ID = Object.freeze({
     dem_1: 2
 });
+const BGM_STATE_MODE = Object.freeze({
+    idle: 'idle',
+    switching: 'switching',
+    playing: 'playing'
+});
+
+function createDefaultBgmState() {
+    return {
+        mode: BGM_STATE_MODE.idle,
+        activeAssetId: '',
+        requestedAssetId: '',
+        requestSerial: 0,
+        lastStageIndex: -1
+    };
+}
 
 function clampStageBgmIndex(stageIndex) {
     const normalized = Number.isFinite(stageIndex) ? Math.round(stageIndex) : 0;
@@ -10,6 +25,13 @@ function clampStageBgmIndex(stageIndex) {
 }
 
 const SceneAudioMixin = {
+    ensureBgmState() {
+        if (!this.bgmState || typeof this.bgmState !== 'object') {
+            this.bgmState = createDefaultBgmState();
+        }
+        return this.bgmState;
+    },
+
     initAudioSystem() {
         if (this.audioManager) {
             return this.audioManager;
@@ -22,6 +44,7 @@ const SceneAudioMixin = {
             return window.activeScene?.playAudioEvent?.(eventId, options.meta || null, options);
         };
         window.getAudioDebugSnapshot = () => window.activeScene?.audioManager?.getDebugSnapshot?.() || null;
+        window.getAudioTrace = () => window.activeScene?.audioManager?.getDebugSnapshot?.()?.recentAudioTrace || [];
 
         const devToolsEnabled = this.isDebugToolsEnabled?.() ?? (window.CORE_DEMO_DEBUG !== false);
         if (devToolsEnabled) {
@@ -37,9 +60,11 @@ const SceneAudioMixin = {
             this._audioShutdownBound = true;
             this.events.once('shutdown', () => {
                 this.audioManager?.stopAll?.({ fadeOutMs: 40 });
+                this.bgmState = createDefaultBgmState();
             });
         }
 
+        this.ensureBgmState();
         this.playAudioEvent('system_boot', { source: 'scene-create' }, { forceReplay: true });
         this.syncSceneBgm({ source: 'scene-create' });
         return this.audioManager;
@@ -68,20 +93,63 @@ const SceneAudioMixin = {
             return Promise.resolve(false);
         }
         const spec = this.getSceneBgmSpec();
+        const bgmState = this.ensureBgmState();
         const currentAssetId = manager.getCurrentAssetIdForEvent?.(spec.eventId) || '';
-        if (!options.forceReplay && currentAssetId === spec.assetId) {
+        if (!options.forceReplay && bgmState.mode === BGM_STATE_MODE.switching && bgmState.requestedAssetId === spec.assetId) {
             return Promise.resolve(true);
         }
+        if (!options.forceReplay && currentAssetId === spec.assetId) {
+            bgmState.mode = BGM_STATE_MODE.playing;
+            bgmState.activeAssetId = spec.assetId;
+            bgmState.requestedAssetId = '';
+            bgmState.lastStageIndex = spec.stageIndex;
+            return Promise.resolve(true);
+        }
+        const requestSerial = (bgmState.requestSerial || 0) + 1;
+        bgmState.requestSerial = requestSerial;
+        bgmState.mode = BGM_STATE_MODE.switching;
+        bgmState.requestedAssetId = spec.assetId;
+        bgmState.lastStageIndex = spec.stageIndex;
+
+        // Hard stop old BGM first, then start a single authoritative voice.
+        manager.stopEvent(spec.eventId, { fadeOutMs: 0 });
+
         return manager.playEvent(spec.eventId, {
             forceReplay: true,
+            dedupeInFlight: false,
             assetId: spec.assetId,
             volumeMul: spec.volumeMul,
+            overridePatch: {
+                cooldown: 0,
+                loop: true,
+                maxVoices: 1,
+                strategy: 'first'
+            },
             meta: {
                 ...(options.meta && typeof options.meta === 'object' ? options.meta : {}),
                 source: options.source || spec.source,
                 stageIndex: spec.stageIndex,
                 bgmAssetId: spec.assetId
             }
+        }).then((played) => {
+            const liveState = this.ensureBgmState();
+            if (liveState.requestSerial !== requestSerial) {
+                manager.stopEvent(spec.eventId, { fadeOutMs: 0 });
+                return false;
+            }
+            liveState.mode = played ? BGM_STATE_MODE.playing : BGM_STATE_MODE.idle;
+            liveState.activeAssetId = played ? spec.assetId : '';
+            liveState.requestedAssetId = '';
+            return played;
+        }).catch((error) => {
+            const liveState = this.ensureBgmState();
+            if (liveState.requestSerial === requestSerial) {
+                liveState.mode = BGM_STATE_MODE.idle;
+                liveState.activeAssetId = '';
+                liveState.requestedAssetId = '';
+            }
+            console.warn('Failed to sync scene BGM.', error);
+            return false;
         });
     },
 
@@ -109,6 +177,9 @@ const SceneAudioMixin = {
             return;
         }
         this.audioManager.stopEvent(eventId, { fadeOutMs });
+        if (eventId === STAGE_BGM_EVENT_ID) {
+            this.bgmState = createDefaultBgmState();
+        }
     },
 
     stopAllAudio(fadeOutMs = 0) {
@@ -116,6 +187,7 @@ const SceneAudioMixin = {
             return;
         }
         this.audioManager.stopAll({ fadeOutMs });
+        this.bgmState = createDefaultBgmState();
     },
 
     applyAudioRuntimeOverride(eventId, patch) {

@@ -8,7 +8,17 @@ const SceneEnemiesMixin = {
             ...(Array.isArray(stage.eliteRules) ? stage.eliteRules : [])
         ];
     },
+    isEliteSpawnConfig(spawnConfig) {
+        return !!(spawnConfig && (
+            spawnConfig.encounterClass === 'elite'
+            || spawnConfig.tier === 'elite'
+            || spawnConfig.isElite === true
+        ));
+    },
     getStageInitialSpawnCount(rule) {
+        if (this.isEliteSpawnConfig(rule)) {
+            return Math.max(0, Math.round(rule?.desired || 0));
+        }
         const stage = this.getCurrentStageDef?.();
         const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1));
         const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
@@ -255,14 +265,19 @@ const SceneEnemiesMixin = {
         const encounterMul = this.getPreyEncounterDensityMul();
         return Math.max(860, metrics.viewRadius * (1.18 + 0.42 / Math.sqrt(encounterMul)));
     },
-    getRuleEffectiveAliveCount(ruleId, availabilityDistance) {
+    getRuleEffectiveAliveCount(ruleId, availabilityDistance, options = {}) {
         if (!ruleId) {
             return 0;
         }
+        const strict = options?.strict === true;
         const availabilitySq = availabilityDistance * availabilityDistance;
         let effective = 0;
         this.prey.forEach((prey) => {
             if (prey.isObjective || prey.spawnRuleId !== ruleId) {
+                return;
+            }
+            if (strict) {
+                effective += 1;
                 return;
             }
             const dx = prey.x - this.player.centroidX;
@@ -388,6 +403,7 @@ const SceneEnemiesMixin = {
         const ring = this.getPreySpawnRing(isObjective);
         const prediction = this.getPreySpawnPredictionState(ring, isObjective);
         const flow = this.getPreySpawnFlowDirection();
+        const isElite = this.isEliteSpawnConfig(spawnConfig);
         const forwardBias = clamp(this.getRunTuningValue('gameplayPreyForwardSpawnBias', 0.62), 0, 1);
         if (!Number.isFinite(this.preySpawnSweepAngle)) {
             this.preySpawnSweepAngle = Math.random() * Math.PI * 2;
@@ -415,14 +431,16 @@ const SceneEnemiesMixin = {
             }
         }
 
-        const spacingBase = spawnConfig.archetype === 'school'
+        const spacingBase = isElite
+            ? 560
+            : spawnConfig.archetype === 'school'
             ? 240
             : spawnConfig.sizeKey === 'large'
                 ? 190
                 : spawnConfig.sizeKey === 'medium'
                     ? 220
                     : 260;
-        const crowdRadius = Math.max(180, spacingBase + count * 34);
+        const crowdRadius = Math.max(isElite ? 520 : 180, spacingBase + count * (isElite ? 64 : 34));
 
         let best = null;
         candidateAngles.forEach((angle) => {
@@ -430,6 +448,23 @@ const SceneEnemiesMixin = {
             const x = this.player.centroidX + Math.cos(angle) * distance;
             const y = this.player.centroidY + Math.sin(angle) * distance;
             let score = this.scorePreySpawnCrowding(x, y, crowdRadius, spawnConfig.id || '');
+            if (isElite) {
+                for (let i = 0; i < this.prey.length; i += 1) {
+                    const prey = this.prey[i];
+                    if (prey?.isObjective) {
+                        continue;
+                    }
+                    const dx = prey.x - x;
+                    const dy = prey.y - y;
+                    const distanceToPrey = Math.hypot(dx, dy);
+                    const minGap = prey.isElite ? crowdRadius * 1.15 : crowdRadius * 0.7;
+                    if (distanceToPrey >= minGap) {
+                        continue;
+                    }
+                    const overlap = 1 - distanceToPrey / Math.max(1, minGap);
+                    score += overlap * (prey.isElite ? 2800 : 1200);
+                }
+            }
             const safe = this.isPreySpawnPointSafe(x, y, prediction);
             if (!safe) {
                 score += 1600;
@@ -467,6 +502,13 @@ const SceneEnemiesMixin = {
     },
     seedConfiguredPrey(spawnConfig, count = 1) {
         const results = [];
+        const isElite = this.isEliteSpawnConfig(spawnConfig);
+        const spawnCount = isElite
+            ? Math.min(1, Math.max(0, Math.round(count)))
+            : Math.max(0, Math.round(count));
+        if (spawnCount <= 0) {
+            return results;
+        }
         const worldHalfWidth = this.cameraRig.viewportWidth * 0.5 / this.cameraRig.zoom;
         const worldHalfHeight = this.cameraRig.viewportHeight * 0.5 / this.cameraRig.zoom;
         const fieldMul = Math.max(0.35, this.getRunTuningValue('gameplayPreyFieldRadiusMul', 0.92));
@@ -477,12 +519,14 @@ const SceneEnemiesMixin = {
         const groupRadius = Phaser.Math.FloatBetween(minRadius, maxRadius);
         const centerX = this.player.centroidX + Math.cos(groupAngle) * groupRadius;
         const centerY = this.player.centroidY + Math.sin(groupAngle) * groupRadius;
-        const clusterBase = (spawnConfig.archetype === 'school' ? 44 : spawnConfig.sizeKey === 'large' ? 28 : spawnConfig.sizeKey === 'medium' ? 64 : 92) * spreadMul;
-        const groupId = count > 1 ? `${spawnConfig.id || spawnConfig.archetype}-seed-${this.preyIdCounter}` : '';
+        const clusterBase = isElite
+            ? 0
+            : (spawnConfig.archetype === 'school' ? 44 : spawnConfig.sizeKey === 'large' ? 28 : spawnConfig.sizeKey === 'medium' ? 64 : 92) * spreadMul;
+        const groupId = !isElite && spawnCount > 1 ? `${spawnConfig.id || spawnConfig.archetype}-seed-${this.preyIdCounter}` : '';
 
-        for (let i = 0; i < count; i += 1) {
-            const ring = Math.sqrt((i + 0.35) / Math.max(1, count));
-            const angle = groupAngle + (Math.PI * 2 * i) / Math.max(1, count) + Phaser.Math.FloatBetween(-0.55, 0.55);
+        for (let i = 0; i < spawnCount; i += 1) {
+            const ring = Math.sqrt((i + 0.35) / Math.max(1, spawnCount));
+            const angle = groupAngle + (Math.PI * 2 * i) / Math.max(1, spawnCount) + Phaser.Math.FloatBetween(-0.55, 0.55);
             const offset = clusterBase * ring;
             const prey = this.createPrey(spawnConfig, {
                 x: centerX + Math.cos(angle) * offset + Phaser.Math.FloatBetween(-18, 18),
@@ -554,8 +598,14 @@ const SceneEnemiesMixin = {
         this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0) - simDt);
 
         this.getStageEncounterRules(stage).forEach((rule) => {
-            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale * this.getRuleCarryDensityMul(rule, stage)));
-            const aliveEffective = this.getRuleEffectiveAliveCount(rule.id, availabilityDistance);
+            const isEliteRule = this.isEliteSpawnConfig(rule);
+            const desired = isEliteRule
+                ? Math.max(0, Math.round(rule.desired || 0))
+                : Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale * this.getRuleCarryDensityMul(rule, stage)));
+            if (desired <= 0) {
+                return;
+            }
+            const aliveEffective = this.getRuleEffectiveAliveCount(rule.id, availabilityDistance, { strict: isEliteRule });
             if (aliveEffective >= desired) {
                 this.runState.spawnTimers[rule.id] = Math.min(this.runState.spawnTimers[rule.id], rule.interval * 0.5);
                 return;
@@ -567,21 +617,24 @@ const SceneEnemiesMixin = {
             }
 
             const deficit = Math.max(1, Math.round(desired - aliveEffective));
-            const packBoost = this.getPreySpawnPackScale(encounterMul, budget.viewScale);
-            const packMinBase = Math.max(1, rule.packMin || 1);
-            const packMaxBase = Math.max(packMinBase, rule.packMax || packMinBase);
-            const packMin = Math.max(1, Math.min(deficit, Math.round(packMinBase * packBoost)));
-            const packMax = Math.max(packMin, Math.min(deficit, Math.round(packMaxBase * packBoost)));
-            const burstCap = Math.max(6, Math.round(this.getRunTuningValue('gameplayPreyBurstSpawnCap', 24)));
             const remainingCapacity = hardCap - this.prey.length;
             if (remainingCapacity <= 0) {
                 return;
             }
-            const count = clamp(
-                Phaser.Math.Between(packMin, packMax),
-                1,
-                Math.min(burstCap, remainingCapacity)
-            );
+            let count = 1;
+            if (!isEliteRule) {
+                const packBoost = this.getPreySpawnPackScale(encounterMul, budget.viewScale);
+                const packMinBase = Math.max(1, rule.packMin || 1);
+                const packMaxBase = Math.max(packMinBase, rule.packMax || packMinBase);
+                const packMin = Math.max(1, Math.min(deficit, Math.round(packMinBase * packBoost)));
+                const packMax = Math.max(packMin, Math.min(deficit, Math.round(packMaxBase * packBoost)));
+                const burstCap = Math.max(6, Math.round(this.getRunTuningValue('gameplayPreyBurstSpawnCap', 24)));
+                count = clamp(
+                    Phaser.Math.Between(packMin, packMax),
+                    1,
+                    Math.min(burstCap, remainingCapacity)
+                );
+            }
             this.spawnConfiguredPrey(rule, count);
             this.runState.spawnTimers[rule.id] = rule.interval * Phaser.Math.FloatBetween(0.86, 1.14);
         });
@@ -590,8 +643,15 @@ const SceneEnemiesMixin = {
     },
     spawnConfiguredPrey(spawnConfig, count = 1, forceObjective = false) {
         const results = [];
+        const isElite = this.isEliteSpawnConfig(spawnConfig);
+        const spawnCount = isElite
+            ? Math.min(1, Math.max(0, Math.round(count)))
+            : Math.max(1, Math.round(count));
+        if (spawnCount <= 0) {
+            return results;
+        }
         const isObjective = !!(forceObjective || spawnConfig.isObjective);
-        const anchor = this.pickSpawnClusterAnchor(spawnConfig, count, isObjective);
+        const anchor = this.pickSpawnClusterAnchor(spawnConfig, spawnCount, isObjective);
         const prediction = anchor.prediction || this.getPreySpawnPredictionState(anchor.ring, isObjective);
         const safeMinDistance = Math.max(
             anchor.ring.ringMin,
@@ -604,18 +664,20 @@ const SceneEnemiesMixin = {
         anchor.safeMinDistance = safeMinDistance;
         anchor.safeMaxDistance = safeMaxDistance;
         const spreadMul = Math.max(0.35, this.getRunTuningValue('gameplayPreyFieldSpreadMul', 1));
-        const clusterBase = (spawnConfig.archetype === 'school'
+        const clusterBase = isElite
+            ? 0
+            : (spawnConfig.archetype === 'school'
             ? 52
             : spawnConfig.sizeKey === 'large'
                 ? 32
                 : spawnConfig.sizeKey === 'medium'
                     ? 72
                     : 96) * spreadMul * (isObjective ? 0.72 : 1);
-        const groupId = count > 1 ? `${spawnConfig.id || spawnConfig.archetype}-${this.preyIdCounter}` : '';
+        const groupId = !isElite && spawnCount > 1 ? `${spawnConfig.id || spawnConfig.archetype}-${this.preyIdCounter}` : '';
 
-        for (let i = 0; i < count; i += 1) {
-            const ring = Math.sqrt((i + 0.35) / Math.max(1, count));
-            const angle = anchor.angle + (Math.PI * 2 * i) / Math.max(1, count) + Phaser.Math.FloatBetween(-0.55, 0.55);
+        for (let i = 0; i < spawnCount; i += 1) {
+            const ring = Math.sqrt((i + 0.35) / Math.max(1, spawnCount));
+            const angle = anchor.angle + (Math.PI * 2 * i) / Math.max(1, spawnCount) + Phaser.Math.FloatBetween(-0.55, 0.55);
             const offset = clusterBase * ring;
             let x = anchor.x + Math.cos(angle) * offset + Phaser.Math.FloatBetween(-22, 22);
             let y = anchor.y + Math.sin(angle) * offset + Phaser.Math.FloatBetween(-22, 22);
@@ -1360,6 +1422,9 @@ const SceneEnemiesMixin = {
 
         nearbyPrey.forEach((other) => {
             if (other.id === prey.id) {
+                return;
+            }
+            if (other.isElite || other.isObjective) {
                 return;
             }
             if (prey.groupId && other.groupId && prey.groupId !== other.groupId && prey.archetype !== 'school') {

@@ -66,6 +66,7 @@ class CoreAudioManager {
         this.assetLoadQueue = [];
         this.assetLoadPromises = new Map();
         this.assetLoadRunning = false;
+        this.pendingPlayRequests = new Map();
 
         this.eventMetrics = {};
         this.eventLastPlayedAt = {};
@@ -75,6 +76,7 @@ class CoreAudioManager {
         this.previewVoices = new Set();
         this.debugListeners = new Set();
         this.recentEvents = [];
+        this.recentAudioTrace = [];
         this.lastSaveResult = { ok: true, message: '' };
         this.audioUnlockInstalled = false;
 
@@ -376,7 +378,38 @@ class CoreAudioManager {
         if (this.recentEvents.length > 64) {
             this.recentEvents.length = 64;
         }
+        this.recentAudioTrace.unshift({
+            eventId,
+            status,
+            reason: metrics.lastReason,
+            assetId: metrics.lastAssetId,
+            meta: metrics.lastMeta ? cloneData(metrics.lastMeta) : null,
+            at: now
+        });
+        if (this.recentAudioTrace.length > 128) {
+            this.recentAudioTrace.length = 128;
+        }
         this.emitDebugUpdate('event', { eventId, status, reason, assetId });
+    }
+
+    buildPendingPlayRequestKey(eventId, assetId) {
+        return `${eventId}::${assetId || ''}`;
+    }
+
+    getPendingPlayRequest(eventId, assetId) {
+        const key = this.buildPendingPlayRequestKey(eventId, assetId);
+        return this.pendingPlayRequests.get(key) || null;
+    }
+
+    setPendingPlayRequest(eventId, assetId, promise) {
+        const key = this.buildPendingPlayRequestKey(eventId, assetId);
+        this.pendingPlayRequests.set(key, promise);
+        promise.finally(() => {
+            if (this.pendingPlayRequests.get(key) === promise) {
+                this.pendingPlayRequests.delete(key);
+            }
+        });
+        return promise;
     }
 
     getActiveVoicesForEvent(eventId) {
@@ -742,7 +775,6 @@ class CoreAudioManager {
             return Promise.resolve(false);
         }
 
-        this.enforceVoiceLimit(eventId, config.maxVoices);
         const assetId = isNonEmptyString(options.assetId)
             ? options.assetId.trim()
             : this.pickAssetId(eventId, pool, config.strategy || 'random');
@@ -752,7 +784,21 @@ class CoreAudioManager {
             return Promise.resolve(false);
         }
 
-        return this.ensureAssetLoaded(assetId).then((loaded) => {
+        const currentAssetId = this.getCurrentAssetIdForEvent(eventId);
+        if (!options.forceReplay && currentAssetId === assetId) {
+            this.recordEvent(eventId, 'skipped', 'already_playing', assetId, options.meta);
+            return Promise.resolve(true);
+        }
+
+        if (options.dedupeInFlight !== false) {
+            const pendingRequest = this.getPendingPlayRequest(eventId, assetId);
+            if (pendingRequest) {
+                this.recordEvent(eventId, 'skipped', 'pending_duplicate', assetId, options.meta);
+                return pendingRequest;
+            }
+        }
+
+        const playPromise = this.ensureAssetLoaded(assetId).then((loaded) => {
             if (!loaded) {
                 this.recordEvent(eventId, 'skipped', 'asset_not_loaded', assetId, options.meta);
                 return false;
@@ -761,6 +807,7 @@ class CoreAudioManager {
                 this.recordEvent(eventId, 'skipped', 'sound_unavailable', assetId, options.meta);
                 return false;
             }
+            this.enforceVoiceLimit(eventId, config.maxVoices);
             const playback = this.computePlaybackConfig(config, eventId, assetId, options);
             let sound;
             try {
@@ -805,6 +852,10 @@ class CoreAudioManager {
             this.recordEvent(eventId, 'played', '', assetId, options.meta);
             return true;
         });
+
+        return options.dedupeInFlight === false
+            ? playPromise
+            : this.setPendingPlayRequest(eventId, assetId, playPromise);
     }
 
     playAssetPreview(assetId, options = {}) {
@@ -1033,7 +1084,8 @@ class CoreAudioManager {
                 state: this.getAssetState(asset.id)
             })),
             lastSaveResult: cloneData(this.lastSaveResult),
-            recentEvents: cloneData(this.recentEvents.slice(0, 24))
+            recentEvents: cloneData(this.recentEvents.slice(0, 24)),
+            recentAudioTrace: cloneData(this.recentAudioTrace.slice(0, 64))
         };
     }
 }

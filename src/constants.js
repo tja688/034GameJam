@@ -308,7 +308,7 @@ const DEMO_STAGE_DEFS = [
             { id: 'forage-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.16, packMin: 4, packMax: 6, sizeJitter: 0.12 }
         ],
         eliteRules: [
-            { id: 'forage-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3.2, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.12 }
+            { id: 'forage-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 6.2, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.12, radiusMul: 1.55 }
         ],
         objective: {
             id: 'forage-objective',
@@ -347,8 +347,8 @@ const DEMO_STAGE_DEFS = [
             { id: 'bloom-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'medium', shape: 'square', desired: 3, interval: 1.52, packMin: 2, packMax: 3, sizeJitter: 0.12 }
         ],
         eliteRules: [
-            { id: 'bloom-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3.1, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.16 },
-            { id: 'bloom-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 3.8, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.14 }
+            { id: 'bloom-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 6.8, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.16, radiusMul: 1.56 },
+            { id: 'bloom-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 7.4, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.14, radiusMul: 1.44 }
         ],
         objective: {
             id: 'bloom-objective',
@@ -387,9 +387,9 @@ const DEMO_STAGE_DEFS = [
             { id: 'pressure-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'medium', shape: 'square', desired: 4, interval: 1.46, packMin: 2, packMax: 3, sizeJitter: 0.14 }
         ],
         eliteRules: [
-            { id: 'pressure-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3.05, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.18 },
-            { id: 'pressure-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 3.56, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.16 },
-            { id: 'pressure-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 4.4, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.12, radiusMul: 1.08 }
+            { id: 'pressure-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 7.2, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.18, radiusMul: 1.58 },
+            { id: 'pressure-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 8.2, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.16, radiusMul: 1.46 },
+            { id: 'pressure-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 9.4, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.12, radiusMul: 1.72 }
         ],
         objective: {
             id: 'pressure-objective',
@@ -428,10 +428,10 @@ const DEMO_STAGE_DEFS = [
             { id: 'encircle-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'medium', shape: 'square', desired: 4, interval: 1.4, packMin: 2, packMax: 3, sizeJitter: 0.15 }
         ],
         eliteRules: [
-            { id: 'encircle-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.2 },
-            { id: 'encircle-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 3.38, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.18 },
-            { id: 'encircle-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 4.2, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.14, radiusMul: 1.12 },
-            { id: 'encircle-dart', speciesId: 'elite-dart', behaviorId: 'elite-dart', archetype: 'eliteDart', sizeKey: 'medium', shape: 'dart', desired: 1, interval: 4.58, packMin: 1, packMax: 1, color: 0x75d7ff, stageColorMix: 0.18 }
+            { id: 'encircle-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 7.6, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.2, radiusMul: 1.58 },
+            { id: 'encircle-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 8.4, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.18, radiusMul: 1.46 },
+            { id: 'encircle-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 9.8, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.14, radiusMul: 1.76 },
+            { id: 'encircle-dart', speciesId: 'elite-dart', behaviorId: 'elite-dart', archetype: 'eliteDart', sizeKey: 'medium', shape: 'dart', desired: 1, interval: 9.2, packMin: 1, packMax: 1, color: 0x75d7ff, stageColorMix: 0.18, radiusMul: 1.5 }
         ],
         objective: {
             id: 'encircle-objective',
@@ -470,10 +470,10 @@ const DEMO_STAGE_DEFS = [
             { id: 'saturation-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'large', shape: 'square', desired: 4, interval: 1.32, packMin: 2, packMax: 3, sizeJitter: 0.16 }
         ],
         eliteRules: [
-            { id: 'saturation-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 2, interval: 2.82, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.22 },
-            { id: 'saturation-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 2, interval: 3.12, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.2 },
-            { id: 'saturation-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 3.96, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.16, radiusMul: 1.14 },
-            { id: 'saturation-dart', speciesId: 'elite-dart', behaviorId: 'elite-dart', archetype: 'eliteDart', sizeKey: 'medium', shape: 'dart', desired: 2, interval: 4.08, packMin: 1, packMax: 1, color: 0x75d7ff, stageColorMix: 0.2 }
+            { id: 'saturation-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 8.2, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.22, radiusMul: 1.6 },
+            { id: 'saturation-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 8.9, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.2, radiusMul: 1.5 },
+            { id: 'saturation-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 10.2, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.16, radiusMul: 1.8 },
+            { id: 'saturation-dart', speciesId: 'elite-dart', behaviorId: 'elite-dart', archetype: 'eliteDart', sizeKey: 'medium', shape: 'dart', desired: 1, interval: 9.6, packMin: 1, packMax: 1, color: 0x75d7ff, stageColorMix: 0.2, radiusMul: 1.52 }
         ],
         objective: {
             id: 'saturation-objective',
