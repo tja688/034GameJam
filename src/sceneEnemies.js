@@ -6,7 +6,7 @@ const SceneEnemiesMixin = {
         return Math.max(rule.packMin || 1, Math.round(rule.desired * density * viewScale) + bonus);
     },
     getPreyEncounterDensityMul() {
-        return clamp(this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1), 0.35, 3);
+        return clamp(this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1), 0.35, 8);
     },
     isPreyCameraPopulationScalingEnabled() {
         return this.getRunTuningToggle?.('gameplayPreyCameraScaleEnabled', true)
