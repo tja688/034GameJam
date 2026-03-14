@@ -178,13 +178,7 @@ const SceneCombatMixin = {
         if (profile.mode !== 'feed' && (node.predationWindow || 0) <= 0.03) {
             return false;
         }
-        if (profile.mode === 'feed') {
-            if (prey.sizeKey === 'large' && prey.exposed < 0.22 && (prey.attachments?.length || 0) < 2) {
-                return false;
-            }
-            return true;
-        }
-        const limit = prey.maxAnchors + Math.floor((prey.exposed || 0) * 2.2);
+        const limit = Math.max(1, prey.maxAnchors || 1);
         return (prey.attachments?.length || 0) < limit;
     },
     tryLatchPrey(prey, node, nx, ny, impactScale = 1) {
@@ -199,18 +193,6 @@ const SceneCombatMixin = {
         }
 
         if (!this.canNodeLatchPrey(node, prey, profile)) {
-            return null;
-        }
-
-        if (prey.sizeKey === 'small' && profile.mode !== 'feed') {
-            this.damagePrey(prey, prey.health + prey.maxHealth, -nx, -ny, node, {
-                mode: profile.mode,
-                grip: profile.grip,
-                cut: profile.cut,
-                suction: profile.suction
-            });
-            node.hookTension = Math.max(node.hookTension || 0, 1);
-            node.biteGlow = Math.max(node.biteGlow || 0, 1);
             return null;
         }
 
@@ -335,6 +317,7 @@ const SceneCombatMixin = {
             if (!prey) {
                 continue;
             }
+            this.syncPreyVolumeHealth?.(prey, true);
             prey.attachments = (prey.attachments || []).filter((attachment) => {
                 const node = nodeByIndex.get(attachment.nodeIndex);
                 if (!node) {
@@ -444,29 +427,11 @@ const SceneCombatMixin = {
         this.player.predationPressure = damp(this.player.predationPressure || 0, clamp(totalAttachments / 10, 0, 1.2), 7.5, simDt);
         this.updateFragments(simDt);
     },
-    performAttachmentBite(prey, attachment, node, pressure) {
-        let amount = 0;
-        if (attachment.mode === 'hook') {
-            amount = 5.2 + attachment.cut * 7.6 + pressure.pressure * 6.2 + pressure.encirclement * 5.8;
-        } else if (attachment.mode === 'grind') {
-            amount = 4.8 + attachment.cut * 8.8 + pressure.pressure * 7.4 + pressure.grindCount * 1.2;
-        } else {
-            amount = 1.2 + attachment.suction * 2.4 + Math.max(0, (prey.exposed || 0) - 0.12) * 8.4 + pressure.feedCount * 0.7;
-        }
-
-        if (prey.sizeKey === 'large' && pressure.cutterCount < 2 && attachment.mode !== 'feed') {
-            amount *= 0.42;
-        }
-        if (attachment.mode === 'feed' && prey.sizeKey === 'large' && (prey.exposed || 0) < 0.26) {
-            amount *= 0.16;
-        }
-        if (prey.sizeKey === 'small' && attachment.mode !== 'feed') {
-            amount *= 1.6;
-        }
-
-        const resistance = prey.sizeKey === 'large' ? 1.48 : prey.sizeKey === 'medium' ? 1.08 : 0.76;
-        amount /= resistance;
-        amount *= this.getPreyDamageMultiplier(prey, node, attachment, pressure);
+    performAttachmentBite(prey, attachment, node, _pressure) {
+        const profile = this.syncPreyVolumeHealth?.(prey, true);
+        const biteDps = Math.max(0.1, profile?.biteDps ?? this.getRunTuningValue?.('gameplayPreySimpleBiteDps', 18) ?? 18);
+        const biteInterval = Math.max(0.02, attachment?.chewInterval || node?.chewInterval || 0.09);
+        const amount = biteDps * biteInterval;
 
         const biteDir = normalize(
             node.attackDirX || (prey.x - node.x),
@@ -486,7 +451,7 @@ const SceneCombatMixin = {
             mode: attachment.mode,
             amount
         });
-        attachment.chewTimer = attachment.mode === 'grind' ? 0.08 : attachment.mode === 'hook' ? 0.11 : 0.07;
+        attachment.chewTimer = biteInterval;
         node.predationWindow = Math.max(0, (node.predationWindow || 0) - (attachment.mode === 'feed' ? 0.02 : 0.04));
         node.biteGlow = Math.max(node.biteGlow || 0, 1);
         node.feedPulse = Math.max(node.feedPulse || 0, attachment.mode === 'feed' ? 1.42 : 0.72);
@@ -499,6 +464,7 @@ const SceneCombatMixin = {
         if (this._preyAliveSet ? !this._preyAliveSet.has(prey) : !this.prey.includes(prey)) {
             return;
         }
+        this.syncPreyVolumeHealth?.(prey, true);
 
         const previousRatio = prey.health / Math.max(prey.maxHealth, 1);
         prey.health -= amount;
