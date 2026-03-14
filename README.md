@@ -1022,6 +1022,11 @@ prey 受击、撕裂或死亡时会生成 fragments。
 - `createPrey(...)`
 - `updatePrey(simDt)`
 
+现在这一层还额外承担两件事：
+
+- 自动镜头拉远时，按真实视野动态放大 prey 的生成预算、补怪包大小、可见填充距离与剔除距离
+- 远距 prey 会自动降级到轻量逃离更新；也可以直接打开 `gameplayPreySimpleFleeMode`，把全场 prey 切到纯本能逃离
+
 ---
 
 ## 十四、正式 progression 与 gameplay 参数系统
@@ -1108,6 +1113,8 @@ prey 受击、撕裂或死亡时会生成 fragments。
 - `bulwark / weakspot / apex / school / objective` 生命倍率
 - `bulwark / apex` 质量倍率
 - 各类额外挂载上限
+- 自动镜头下的 prey 预算扩容开关 / 增幅 / 上限
+- 全局 `prey` 本能逃离降级开关
 
 #### 姿态判定与伤害乘区
 

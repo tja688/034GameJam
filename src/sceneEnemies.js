@@ -2,18 +2,68 @@ const SceneEnemiesMixin = {
     getStageInitialSpawnCount(rule) {
         const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1));
         const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
-        return Math.max(rule.packMin || 1, Math.round(rule.desired * density) + bonus);
+        const viewScale = this.getPreyInitialPopulationScale?.() || 1;
+        return Math.max(rule.packMin || 1, Math.round(rule.desired * density * viewScale) + bonus);
     },
     getPreyEncounterDensityMul() {
         return clamp(this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1), 0.35, 3);
+    },
+    isPreyCameraPopulationScalingEnabled() {
+        return this.getRunTuningToggle?.('gameplayPreyCameraScaleEnabled', true)
+            && !!(this.cameraRig?.autoZoomEnabled || window.TUNING?.cameraAutoNodeZoomEnabled);
+    },
+    getPreyCameraPopulationViewScale() {
+        if (!this.isPreyCameraPopulationScalingEnabled()) {
+            return 1;
+        }
+
+        const zoom = Math.max(0.03, this.cameraRig?.zoom || 1);
+        const referenceZoom = Math.max(0.12, this.getRunTuningValue('gameplayPreySpawnReferenceZoomMin', 0.68));
+        const exponent = clamp(this.getRunTuningValue('gameplayPreyCameraScaleExponent', 0.55), 0.18, 1.2);
+        const cap = Math.max(1, this.getRunTuningValue('gameplayPreyCameraScaleCap', 8));
+        const zoomRatio = Math.max(1, referenceZoom / zoom);
+        return clamp(Math.pow(zoomRatio * zoomRatio, exponent), 1, cap);
+    },
+    getPreyInitialPopulationScale() {
+        const exponent = clamp(this.getRunTuningValue('gameplayPreyCameraSeedScaleExponent', 0.38), 0, 1);
+        return Math.max(1, Math.pow(this.getPreyCameraPopulationViewScale(), exponent));
+    },
+    getPreySpawnPackScale(encounterMul = this.getPreyEncounterDensityMul(), viewScale = this.getPreyCameraPopulationViewScale()) {
+        return 1
+            + Math.max(0, encounterMul - 1) * 0.35
+            + Math.max(0, viewScale - 1) * 0.6;
+    },
+    getPreyStagePopulationBudget(stage, encounterMul = this.getPreyEncounterDensityMul()) {
+        const baseCap = Math.max(1, stage?.spawnCap || 1);
+        const viewScale = this.getPreyCameraPopulationViewScale();
+        const budgetScale = Math.max(1, encounterMul * viewScale);
+        const softCap = Math.max(baseCap, Math.round(baseCap * budgetScale));
+        const hardCapMul = Math.max(1.12, this.getRunTuningValue('gameplayPreyHardCapMul', 1.28));
+        const hardCap = Math.max(softCap + 4, Math.round(softCap * hardCapMul));
+        const baseNearby = Math.max(2, (stage?.spawnRules?.length || 0) + 2);
+        const nearbyTarget = clamp(
+            Math.round(baseNearby * budgetScale),
+            baseNearby,
+            Math.max(baseNearby + 1, softCap - 1)
+        );
+        return {
+            viewScale,
+            budgetScale,
+            softCap,
+            hardCap,
+            nearbyTarget
+        };
     },
     getPreySpawnViewportMetrics() {
         const viewportWidth = Math.max(1, this.cameraRig?.viewportWidth || this.scale?.width || 1280);
         const viewportHeight = Math.max(1, this.cameraRig?.viewportHeight || this.scale?.height || 720);
         const zoom = Math.max(0.03, this.cameraRig?.zoom || 1);
         const referenceZoomFloor = Math.max(0.35, this.getRunTuningValue('gameplayPreySpawnReferenceZoomMin', 0.68));
-        // Keep spawn/cull distances stable even if debug zoom is pulled very far out.
-        const spawnZoom = Math.max(zoom, referenceZoomFloor);
+        // Auto node zoom is part of the intended play space, so spawn/cull must match the real view.
+        // Manual debug zoom still clamps to a reference floor to avoid blowing up the sim budget.
+        const spawnZoom = this.isPreyCameraPopulationScalingEnabled()
+            ? zoom
+            : Math.max(zoom, referenceZoomFloor);
         const halfWidth = viewportWidth * 0.5 / spawnZoom;
         const halfHeight = viewportHeight * 0.5 / spawnZoom;
         return {
@@ -222,6 +272,7 @@ const SceneEnemiesMixin = {
         if (!stage?.spawnRules?.length) {
             return;
         }
+        const budget = this.getPreyStagePopulationBudget(stage, encounterMul);
         this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0));
         if (this.runState.encounterSpawnCooldown > 0) {
             return;
@@ -244,12 +295,12 @@ const SceneEnemiesMixin = {
             nearbyByRule[prey.spawnRuleId] = (nearbyByRule[prey.spawnRuleId] || 0) + 1;
         });
 
-        const nearbyTarget = clamp(Math.round((2 + stage.spawnRules.length) * encounterMul), 2, Math.max(3, stage.spawnCap - 1));
+        const nearbyTarget = budget.nearbyTarget;
         if (nearbyTotal >= nearbyTarget) {
             return;
         }
 
-        const hardCap = Math.max(stage.spawnCap, Math.round(stage.spawnCap * 1.3));
+        const hardCap = budget.hardCap;
         if (this.prey.length >= hardCap) {
             return;
         }
@@ -257,7 +308,7 @@ const SceneEnemiesMixin = {
         let pickRule = stage.spawnRules[0];
         let pickScore = Number.POSITIVE_INFINITY;
         stage.spawnRules.forEach((rule) => {
-            const desired = Math.max(1, Math.round(rule.desired * encounterMul));
+            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale));
             const nearby = nearbyByRule[rule.id] || 0;
             const score = nearby / Math.max(1, desired);
             if (score < pickScore) {
@@ -267,7 +318,17 @@ const SceneEnemiesMixin = {
         });
 
         const deficit = Math.max(1, nearbyTarget - nearbyTotal);
-        const burstCount = clamp(Math.min(deficit, pickRule.packMax || 2), 1, Math.min(3, hardCap - this.prey.length));
+        const packScale = this.getPreySpawnPackScale(encounterMul, budget.viewScale);
+        const burstCap = Math.max(6, Math.round(this.getRunTuningValue('gameplayPreyBurstSpawnCap', 24)));
+        const remainingCapacity = hardCap - this.prey.length;
+        if (remainingCapacity <= 0) {
+            return;
+        }
+        const burstCount = clamp(
+            Math.min(deficit, Math.round((pickRule.packMax || 2) * packScale)),
+            1,
+            Math.min(burstCap, remainingCapacity)
+        );
         this.spawnConfiguredPrey(pickRule, burstCount);
         this.runState.spawnTimers[pickRule.id] = Math.max(0.2, (pickRule.interval || 0.8) * 0.66);
         this.runState.encounterSpawnCooldown = clamp((pickRule.interval || 0.9) * 0.58, 0.3, 1.2);
@@ -465,16 +526,17 @@ const SceneEnemiesMixin = {
 
         this.syncSpawnTimersForStage(false);
         const encounterMul = this.getPreyEncounterDensityMul();
+        const budget = this.getPreyStagePopulationBudget(stage, encounterMul);
         const availabilityDistance = this.getPreySpawnAvailabilityDistance();
         const effectiveOccupancy = this.getEffectiveSpawnOccupancy(availabilityDistance);
-        const hardCap = Math.max(stage.spawnCap, Math.round(stage.spawnCap * 1.3));
-        if (this.prey.length >= hardCap || effectiveOccupancy >= stage.spawnCap) {
+        const hardCap = budget.hardCap;
+        if (this.prey.length >= hardCap || effectiveOccupancy >= budget.softCap) {
             return;
         }
         this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0) - simDt);
 
         stage.spawnRules.forEach((rule) => {
-            const desired = Math.max(1, Math.round(rule.desired * encounterMul));
+            const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale));
             const aliveEffective = this.getRuleEffectiveAliveCount(rule.id, availabilityDistance);
             if (aliveEffective >= desired) {
                 this.runState.spawnTimers[rule.id] = Math.min(this.runState.spawnTimers[rule.id], rule.interval * 0.5);
@@ -487,12 +549,21 @@ const SceneEnemiesMixin = {
             }
 
             const deficit = Math.max(1, Math.round(desired - aliveEffective));
-            const packBoost = encounterMul > 1 ? 1 + (encounterMul - 1) * 0.35 : 1;
+            const packBoost = this.getPreySpawnPackScale(encounterMul, budget.viewScale);
             const packMinBase = Math.max(1, rule.packMin || 1);
             const packMaxBase = Math.max(packMinBase, rule.packMax || packMinBase);
             const packMin = Math.max(1, Math.min(deficit, Math.round(packMinBase * packBoost)));
             const packMax = Math.max(packMin, Math.min(deficit, Math.round(packMaxBase * packBoost)));
-            const count = Phaser.Math.Between(packMin, packMax);
+            const burstCap = Math.max(6, Math.round(this.getRunTuningValue('gameplayPreyBurstSpawnCap', 24)));
+            const remainingCapacity = hardCap - this.prey.length;
+            if (remainingCapacity <= 0) {
+                return;
+            }
+            const count = clamp(
+                Phaser.Math.Between(packMin, packMax),
+                1,
+                Math.min(burstCap, remainingCapacity)
+            );
             this.spawnConfiguredPrey(rule, count);
             this.runState.spawnTimers[rule.id] = rule.interval * Phaser.Math.FloatBetween(0.86, 1.14);
         });
@@ -1506,10 +1577,144 @@ const SceneEnemiesMixin = {
             this.finishPreyChaseTelemetry(prey, 'disengaged');
         }
     },
+    isPreySimpleFleeModeEnabled() {
+        return !!this.getRunTuningToggle?.('gameplayPreySimpleFleeMode', false);
+    },
+    getPreyBehaviorLodDistance() {
+        const metrics = this.getPreySpawnViewportMetrics();
+        const lodMul = clamp(this.getRunTuningValue('gameplayPreyBehaviorLodViewMul', 0.72), 0.3, 1.5);
+        return Math.max(520, metrics.viewRadius * lodMul);
+    },
+    shouldUseSimplifiedPreyBehavior(prey, distanceFromCenter, behaviorLodDistance, simpleFleeMode) {
+        if (!prey || prey.isObjective || (prey.attachments?.length || 0) > 0) {
+            return false;
+        }
+        if (simpleFleeMode) {
+            return true;
+        }
+        if (!this.getRunTuningToggle?.('gameplayPreyBehaviorLodEnabled', true)) {
+            return false;
+        }
+        return distanceFromCenter > behaviorLodDistance;
+    },
+    updatePreySimpleBehavior(prey, distanceFromCenter, behaviorLodDistance, simpleFleeMode, tuning, simDt) {
+        const away = normalize(
+            prey.x - this.player.centroidX,
+            prey.y - this.player.centroidY,
+            Math.cos(prey.escapeAngle || prey.seed),
+            Math.sin(prey.escapeAngle || prey.seed)
+        );
+        const threat = clamp(
+            1 - (distanceFromCenter - Math.max(160, this.getFormationSpan() * 0.55)) / Math.max(220, behaviorLodDistance),
+            0.04,
+            1
+        );
+        const nextState = threat > 0.2 || simpleFleeMode
+            ? 'evade'
+            : prey.archetype === 'school'
+                ? 'schooling'
+                : 'graze';
+        if (prey.behaviorState !== nextState) {
+            this.notePreyStateTransition(prey, nextState, { threat });
+        }
+
+        const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 1.8 : prey.shape === 'circle' ? 1.28 : 1.04) + prey.seed * 3.2;
+        const jitterWeight = simpleFleeMode ? 0.06 : 0.14;
+        const desired = normalize(
+            away.x * (0.82 + threat * 0.42) + Math.cos(wanderAngle) * jitterWeight,
+            away.y * (0.82 + threat * 0.42) + Math.sin(wanderAngle * 0.92) * jitterWeight,
+            away.x,
+            away.y
+        );
+
+        prey.escapeAngle = dampAngle(
+            prey.escapeAngle || Math.atan2(desired.y, desired.x),
+            Math.atan2(desired.y, desired.x),
+            2.6 * tuning.pacing.globalTurnMul,
+            simDt
+        );
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+
+        const archetypePaceMul = (tuning.archetypeSpeed[prey.archetype] || tuning.archetypeSpeed.skittish) * (prey.isObjective ? tuning.archetypeSpeed.objective : 1);
+        const paceMul = tuning.pacing.globalSpeedMul * archetypePaceMul;
+        const targetSpeed = clamp(
+            prey.speed * (simpleFleeMode ? (0.72 + threat * 0.38) : (0.5 + threat * 0.44)) * paceMul,
+            prey.speed * 0.26 * paceMul,
+            prey.speed * 1.04 * tuning.pacing.globalSpeedCapMul * paceMul
+        );
+        const accel = prey.accel
+            * (simpleFleeMode ? (0.5 + threat * 0.42) : (0.38 + threat * 0.36))
+            * tuning.pacing.globalAccelMul;
+        prey.behaviorTargetSpeed = targetSpeed;
+        prey.behaviorTargetAccel = accel;
+
+        prey.vx += prey.escapeDirX * accel * simDt;
+        prey.vy += prey.escapeDirY * accel * simDt;
+
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+
+        const drag = (simpleFleeMode ? 1.08 : 0.96 + (1 - threat) * 0.52) * tuning.pacing.globalDragMul;
+        prey.vx *= Math.exp(-drag * simDt);
+        prey.vy *= Math.exp(-drag * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        prey.fear = Math.max(0, (prey.fear || 0) - simDt * 0.32) + threat * simDt * 0.18;
+        prey.alarm = Math.max(threat * 0.62, (prey.alarm || 0) - simDt * 0.54);
+        prey.stamina = clamp((prey.stamina || 1) + simDt * (simpleFleeMode ? 0.16 : 0.22), 0, 1.2);
+        prey.burstTimer = Math.max(0, (prey.burstTimer || 0) - simDt);
+        prey.recoverTimer = Math.max(0, (prey.recoverTimer || 0) - simDt);
+        prey.braceTimer = Math.max(0, (prey.braceTimer || 0) - simDt);
+        prey.guardPulse = Math.max(0, (prey.guardPulse || 0) - simDt * 2.2);
+        prey.pushCharge = Math.max(0, (prey.pushCharge || 0) - simDt * 1.2);
+        prey.hitFlash = Math.max(0, prey.hitFlash - simDt * 4.8);
+        prey.panic = Math.max(0, prey.panic - simDt * 0.72);
+        prey.wound = Math.max(0, prey.wound - simDt * 0.34);
+        prey.shudder = Math.max(0, prey.shudder - simDt * 1.9);
+        prey.carve = Math.max(0, prey.carve - simDt * 0.52);
+        prey.gorePulse = Math.max(0, prey.gorePulse - simDt * 1.85);
+        prey.devourGlow = Math.max(0, prey.devourGlow - simDt * 1.2);
+        prey.alertPulse = Math.max(0, (prey.alertPulse || 0) - simDt * 1.35);
+        prey.spin *= Math.exp(-2.4 * simDt);
+        prey.objectiveGlow = Math.max(0, (prey.objectiveGlow || 0) - simDt * 0.18);
+        prey.lastThreat = threat;
+        prey.lastGapSpeed = 0;
+        prey.pulse += simDt * (1.9 + prey.pulseMul * 1.2 + threat * 0.9);
+        prey.displayX = damp(prey.displayX, prey.x, 18, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 18, simDt);
+        const heading = Math.atan2(prey.vy || prey.escapeDirY, prey.vx || prey.escapeDirX);
+        prey.displayRotation = dampAngle(prey.displayRotation, heading + prey.spin * 0.02, 12, simDt);
+
+        const telemetryThreat = {
+            distanceFromCenter,
+            threat,
+            gapSpeed: 0,
+            schoolAlarm: 0
+        };
+        if (threat > 0.18) {
+            this.startPreyChaseTelemetry(prey, telemetryThreat);
+        } else {
+            this.finishPreyChaseTelemetry(prey, 'disengaged');
+        }
+        this.recordPreyStateTelemetry(prey, telemetryThreat, simDt);
+        const chase = this.ecoTelemetry?.prey?.activeChases?.[prey.id];
+        if (chase) {
+            chase.closestDistance = Math.min(chase.closestDistance, distanceFromCenter);
+            chase.peakThreat = Math.max(chase.peakThreat, threat);
+        }
+    },
     updatePrey(simDt) {
         this.refreshPreySpatialCache();
         const tuning = this.getPreyBehaviorTuning();
         const baseCullDistance = this.getPreyCullDistance();
+        const behaviorLodDistance = this.getPreyBehaviorLodDistance();
+        const simpleFleeMode = this.isPreySimpleFleeModeEnabled();
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             const distanceFromCenter = Math.hypot(prey.x - this.player.centroidX, prey.y - this.player.centroidY);
@@ -1520,6 +1725,11 @@ const SceneEnemiesMixin = {
                 const last = this.prey.length - 1;
                 if (i !== last) { this.prey[i] = this.prey[last]; }
                 this.prey.pop();
+                continue;
+            }
+
+            if (this.shouldUseSimplifiedPreyBehavior(prey, distanceFromCenter, behaviorLodDistance, simpleFleeMode)) {
+                this.updatePreySimpleBehavior(prey, distanceFromCenter, behaviorLodDistance, simpleFleeMode, tuning, simDt);
                 continue;
             }
 
