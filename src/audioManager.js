@@ -905,6 +905,7 @@ class CoreAudioManager {
         const volumeMul = Number.isFinite(options.volumeMul) ? options.volumeMul : 1;
         const rateMul = Number.isFinite(options.rateMul) ? options.rateMul : 1;
         const detuneAdd = Number.isFinite(options.detuneAdd) ? options.detuneAdd : 0;
+        const seek = Number.isFinite(options.seek) ? Math.max(0, options.seek) : 0;
         const finalVolume = clamp(config.volume * this.getEffectiveBusGain(bus) * volumeMul, 0, 2);
         return {
             eventId,
@@ -914,6 +915,7 @@ class CoreAudioManager {
             baseVolume: clamp(config.volume * volumeMul, 0, 2),
             rate: clamp(config.rate * rateMul, 0.2, 3),
             detune: clamp(config.detune + detuneAdd, -2400, 2400),
+            seek,
             loop: !!config.loop,
             preview: !!options.preview
         };
@@ -1034,6 +1036,23 @@ class CoreAudioManager {
         this.stopOrphanedBgmManagerSounds();
     }
 
+    applyPlaybackSeek(sound, playback) {
+        if (!sound || !playback || !(playback.seek > 0)) {
+            return;
+        }
+        try {
+            if (typeof sound.setSeek === 'function') {
+                sound.setSeek(playback.seek);
+                return;
+            }
+            if ('seek' in sound) {
+                sound.seek = playback.seek;
+            }
+        } catch (error) {
+            console.warn('Audio playback seek apply failed.', error);
+        }
+    }
+
     playEvent(eventId, options = {}) {
         const config = this.getResolvedEventConfig(eventId, options.overridePatch || null);
         const now = this.getNowMs();
@@ -1134,13 +1153,15 @@ class CoreAudioManager {
             sound.setLoop(playback.loop);
             this.registerVoice(voiceRecord);
 
-            const played = sound.play();
+            const playConfig = playback.seek > 0 ? { seek: playback.seek } : undefined;
+            const played = playConfig ? sound.play(playConfig) : sound.play();
             if (!played) {
                 this.onVoiceEnded(voiceRecord);
                 sound.destroy();
                 this.recordEvent(eventId, 'skipped', 'sound_play_failed', assetId, options.meta);
                 return false;
             }
+            this.applyPlaybackSeek(sound, playback);
             this.eventLastPlayedAt[eventId] = now;
             this.recordEvent(eventId, 'played', '', assetId, options.meta);
             return true;

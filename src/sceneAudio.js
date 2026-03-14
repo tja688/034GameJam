@@ -1,7 +1,13 @@
 const STAGE_BGM_EVENT_ID = 'bgm_main';
 const STAGE_BGM_ASSET_IDS = Object.freeze(['dem_1', 'dem_2', 'dem_3', 'dem_4', 'dem_5']);
-const STAGE_BGM_VOLUME_MUL_BY_ASSET_ID = Object.freeze({
-    dem_1: 2
+const STAGE_BGM_VOLUME_MUL_BY_ASSET_ID = Object.freeze({});
+const STAGE_BGM_START_SEEK_BY_ASSET_ID = Object.freeze({
+    // Manual musical-entry cuts so stage swaps land on the groove instead of the cold intro.
+    dem_1: 4.8,
+    dem_2: 4.6,
+    dem_3: 4.9,
+    dem_4: 4.4,
+    dem_5: 4.2
 });
 const BGM_STATE_MODE = Object.freeze({
     idle: 'idle',
@@ -83,6 +89,7 @@ const SceneAudioMixin = {
             assetId,
             stageIndex,
             volumeMul: STAGE_BGM_VOLUME_MUL_BY_ASSET_ID[assetId] || 1,
+            startSeek: STAGE_BGM_START_SEEK_BY_ASSET_ID[assetId] || 0,
             source: isMainMenu ? 'main-menu' : 'stage'
         };
     },
@@ -119,6 +126,7 @@ const SceneAudioMixin = {
             dedupeInFlight: false,
             assetId: spec.assetId,
             volumeMul: spec.volumeMul,
+            seek: spec.startSeek,
             overridePatch: {
                 cooldown: 0,
                 loop: true,
@@ -129,7 +137,8 @@ const SceneAudioMixin = {
                 ...(options.meta && typeof options.meta === 'object' ? options.meta : {}),
                 source: options.source || spec.source,
                 stageIndex: spec.stageIndex,
-                bgmAssetId: spec.assetId
+                bgmAssetId: spec.assetId,
+                bgmStartSeek: spec.startSeek
             },
             playGuard: () => {
                 const liveState = this.ensureBgmState();
