@@ -1134,6 +1134,9 @@ const SceneProgressionMixin = {
         const objectivePulseDamp = Math.max(0.1, this.getRunTuningValue('gameplayObjectivePulseDamp', 3.6));
         const lowEnergyThreshold = clamp(this.getRunTuningValue('gameplayLowEnergyThreshold', 0.28), 0.01, 0.95);
         const objectiveRevealProgress = this.getCurrentStageObjectiveRevealProgress(stage);
+        const objectiveRevealDelay = 60;
+        const stageChangedAt = Number.isFinite(this.runState.stageChangedAt) ? this.runState.stageChangedAt : 0;
+        const objectiveRevealDelayElapsed = (this.worldTime - stageChangedAt) >= objectiveRevealDelay;
 
         this.runState.stageFlash = Math.max(0, (this.runState.stageFlash || 0) - simDt * 0.64);
         this.runState.stageSignal += simDt * (0.8 + (this.runState.stageIndex || 0) * 0.18);
@@ -1192,6 +1195,7 @@ const SceneProgressionMixin = {
 
             if (
                 !this.runState.objectiveSpawned
+                && objectiveRevealDelayElapsed
                 && (
                     this.runState.stageProgress >= objectiveRevealProgress
                     || nodeCount >= (stage.objectiveRevealNodeCount || stage.nodeTargets?.earlyExit || stage.maxNodes || nodeCount)
