@@ -131,25 +131,86 @@ function ensureGameUiStyles() {
             color: #ffd4ce;
         }
         #game-fps-overlay {
-            position: fixed;
-            top: 12px;
-            left: 12px;
-            z-index: 19990;
-            min-width: 108px;
-            padding: 8px 10px;
-            border-radius: 10px;
-            background: rgba(7, 16, 23, 0.88);
-            border: 1px solid rgba(79, 169, 198, 0.22);
-            color: #d7e6eb;
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            font-size: 12px;
-            line-height: 1.35;
-            letter-spacing: 0.03em;
-            pointer-events: none;
-            white-space: pre-line;
+            display: none !important;
         }
         #game-fps-overlay.hidden {
             display: none;
+        }
+        #game-startup-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 21000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(circle at 50% 35%, rgba(92, 208, 255, 0.12), transparent 24%),
+                linear-gradient(180deg, rgba(3, 8, 12, 0.16), rgba(3, 8, 12, 0.42));
+            transition: opacity 0.28s ease;
+            pointer-events: auto;
+        }
+        #game-startup-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .game-startup-panel {
+            width: min(420px, calc(100vw - 48px));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .game-startup-progress {
+            width: min(280px, 62vw);
+        }
+        .game-startup-progress.hidden {
+            display: none;
+        }
+        .game-startup-progress-bar {
+            overflow: hidden;
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.07);
+        }
+        .game-startup-progress-fill {
+            width: 0%;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, rgba(96, 210, 255, 0.82), rgba(255, 255, 255, 0.96));
+            transition: width 0.18s ease;
+        }
+        .game-startup-play {
+            display: flex;
+            justify-content: center;
+        }
+        .game-startup-play.hidden {
+            display: none;
+        }
+        .game-startup-play-button {
+            position: relative;
+            width: 88px;
+            height: 88px;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            transition: transform 0.16s ease, opacity 0.16s ease;
+        }
+        .game-startup-play-button:hover {
+            transform: scale(1.04);
+            opacity: 0.92;
+        }
+        .game-startup-play-button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-38%, -50%);
+            width: 0;
+            height: 0;
+            border-top: 24px solid transparent;
+            border-bottom: 24px solid transparent;
+            border-left: 38px solid rgba(255, 255, 255, 0.96);
+            filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.16));
         }
         @media (max-width: 640px) {
             .game-menu-panel {
@@ -159,12 +220,18 @@ function ensureGameUiStyles() {
             .game-menu-title {
                 font-size: 30px;
             }
+            .game-startup-panel {
+                width: calc(100vw - 24px);
+            }
         }
     `;
     document.head.appendChild(style);
 }
 
 const SceneUiMixin = {
+    isMenuUiEnabled() {
+        return window.CORE_DEMO_DEBUG !== false;
+    },
     buildUi() {
         const overlay = document.createElement('div');
         overlay.id = 'game-menu-overlay';
@@ -197,14 +264,32 @@ const SceneUiMixin = {
         fps.id = 'game-fps-overlay';
         fps.className = 'hidden';
 
+        const startup = document.createElement('div');
+        startup.id = 'game-startup-overlay';
+        startup.className = 'hidden';
+        startup.innerHTML = `
+            <div class="game-startup-panel">
+                <div class="game-startup-progress" id="game-startup-progress">
+                    <div class="game-startup-progress-bar">
+                        <div class="game-startup-progress-fill" id="game-startup-progress-fill"></div>
+                    </div>
+                </div>
+                <div class="game-startup-play hidden" id="game-startup-play">
+                    <button class="game-startup-play-button" id="game-startup-play-button" aria-label="开始游戏"></button>
+                </div>
+            </div>
+        `;
+
         document.body.appendChild(overlay);
         document.body.appendChild(toast);
         document.body.appendChild(fps);
+        document.body.appendChild(startup);
 
         this.ui = {
             overlay,
             toast,
             fps,
+            startup,
             title: overlay.querySelector('#game-menu-title'),
             subtitle: overlay.querySelector('#game-menu-subtitle'),
             slot: overlay.querySelector('#game-menu-slot'),
@@ -217,7 +302,11 @@ const SceneUiMixin = {
             pauseContinueButton: overlay.querySelector('#menu-pause-continue-btn'),
             saveButton: overlay.querySelector('#menu-save-btn'),
             loadButton: overlay.querySelector('#menu-load-btn'),
-            mainMenuButton: overlay.querySelector('#menu-main-menu-btn')
+            mainMenuButton: overlay.querySelector('#menu-main-menu-btn'),
+            startupProgress: startup.querySelector('#game-startup-progress'),
+            startupProgressFill: startup.querySelector('#game-startup-progress-fill'),
+            startupPlay: startup.querySelector('#game-startup-play'),
+            startupPlayButton: startup.querySelector('#game-startup-play-button')
         };
 
         this.ui.startButton.addEventListener('click', () => {
@@ -248,10 +337,42 @@ const SceneUiMixin = {
             this.playAudioEvent?.('ui_click', { control: 'menu-main-menu-btn' });
             this.showMainMenu();
         });
+        this.ui.startupPlayButton.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'game-startup-play-button' });
+            this.handleStartupAction?.();
+        });
+    },
+
+    showStartupLoading(progress = 0) {
+        if (!this.ui?.startup) {
+            return;
+        }
+        const clampedProgress = clamp(progress, 0, 1);
+        this.ui.startup.classList.remove('hidden');
+        this.ui.startupProgress.classList.remove('hidden');
+        this.ui.startupPlay.classList.add('hidden');
+        this.ui.startupProgressFill.style.width = `${(clampedProgress * 100).toFixed(1)}%`;
+    },
+
+    showStartupReady() {
+        if (!this.ui?.startup) {
+            return;
+        }
+        this.ui.startup.classList.remove('hidden');
+        this.ui.startupProgress.classList.add('hidden');
+        this.ui.startupPlay.classList.remove('hidden');
+    },
+
+    hideStartupOverlay() {
+        this.ui?.startup?.classList.add('hidden');
     },
 
     refreshMenuState() {
         if (!this.ui) {
+            return;
+        }
+        if (!this.isMenuUiEnabled()) {
+            this.ui.overlay.classList.add('hidden');
             return;
         }
 
@@ -313,7 +434,7 @@ const SceneUiMixin = {
     },
 
     showPauseMenu() {
-        if (!this.sessionStarted || !this.ui) {
+        if (!this.isMenuUiEnabled() || !this.sessionStarted || !this.ui) {
             return;
         }
 
@@ -326,7 +447,8 @@ const SceneUiMixin = {
     },
 
     showMainMenu() {
-        if (!this.ui) {
+        if (!this.isMenuUiEnabled() || !this.ui) {
+            this.ui?.overlay?.classList.add('hidden');
             return;
         }
         this.exitEditMode();
@@ -362,78 +484,9 @@ const SceneUiMixin = {
     },
 
     updateFpsOverlay(deltaMs = 16.67) {
-        if (!this.ui?.fps) {
-            return;
+        if (this.ui?.fps) {
+            this.ui.fps.classList.add('hidden');
+            this.ui.fps.textContent = '';
         }
-
-        const showFpsCounter = !!window.TUNING?.showFpsCounter;
-        const showTelemetryOverlay = !!window.TUNING?.showTelemetryOverlay;
-        this.ui.fps.classList.toggle('hidden', !showFpsCounter && !showTelemetryOverlay);
-        if (!showFpsCounter && !showTelemetryOverlay) {
-            return;
-        }
-
-        const actualFps = Number.isFinite(this.game?.loop?.actualFps) ? this.game.loop.actualFps : 0;
-        const frameMs = Number.isFinite(deltaMs) ? deltaMs : 0;
-        const probe = this.performanceProbe || {};
-        const lines = [];
-
-        if (showFpsCounter) {
-            const peakLabel = probe.lastPeakSection ? `${probe.lastPeakSection} ${getFiniteNumber(probe.lastPeakMs, 0).toFixed(1)} ms` : 'section --';
-            const devourLabel = `devour ${Math.max(0, probe.lastDevourBurst || 0)} / batch ${Math.max(0, probe.lastDevourBatch || 0)}`;
-            const nodeCount = Math.max(0, this.activeNodes?.length ?? this.player?.chain?.length ?? 0);
-            const linkCount = Math.max(0, this.links?.length ?? 0);
-            lines.push(`FPS ${actualFps.toFixed(1)}`);
-            lines.push(`${frameMs.toFixed(1)} ms`);
-            lines.push(peakLabel);
-            lines.push(devourLabel);
-            lines.push(`mesh n ${nodeCount} | l ${linkCount}`);
-        }
-
-        if (showTelemetryOverlay) {
-            const telemetry = this.getEcoTelemetrySnapshot?.();
-            const current = telemetry?.player?.current || {};
-            const chaseStats = telemetry?.prey?.chaseStats || {};
-            const topArchetype = Object.entries(chaseStats).sort((a, b) => (b[1]?.started || 0) - (a[1]?.started || 0))[0];
-            lines.push(`cluster ${current.bucket || '--'} / ${current.phase || '--'}`);
-            lines.push(`spd ${getFiniteNumber(current.centroidSpeed, 0).toFixed(1)} | node ${getFiniteNumber(current.nodeSpeed, 0).toFixed(1)}`);
-            lines.push(`span ${getFiniteNumber(current.span, 0).toFixed(0)} | c ${getFiniteNumber(current.compression, 0).toFixed(2)} / e ${getFiniteNumber(current.expansion, 0).toFixed(2)}`);
-            if (topArchetype) {
-                const [archetype, stats] = topArchetype;
-                lines.push(`${archetype} chase ${stats.started || 0}/${stats.devoured || 0}/${stats.escaped || 0}`);
-            }
-        }
-
-        if (showFpsCounter) {
-            const rig = this.cameraRig || {};
-            const viewportWidth = getFiniteNumber(rig.viewportWidth, this.scale?.width || 0);
-            const viewportHeight = getFiniteNumber(rig.viewportHeight, this.scale?.height || 0);
-            const zoom = Math.max(0.0001, getFiniteNumber(rig.zoom, 0));
-            const worldViewWidth = viewportWidth / zoom;
-            const worldViewHeight = viewportHeight / zoom;
-            const manualZoom = getFiniteNumber(rig.manualZoom, zoom);
-            const targetZoom = getFiniteNumber(rig.targetZoom, zoom);
-            const desiredZoom = getFiniteNumber(rig.desiredZoom, manualZoom);
-            const zoomSource = rig.autoZoomEnabled
-                ? 'auto-node'
-                : Math.abs(manualZoom - zoom) > 0.0005
-                    ? 'wheel->manualZoom'
-                    : 'steady';
-
-            lines.push(`cam zoom ${zoom.toFixed(3)} | tgt ${targetZoom.toFixed(3)}`);
-            lines.push(`cam wheel ${manualZoom.toFixed(3)} | want ${desiredZoom.toFixed(3)}`);
-            lines.push(`cam pos ${getFiniteNumber(rig.x, 0).toFixed(1)}, ${getFiniteNumber(rig.y, 0).toFixed(1)}`);
-            lines.push(`cam focus ${getFiniteNumber(rig.focusX, rig.x || 0).toFixed(1)}, ${getFiniteNumber(rig.focusY, rig.y || 0).toFixed(1)}`);
-            lines.push(`cam view ${worldViewWidth.toFixed(0)} x ${worldViewHeight.toFixed(0)} wu`);
-            if (rig.autoZoomEnabled) {
-                const autoNodeCount = Math.max(0, Math.round(getFiniteNumber(rig.autoZoomNodeCount, 0)));
-                const autoViewW = Math.max(0, Math.round(getFiniteNumber(rig.autoZoomTargetViewWidth, 0)));
-                const autoViewH = Math.max(0, Math.round(getFiniteNumber(rig.autoZoomTargetViewHeight, 0)));
-                lines.push(`cam auto n ${autoNodeCount} -> ${autoViewW}x${autoViewH}`);
-            }
-            lines.push(`cam wheel affects ${zoomSource}`);
-        }
-
-        this.ui.fps.textContent = lines.join('\n');
     },
 };

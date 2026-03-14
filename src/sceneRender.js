@@ -970,6 +970,10 @@ const SceneRenderMixin = {
         if (this.isGraphicsToggleEnabled('graphicsRenderWorldEnabled', true)) {
             this.drawWorld(worldGraphics);
         }
+        if (this.isStartupWorldPreviewOnly?.()) {
+            this.endBakedSpriteFrame(useBakedSpriteRenderer);
+            return;
+        }
         if (this.isGraphicsToggleEnabled('graphicsRenderPreyDeathClusterEnabled', true)
             && this.isGraphicsToggleEnabled('graphicsRenderPreyFragmentsEnabled', true)) {
             if (useBakedSpriteRenderer) {

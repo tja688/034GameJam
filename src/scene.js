@@ -45,9 +45,9 @@ class CoreDemoScene extends Phaser.Scene {
         this.menuMode = null;
         this.toastTimer = null;
         this.buildUi();
+        this.hideExternalDebugUi?.();
         this.resetSimulation(false);
-        this.showMainMenu();
-        window.syncTuningPanelState?.();
+        this.beginStartupSequence?.();
     }
 
     handleResize() {

@@ -61,6 +61,9 @@
 <body>
     <button id="floating-add-node" aria-hidden="true"></button>
     <script>
+        window.CORE_DEMO_DEBUG = false;
+    </script>
+    <script>
         const debugButton = document.getElementById('floating-add-node');
         const devToolsEnabled = window.CORE_DEMO_DEBUG !== false;
         debugButton.textContent = '➕ 节点';
