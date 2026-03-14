@@ -515,8 +515,9 @@ const SceneCombatMixin = {
             0,
             1
         );
-        prey.vx += dirX * (28 + amount * 2.6) / Math.max(prey.mass, 0.1);
-        prey.vy += dirY * (28 + amount * 2.6) / Math.max(prey.mass, 0.1);
+        const hitPushMul = 0;
+        prey.vx += dirX * (28 + amount * 2.6) * hitPushMul / Math.max(prey.mass, 0.1);
+        prey.vy += dirY * (28 + amount * 2.6) * hitPushMul / Math.max(prey.mass, 0.1);
 
         const healthRatio = prey.health / Math.max(prey.maxHealth, 1);
         while (prey.chunkCursor < prey.chunkThresholds.length && healthRatio <= prey.chunkThresholds[prey.chunkCursor]) {

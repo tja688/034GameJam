@@ -2439,8 +2439,8 @@ const SceneEnemiesMixin = {
                 const ny = dy / distance;
                 const existingAttachment = this.findPredationAttachment(prey, node.index);
                 const guardPush = Math.max(0, prey.guardPulse || 0);
-                const preyPush = existingAttachment ? 0.12 : guardPush > 0.08 ? 0.8 : 0.62;
-                const nodePush = existingAttachment ? 0.08 : guardPush > 0.08 ? 0.42 : 0.24;
+                const preyPush = 0;
+                const nodePush = 0;
                 prey.x += nx * overlap * preyPush;
                 prey.y += ny * overlap * preyPush;
                 node.x -= nx * overlap * nodePush;
@@ -2466,10 +2466,11 @@ const SceneEnemiesMixin = {
                 }
 
                 if (!existingAttachment && prey.attachments.length === 0) {
-                    prey.vx += nx * overlap * 10 / Math.max(prey.mass, 0.1);
-                    prey.vy += ny * overlap * 10 / Math.max(prey.mass, 0.1);
-                    node.vx -= nx * overlap * 8 / Math.max(node.mass, 0.1);
-                    node.vy -= ny * overlap * 8 / Math.max(node.mass, 0.1);
+                    const reboundMul = 0;
+                    prey.vx += nx * overlap * 10 * reboundMul / Math.max(prey.mass, 0.1);
+                    prey.vy += ny * overlap * 10 * reboundMul / Math.max(prey.mass, 0.1);
+                    node.vx -= nx * overlap * 8 * reboundMul / Math.max(node.mass, 0.1);
+                    node.vy -= ny * overlap * 8 * reboundMul / Math.max(node.mass, 0.1);
                 }
             }
         }
