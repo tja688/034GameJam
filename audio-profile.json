@@ -1,31 +1,66 @@
 {
   "version": 1,
-  "savedAt": 0,
+  "savedAt": 1773472786190,
   "manifestPath": "audio-library.manifest.json",
   "busVolumes": {
-    "master": 1,
-    "bgm": 0.72,
-    "sfx": 0.9,
-    "ui": 0.9,
+    "master": 0.5,
+    "bgm": 0.51,
+    "sfx": 0.75,
+    "ui": 0.58,
     "ambience": 0.62
   },
   "appliedEventBindings": {
     "system_boot": {
+      "enabled": true,
+      "bus": "ambience",
+      "volume": 0.42,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.2,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_logo_entrance"
       ]
     },
     "game_start_new_run": {
+      "enabled": true,
+      "bus": "ambience",
+      "volume": 0.58,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.4,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_transition_circle_in"
       ]
     },
     "game_restart": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.58,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.35,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_transition_square_in"
       ]
     },
     "ui_click": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.66,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.015,
+      "maxVoices": 6,
       "strategy": "round_robin",
       "assetPool": [
         "snd_ui_button_click",
@@ -34,6 +69,15 @@
       ]
     },
     "ui_menu_open_main": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.62,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.18,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_inventory_open",
         "snd_ui_submarine_open",
@@ -41,49 +85,130 @@
       ]
     },
     "ui_menu_open_pause": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.58,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.12,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_pause"
       ]
     },
     "ui_menu_close": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.54,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.08,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_unpause",
         "snd_inventory_close"
       ]
     },
     "ui_toast_success": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.46,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.08,
+      "maxVoices": 2,
+      "strategy": "random",
       "assetPool": [
         "snd_ui_task_completed",
         "snd_select"
       ]
     },
     "ui_toast_error": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.52,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.08,
+      "maxVoices": 2,
+      "strategy": "random",
       "assetPool": [
         "snd_tool_no_ammo",
         "snd_player_hurt"
       ]
     },
     "save_success": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.64,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.2,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_ui_task_completed"
       ]
     },
     "save_error": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.68,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.2,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_tool_no_ammo"
       ]
     },
     "load_success": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.64,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.2,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_ui_task_completed"
       ]
     },
     "load_error": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.68,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.2,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_tool_no_ammo"
       ]
     },
     "prey_spawn_batch": {
+      "enabled": true,
+      "bus": "ambience",
+      "volume": 0.3,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.18,
+      "maxVoices": 2,
+      "strategy": "random",
       "assetPool": [
         "snd_jellyfish_spawn",
         "snd_robot_spawn",
@@ -91,35 +216,89 @@
       ]
     },
     "objective_spawn": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.7,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.2,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_jellyfish_spawn",
         "snd_transition_circle_in"
       ]
     },
     "stage_advance": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.76,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.25,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_transition_circle_out",
         "snd_transition_square_out"
       ]
     },
     "game_victory": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.88,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.4,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_ui_task_completed",
         "snd_transition_circle_end_in"
       ]
     },
     "game_death": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.82,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.25,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_player_suffocates",
         "snd_player_hurt"
       ]
     },
     "player_low_energy_warning": {
+      "enabled": true,
+      "bus": "ui",
+      "volume": 0.52,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 1.1,
+      "maxVoices": 1,
+      "strategy": "random",
       "assetPool": [
         "snd_player_hurt"
       ]
     },
     "player_hit_guard": {
+      "enabled": true,
+      "bus": "sfx",
+      "volume": 0.6,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.08,
+      "maxVoices": 2,
+      "strategy": "random",
       "assetPool": [
         "snd_player_hurt"
       ]
