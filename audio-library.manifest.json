@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-13T23:23:33Z",
+  "generatedAt": "2026-03-14T06:50:19Z",
   "basePath": "assets/audio",
   "preloadLimit": 24,
   "assets": [
@@ -3863,6 +3863,20 @@
       "preload": false,
       "files": [
         "snd_unpause.wav"
+      ]
+    },
+    {
+      "id": "dem_1",
+      "label": "纯电子dem配乐1",
+      "group": "misc",
+      "tags": [
+        "dem",
+        "dem_1",
+        "misc"
+      ],
+      "preload": false,
+      "files": [
+        "纯电子DEM配乐1.mp3"
       ]
     }
   ]

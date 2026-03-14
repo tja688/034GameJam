@@ -1998,9 +1998,13 @@ const SceneEnemiesMixin = {
         if (prey.spinHazardActive) {
             prey.spin += simDt * spinSpeed;
             prey.guardPulse = Math.max(prey.guardPulse || 0, 0.54);
-            prey.behaviorState = 'brace';
+            if (prey.behaviorState !== 'brace') {
+                this.notePreyStateTransition(prey, 'brace', { threat: sampled.threat });
+            }
         } else {
-            prey.behaviorState = 'recover';
+            if (prey.behaviorState !== 'recover') {
+                this.notePreyStateTransition(prey, 'recover', { threat: sampled.threat });
+            }
         }
 
         this.decayEncounterFeedback(prey, simDt, sampled.threat);
@@ -2015,7 +2019,10 @@ const SceneEnemiesMixin = {
     updateBruteEliteBehavior(prey, distanceFromCenter, tuning, simDt) {
         const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 1.08);
         const desiredAngle = Math.atan2(sampled.away.y, sampled.away.x);
-        prey.behaviorState = sampled.threat > 0.2 ? 'evade' : 'graze';
+        const nextState = sampled.threat > 0.2 ? 'evade' : 'graze';
+        if (prey.behaviorState !== nextState) {
+            this.notePreyStateTransition(prey, nextState, { threat: sampled.threat });
+        }
         prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, 1.64 * tuning.pacing.globalTurnMul, simDt);
         prey.escapeDirX = Math.cos(prey.escapeAngle);
         prey.escapeDirY = Math.sin(prey.escapeAngle);
@@ -2053,7 +2060,10 @@ const SceneEnemiesMixin = {
             sampled.away.y
         );
         const desiredAngle = Math.atan2(desired.y, desired.x);
-        prey.behaviorState = prey.attachments.length > 0 ? 'burst' : 'evade';
+        const nextState = prey.attachments.length > 0 ? 'burst' : 'evade';
+        if (prey.behaviorState !== nextState) {
+            this.notePreyStateTransition(prey, nextState, { threat: sampled.threat });
+        }
         prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, 4.8 * tuning.pacing.globalTurnMul, simDt);
         prey.escapeDirX = Math.cos(prey.escapeAngle);
         prey.escapeDirY = Math.sin(prey.escapeAngle);
@@ -2126,7 +2136,9 @@ const SceneEnemiesMixin = {
         const desiredAngle = Math.atan2(sampled.away.y, sampled.away.x);
         const driftSpeed = this.getEncounterBehaviorTuning(prey.speciesId, 'DriftSpeed', 0.24) * tuning.pacing.globalSpeedMul;
         const pulseInterval = this.getEncounterBehaviorTuning(prey.speciesId, 'PulseInterval', 1.42);
-        prey.behaviorState = 'objective';
+        if (prey.behaviorState !== 'objective') {
+            this.notePreyStateTransition(prey, 'objective', { threat: sampled.threat });
+        }
         prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, 1.2 * tuning.pacing.globalTurnMul, simDt);
         prey.escapeDirX = Math.cos(prey.escapeAngle);
         prey.escapeDirY = Math.sin(prey.escapeAngle);
@@ -2164,13 +2176,12 @@ const SceneEnemiesMixin = {
     updatePrey(simDt) {
         this.refreshPreySpatialCache();
         const tuning = this.getPreyBehaviorTuning();
-        const baseCullDistance = this.getPreyCullDistance();
         const behaviorLodDistance = this.getPreyBehaviorLodDistance();
         const simpleFleeMode = this.isPreySimpleFleeModeEnabled();
         for (let i = this.prey.length - 1; i >= 0; i -= 1) {
             const prey = this.prey[i];
             const distanceFromCenter = Math.hypot(prey.x - this.player.centroidX, prey.y - this.player.centroidY);
-            const cullDistance = prey.isObjective ? baseCullDistance * 1.22 : baseCullDistance;
+            const cullDistance = this.getPreyCullDistance(prey);
             if (distanceFromCenter > cullDistance) {
                 this.finishPreyChaseTelemetry(prey, 'escaped', { reason: 'out-of-range' });
                 // swap-and-pop: O(1) removal instead of splice O(n)

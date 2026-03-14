@@ -23,6 +23,21 @@ const AUDIO_EVENT_DEFAULTS = Object.freeze({
 
 const AUDIO_EVENT_REGISTRY = Object.freeze([
     {
+        // ==========================================
+        // DEMO占位：全流程背景音乐
+        // 后续会进行不同关卡之间的音乐区分，此处用于测试循环与自然衔接
+        // ==========================================
+        id: 'bgm_main',
+        label: 'Main BGM',
+        group: 'system',
+        module: 'sceneAudio.js',
+        scene: 'core-demo',
+        anchor: 'scene create',
+        description: 'Demo BGM covering the whole flow, will differentiate by levels later',
+        status: 'wired',
+        defaults: { bus: 'bgm', volume: 0.8, cooldown: 0, maxVoices: 1, loop: true, strategy: 'first', assetPool: ['dem_1'] }
+    },
+    {
         id: 'system_boot',
         label: 'System Boot',
         group: 'system',

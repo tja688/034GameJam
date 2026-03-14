@@ -444,6 +444,9 @@ const SceneProgressionMixin = {
     },
     pickEncounterSpawnColor(prey, spawnConfig, stage, encounterClass) {
         if (spawnConfig.color != null) {
+            if (encounterClass === 'objective') {
+                return spawnConfig.color;
+            }
             const tintTarget = encounterClass === 'elite' ? stage.palette.threat : stage.palette.pulse;
             const tintWeight = clamp(spawnConfig.stageColorMix ?? (encounterClass === 'elite' ? 0.16 : 0.12), 0, 1);
             return tintWeight > 0 ? blendColor(spawnConfig.color, tintTarget, tintWeight) : spawnConfig.color;

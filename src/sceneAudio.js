@@ -30,6 +30,7 @@ const SceneAudioMixin = {
         }
 
         this.playAudioEvent('system_boot', { source: 'scene-create' }, { forceReplay: true });
+        this.playAudioEvent('bgm_main', { source: 'scene-create' }, { forceReplay: true });
         return this.audioManager;
     },
 
