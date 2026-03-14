@@ -73,12 +73,40 @@ const SceneRenderMixin = {
             effects: this.add.layer().setDepth(30)
         };
         this.bakedSpritePools = {
-            fragments: { layer: this.bakedSpriteLayers.fragments, sprites: [], cursor: 0 },
-            prey: { layer: this.bakedSpriteLayers.prey, sprites: [], cursor: 0 },
-            predation: { layer: this.bakedSpriteLayers.predation, sprites: [], cursor: 0 },
-            effects: { layer: this.bakedSpriteLayers.effects, sprites: [], cursor: 0 }
+            fragments: { layer: this.bakedSpriteLayers.fragments, sprites: [], cursor: 0, idleFrames: 0 },
+            prey: { layer: this.bakedSpriteLayers.prey, sprites: [], cursor: 0, idleFrames: 0 },
+            predation: { layer: this.bakedSpriteLayers.predation, sprites: [], cursor: 0, idleFrames: 0 },
+            effects: { layer: this.bakedSpriteLayers.effects, sprites: [], cursor: 0, idleFrames: 0 }
         };
         this.bakedSpriteRendererInitialized = true;
+    },
+    destroyBakedSpritePool(poolName = null) {
+        const pools = this.bakedSpritePools || {};
+        const targets = poolName ? [pools[poolName]].filter(Boolean) : Object.values(pools);
+        targets.forEach((pool) => {
+            if (!pool) {
+                return;
+            }
+            (pool.sprites || []).forEach((sprite) => sprite?.destroy());
+            pool.sprites = [];
+            pool.cursor = 0;
+            pool.idleFrames = 0;
+        });
+    },
+    trimBakedSpritePool(pool, activeCount = 0) {
+        if (!pool || !Array.isArray(pool.sprites)) {
+            return;
+        }
+        const retainFloor = 12;
+        const headroom = Math.max(6, Math.ceil(activeCount * 0.25));
+        const targetSize = Math.max(retainFloor, activeCount + headroom);
+        if (pool.sprites.length <= targetSize) {
+            return;
+        }
+        for (let i = pool.sprites.length - 1; i >= targetSize; i -= 1) {
+            pool.sprites[i]?.destroy();
+            pool.sprites.pop();
+        }
     },
     buildBakedRenderTextures() {
         const textureDefs = [
@@ -811,6 +839,19 @@ const SceneRenderMixin = {
         Object.values(this.bakedSpritePools || {}).forEach((pool) => {
             for (let i = enabled ? pool.cursor : 0; i < pool.sprites.length; i += 1) {
                 pool.sprites[i].setVisible(false);
+            }
+            if (!enabled) {
+                pool.idleFrames = 0;
+                return;
+            }
+            if (pool.cursor >= pool.sprites.length) {
+                pool.idleFrames = 0;
+                return;
+            }
+            pool.idleFrames = (pool.idleFrames || 0) + 1;
+            if (pool.idleFrames >= 180) {
+                this.trimBakedSpritePool(pool, pool.cursor);
+                pool.idleFrames = 0;
             }
         });
     },

@@ -412,6 +412,7 @@ const SceneInitMixin = {
         this.sessionStarted = startSession;
         this.timeScaleFactor = 1;
         this.worldTime = 0;
+        this.destroyBakedSpritePool?.();
         this.effects = [];
         this.fragments = [];
         this.resetFragmentPool?.();
