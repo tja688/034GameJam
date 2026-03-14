@@ -54,26 +54,45 @@ const STAGE_GAMEPLAY_TUNING_META = [
 const PREY_RULE_SIZE_TUNING_META = [
     { id: 'forage-runner', label: '觅食·跑者', max: 4 },
     { id: 'forage-school', label: '觅食·群球', max: 4 },
-    { id: 'forage-hunter', label: '觅食·中型猎手', max: 4.5 },
-    { id: 'forage-core', label: '觅食·晋级核心', max: 5 },
+    { id: 'forage-rect', label: '觅食·长方精英', max: 4.8 },
+    { id: 'forage-objective', label: '觅食·白球目标', max: 5.6 },
     { id: 'bloom-school', label: '扩张·群球', max: 4 },
     { id: 'bloom-runner', label: '扩张·中型跑者', max: 4.5 },
-    { id: 'bloom-bulwark', label: '扩张·壁垒方块', max: 4.8 },
-    { id: 'bloom-bulwark-core', label: '扩张·方核目标', max: 5.2 },
+    { id: 'bloom-shell', label: '扩张·壳块群', max: 4.5 },
+    { id: 'bloom-rect', label: '扩张·长方精英', max: 4.8 },
+    { id: 'bloom-square', label: '扩张·旋刃方精英', max: 5 },
+    { id: 'bloom-objective', label: '扩张·白球目标', max: 5.8 },
     { id: 'pressure-school', label: '施压·群球', max: 4.6 },
     { id: 'pressure-runner', label: '施压·中型跑者', max: 4.6 },
-    { id: 'pressure-bulwark', label: '施压·厚壳方块', max: 5.2 },
-    { id: 'pressure-core', label: '施压·压迫核心', max: 5.4 },
+    { id: 'pressure-shell', label: '施压·厚壳群', max: 4.8 },
+    { id: 'pressure-rect', label: '施压·长方精英', max: 5 },
+    { id: 'pressure-square', label: '施压·旋刃方精英', max: 5.1 },
+    { id: 'pressure-brute', label: '施压·巨三角精英', max: 5.8 },
+    { id: 'pressure-objective', label: '施压·白球目标', max: 6 },
     { id: 'encircle-school', label: '围猎·群球', max: 4.6 },
-    { id: 'encircle-bulwark', label: '围猎·壁垒方块', max: 4.8 },
-    { id: 'encircle-weakspot', label: '围猎·大弱点', max: 5.2 },
-    { id: 'encircle-apex', label: '围猎·顶级猎体', max: 5.4 },
-    { id: 'encircle-crown', label: '围猎·冠核目标', max: 5.6 },
+    { id: 'encircle-runner', label: '围猎·跑者', max: 4.8 },
+    { id: 'encircle-shell', label: '围猎·壳块群', max: 4.8 },
+    { id: 'encircle-rect', label: '围猎·长方精英', max: 5.1 },
+    { id: 'encircle-square', label: '围猎·旋刃方精英', max: 5.2 },
+    { id: 'encircle-brute', label: '围猎·巨三角精英', max: 5.9 },
+    { id: 'encircle-dart', label: '围猎·飞梭精英', max: 5.6 },
+    { id: 'encircle-objective', label: '围猎·白球目标', max: 6.2 },
     { id: 'saturation-school', label: '过饱和·巨群', max: 5 },
-    { id: 'saturation-bulwark', label: '过饱和·重壳', max: 5.2 },
-    { id: 'saturation-weakspot', label: '过饱和·巨弱点', max: 5.4 },
-    { id: 'saturation-apex', label: '过饱和·母体猎体', max: 5.6 },
-    { id: 'saturation-heart', label: '过饱和·终局心核', max: 6 }
+    { id: 'saturation-runner', label: '过饱和·跑者', max: 4.8 },
+    { id: 'saturation-shell', label: '过饱和·重壳群', max: 5.2 },
+    { id: 'saturation-rect', label: '过饱和·长方精英', max: 5.2 },
+    { id: 'saturation-square', label: '过饱和·旋刃方精英', max: 5.3 },
+    { id: 'saturation-brute', label: '过饱和·巨三角精英', max: 6 },
+    { id: 'saturation-dart', label: '过饱和·飞梭精英', max: 5.8 },
+    { id: 'saturation-objective', label: '过饱和·终局白球', max: 6.4 }
+];
+
+const ENCOUNTER_SPECIES_TUNING_META = [
+    { id: 'elite-rect', label: '长方精英' },
+    { id: 'elite-spinner', label: '旋刃方精英' },
+    { id: 'elite-brute', label: '巨三角精英' },
+    { id: 'elite-dart', label: '飞梭精英' },
+    { id: 'objective-orb', label: 'Objective 白球' }
 ];
 
 function buildStageGameplayFallbacks() {
@@ -125,6 +144,10 @@ function buildStageGameplayFallbacks() {
         fallback[`gameplayStageGrowthEnergyMul__${stage.id}`] = stage.growthEconomy.growthEnergyMul;
         fallback[`gameplayStageCommonCarryDensity__${stage.id}`] = 1;
         fallback[`gameplayStageCommonCarryYield__${stage.id}`] = 1;
+        fallback[`gameplayStageBasicSize__${stage.id}`] = 1;
+        fallback[`gameplayStageBasicHealth__${stage.id}`] = 1;
+        fallback[`gameplayStageBasicSpeed__${stage.id}`] = 1;
+        fallback[`gameplayStageBasicYield__${stage.id}`] = 1;
         fallback[`gameplayStageEliteSize__${stage.id}`] = 1;
         fallback[`gameplayStageEliteHealth__${stage.id}`] = 1;
         fallback[`gameplayStageEliteSpeed__${stage.id}`] = 1;
@@ -142,6 +165,39 @@ function buildPreyRuleSizeFallbacks() {
         fallback[`gameplayPreySize__${rule.id}`] = 1;
     });
     return fallback;
+}
+
+function buildEncounterSpeciesFallbacks() {
+    const fallback = {};
+    ENCOUNTER_SPECIES_TUNING_META.forEach((species) => {
+        fallback[`gameplaySpeciesSize__${species.id}`] = 1;
+        fallback[`gameplaySpeciesHealth__${species.id}`] = 1;
+        fallback[`gameplaySpeciesSpeed__${species.id}`] = 1;
+        fallback[`gameplaySpeciesYield__${species.id}`] = 1;
+    });
+    return fallback;
+}
+
+function buildEncounterBehaviorFallbacks() {
+    return {
+        gameplayBehaviorTurnRate__elite-rect: 1.78,
+        gameplayBehaviorTurnSpeed__elite-rect: 0.34,
+        gameplayBehaviorSurgeSpeed__elite-rect: 1.34,
+        gameplayBehaviorSurgeDuration__elite-rect: 0.86,
+        gameplayBehaviorTurnDuration__elite-rect: 0.72,
+        gameplayBehaviorSpinDuration__elite-spinner: 1.4,
+        gameplayBehaviorRestDuration__elite-spinner: 1.1,
+        gameplayBehaviorSpinSpeed__elite-spinner: 12.5,
+        gameplayBehaviorSpinDrain__elite-spinner: 6.8,
+        gameplayBehaviorCurveStrength__elite-dart: 0.68,
+        gameplayBehaviorHoldPressure__elite-dart: 0.54,
+        gameplayBehaviorEscapeDrain__elite-dart: 1.4,
+        gameplayBehaviorPulseInterval__objective-orb: 1.42,
+        gameplayBehaviorPushRadius__objective-orb: 460,
+        gameplayBehaviorPushStrength__objective-orb: 380,
+        gameplayBehaviorPulseLife__objective-orb: 0.82,
+        gameplayBehaviorDriftSpeed__objective-orb: 0.24
+    };
 }
 
 function buildStageNodeCurveDefs() {
@@ -229,6 +285,80 @@ function buildStageCarryTuningDefs() {
     });
 
     return defs;
+}
+
+function buildEncounterClassTuningDefs() {
+    const defs = [
+        { section: '基础 / 精英 / Objective 总控', sectionDesc: '按阶层做总调节。想一键放大全部普通血量、或把所有精英整体提速，先拧这里。', defaultOpen: false },
+        { key: 'gameplayBasicGlobalSizeMul', label: '基础总尺寸', desc: '所有基础猎物的整体尺寸倍率。', min: 0.4, max: 3.5, step: 0.02 },
+        { key: 'gameplayBasicGlobalHealthMul', label: '基础总生命', desc: '所有基础猎物的整体生命倍率。', min: 0.25, max: 4, step: 0.02 },
+        { key: 'gameplayBasicGlobalSpeedMul', label: '基础总速度', desc: '所有基础猎物的整体速度倍率。', min: 0.25, max: 3, step: 0.02 },
+        { key: 'gameplayBasicGlobalYieldMul', label: '基础总收益', desc: '所有基础猎物的整体收益倍率。', min: 0.25, max: 3, step: 0.02 },
+        { key: 'gameplayEliteGlobalSizeMul', label: '精英总尺寸', desc: '所有精英的整体尺寸倍率。', min: 0.4, max: 4, step: 0.02 },
+        { key: 'gameplayEliteGlobalHealthMul', label: '精英总生命', desc: '所有精英的整体生命倍率。', min: 0.25, max: 5, step: 0.02 },
+        { key: 'gameplayEliteGlobalSpeedMul', label: '精英总速度', desc: '所有精英的整体速度倍率。', min: 0.25, max: 3.5, step: 0.02 },
+        { key: 'gameplayEliteGlobalYieldMul', label: '精英总收益', desc: '所有精英的整体收益倍率。', min: 0.25, max: 4, step: 0.02 },
+        { key: 'gameplayObjectiveGlobalSizeMul', label: 'Objective 总尺寸', desc: '所有 objective 的整体尺寸倍率。', min: 0.4, max: 5, step: 0.02 },
+        { key: 'gameplayObjectiveGlobalHealthMul', label: 'Objective 总生命', desc: '所有 objective 的整体生命倍率。', min: 0.25, max: 6, step: 0.02 },
+        { key: 'gameplayObjectiveGlobalSpeedMul', label: 'Objective 总速度', desc: '所有 objective 的整体速度倍率。', min: 0.25, max: 3, step: 0.02 },
+        { key: 'gameplayObjectiveGlobalYieldMul', label: 'Objective 总收益', desc: '所有 objective 的整体收益倍率。', min: 0.25, max: 4, step: 0.02 },
+        { key: 'gameplayBasicSizeJitter', label: '基础体型随机', desc: '基础猎物个体之间的尺寸浮动。', min: 0, max: 0.5, step: 0.01 },
+        { key: 'gameplayEliteSizeJitter', label: '精英体型随机', desc: '精英个体之间的尺寸浮动。通常保持很低。', min: 0, max: 0.3, step: 0.01 },
+        { key: 'gameplayObjectiveSizeJitter', label: 'Objective 体型随机', desc: 'objective 尺寸浮动。一般建议保持几乎不动。', min: 0, max: 0.15, step: 0.005 }
+    ];
+
+    STAGE_GAMEPLAY_TUNING_META.forEach((stage) => {
+        defs.push({ section: `${stage.label} 阶层倍率`, sectionDesc: `${stage.label}阶段按阶层拆开的尺寸 / 生命 / 速度 / 收益倍率。`, defaultOpen: false });
+        defs.push({ key: `gameplayStageBasicSize__${stage.id}`, label: `${stage.label} 基础尺寸`, desc: '本关基础猎物额外尺寸倍率。', min: 0.4, max: 3, step: 0.02 });
+        defs.push({ key: `gameplayStageBasicHealth__${stage.id}`, label: `${stage.label} 基础生命`, desc: '本关基础猎物额外生命倍率。', min: 0.25, max: 4, step: 0.02 });
+        defs.push({ key: `gameplayStageBasicSpeed__${stage.id}`, label: `${stage.label} 基础速度`, desc: '本关基础猎物额外速度倍率。', min: 0.25, max: 3, step: 0.02 });
+        defs.push({ key: `gameplayStageBasicYield__${stage.id}`, label: `${stage.label} 基础收益`, desc: '本关基础猎物额外收益倍率。', min: 0.25, max: 3, step: 0.02 });
+    });
+
+    return defs;
+}
+
+function buildEncounterSpeciesTuningDefs() {
+    const defs = [
+        { section: '物种单独倍率', sectionDesc: '按物种单独调尺寸 / 生命 / 速度 / 收益。', defaultOpen: false }
+    ];
+
+    ENCOUNTER_SPECIES_TUNING_META.forEach((species) => {
+        defs.push({ section: species.label, sectionDesc: `${species.label} 的单独乘区。`, defaultOpen: false });
+        defs.push({ key: `gameplaySpeciesSize__${species.id}`, label: `${species.label} 尺寸`, desc: '只改这一种的尺寸倍率。', min: 0.4, max: 4.5, step: 0.02 });
+        defs.push({ key: `gameplaySpeciesHealth__${species.id}`, label: `${species.label} 生命`, desc: '只改这一种的生命倍率。', min: 0.25, max: 6, step: 0.02 });
+        defs.push({ key: `gameplaySpeciesSpeed__${species.id}`, label: `${species.label} 速度`, desc: '只改这一种的速度倍率。', min: 0.25, max: 3.5, step: 0.02 });
+        defs.push({ key: `gameplaySpeciesYield__${species.id}`, label: `${species.label} 收益`, desc: '只改这一种的收益倍率。', min: 0.25, max: 4, step: 0.02 });
+    });
+
+    return defs;
+}
+
+function buildEncounterBehaviorTuningDefs() {
+    return [
+        { section: '精英行为参数', sectionDesc: '四种新精英和 objective 的专属行为参数。', defaultOpen: false },
+        { section: '长方精英', sectionDesc: '慢转、直冲、蠕动感。', defaultOpen: false },
+        { key: 'gameplayBehaviorTurnRate__elite-rect', label: '长方转向速率', desc: '转头有多慢。越低越好抓。', min: 0.4, max: 4, step: 0.02 },
+        { key: 'gameplayBehaviorTurnSpeed__elite-rect', label: '长方转向速度', desc: '转向阶段的移动速度倍率。', min: 0.1, max: 1.5, step: 0.02 },
+        { key: 'gameplayBehaviorSurgeSpeed__elite-rect', label: '长方直冲速度', desc: '直线蠕动阶段的速度倍率。', min: 0.4, max: 2.5, step: 0.02 },
+        { key: 'gameplayBehaviorSurgeDuration__elite-rect', label: '长方直冲时长', desc: '每次直冲维持多久。', min: 0.2, max: 2.5, step: 0.02 },
+        { key: 'gameplayBehaviorTurnDuration__elite-rect', label: '长方转向时长', desc: '每次慢转维持多久。', min: 0.1, max: 2.5, step: 0.02 },
+        { section: '旋刃方精英', sectionDesc: '旋转时危险，疲劳时好啃。', defaultOpen: false },
+        { key: 'gameplayBehaviorSpinDuration__elite-spinner', label: '旋刃持续时长', desc: '危险旋转维持多久。', min: 0.2, max: 3, step: 0.02 },
+        { key: 'gameplayBehaviorRestDuration__elite-spinner', label: '旋刃疲劳时长', desc: '转累后的空窗有多长。', min: 0.2, max: 3, step: 0.02 },
+        { key: 'gameplayBehaviorSpinSpeed__elite-spinner', label: '旋刃转速', desc: '视觉旋转与威胁感。', min: 2, max: 28, step: 0.2 },
+        { key: 'gameplayBehaviorSpinDrain__elite-spinner', label: '旋刃耗能伤害', desc: '玩家硬啃时每秒被抽多少能量。', min: 0, max: 24, step: 0.2 },
+        { section: '飞梭精英', sectionDesc: '绕圈、滑溜、抓不稳就挣脱。', defaultOpen: false },
+        { key: 'gameplayBehaviorCurveStrength__elite-dart', label: '飞梭绕行强度', desc: '越高越不走直线。', min: 0, max: 1.5, step: 0.02 },
+        { key: 'gameplayBehaviorHoldPressure__elite-dart', label: '飞梭压制门槛', desc: '低于这个压力时更容易挣脱。', min: 0, max: 1.5, step: 0.02 },
+        { key: 'gameplayBehaviorEscapeDrain__elite-dart', label: '飞梭挣脱强度', desc: '压制不够时附着寿命掉得多快。', min: 0, max: 4, step: 0.05 },
+        { section: 'Objective 白球', sectionDesc: '推波频率、范围和力度。', defaultOpen: false },
+        { key: 'gameplayBehaviorPulseInterval__objective-orb', label: '白球波间隔', desc: '多久推出一次波。', min: 0.2, max: 4, step: 0.02 },
+        { key: 'gameplayBehaviorPushRadius__objective-orb', label: '白球推波范围', desc: '波对玩家节点有效的半径。', min: 80, max: 1200, step: 5 },
+        { key: 'gameplayBehaviorPushStrength__objective-orb', label: '白球推波力度', desc: '每次推开玩家节点的强度。', min: 0, max: 1200, step: 10 },
+        { key: 'gameplayBehaviorPulseLife__objective-orb', label: '白球波可视时长', desc: '定位圈保留多久。', min: 0.1, max: 2, step: 0.02 },
+        { key: 'gameplayBehaviorDriftSpeed__objective-orb', label: '白球漂移速度', desc: 'objective 自身轻微漂移的速度倍率。', min: 0, max: 1.2, step: 0.02 }
+    ];
 }
 
 function buildStageRuleSizeTuningDefs() {

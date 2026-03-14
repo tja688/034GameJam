@@ -1,4 +1,13 @@
 const SceneEnemiesMixin = {
+    getStageEncounterRules(stage = this.getCurrentStageDef?.()) {
+        if (!stage) {
+            return [];
+        }
+        return [
+            ...(Array.isArray(stage.spawnRules) ? stage.spawnRules : []),
+            ...(Array.isArray(stage.eliteRules) ? stage.eliteRules : [])
+        ];
+    },
     getStageInitialSpawnCount(rule) {
         const stage = this.getCurrentStageDef?.();
         const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1));
@@ -454,7 +463,7 @@ const SceneEnemiesMixin = {
             980,
             metrics.viewRadius * viewMul + Math.max(140, this.getFormationSpan() * 0.35 + 120)
         );
-        return prey?.isObjective ? baseDistance * 1.22 : baseDistance;
+        return prey?.isObjective ? baseDistance * 1.22 : prey?.isElite ? baseDistance * 1.08 : baseDistance;
     },
     seedConfiguredPrey(spawnConfig, count = 1) {
         const results = [];
@@ -512,7 +521,7 @@ const SceneEnemiesMixin = {
             return;
         }
 
-        stage.spawnRules.forEach((rule) => {
+        this.getStageEncounterRules(stage).forEach((rule) => {
             this.seedConfiguredPrey(rule, this.getStageInitialSpawnCount(rule));
         });
     },
@@ -544,7 +553,7 @@ const SceneEnemiesMixin = {
         }
         this.runState.encounterSpawnCooldown = Math.max(0, (this.runState.encounterSpawnCooldown || 0) - simDt);
 
-        stage.spawnRules.forEach((rule) => {
+        this.getStageEncounterRules(stage).forEach((rule) => {
             const desired = Math.max(1, Math.round(rule.desired * encounterMul * budget.viewScale * this.getRuleCarryDensityMul(rule, stage)));
             const aliveEffective = this.getRuleEffectiveAliveCount(rule.id, availabilityDistance);
             if (aliveEffective >= desired) {
@@ -670,8 +679,26 @@ const SceneEnemiesMixin = {
             y = this.player.centroidY + worldHalfHeight + margin;
         }
 
-        const shapeRadiusMul = shape === 'triangle' ? 0.92 : shape === 'square' ? 1.06 : 1;
-        const maxHealth = sizeDef.maxHealth * (shape === 'square' ? 1.12 : shape === 'triangle' ? 0.88 : 1);
+        const shapeRadiusMul = shape === 'triangle'
+            ? 0.92
+            : shape === 'square'
+                ? 1.06
+                : shape === 'rect'
+                    ? 0.98
+                    : shape === 'dart'
+                        ? 0.9
+                        : 1;
+        const maxHealth = sizeDef.maxHealth * (
+            shape === 'square'
+                ? 1.12
+                : shape === 'triangle'
+                    ? 0.88
+                    : shape === 'rect'
+                        ? 1.04
+                        : shape === 'dart'
+                            ? 0.84
+                            : 1
+        );
         const radius = sizeDef.radius * shapeRadiusMul;
         const id = `prey-${this.preyIdCounter++}`;
         const prey = {
@@ -692,7 +719,7 @@ const SceneEnemiesMixin = {
             speed: sizeDef.speed * shapeDef.speedMul,
             accel: sizeDef.accel * shapeDef.accelMul,
             mass: sizeDef.mass * shapeDef.massMul,
-            maxAnchors: sizeDef.maxAnchors + (shape === 'square' ? 1 : 0),
+            maxAnchors: sizeDef.maxAnchors + (shape === 'square' || shape === 'rect' ? 1 : 0),
             chunkBurst: sizeDef.chunkBurst,
             yield: sizeDef.yield * shapeDef.yieldMul,
             wander: shapeDef.wander,
@@ -700,6 +727,8 @@ const SceneEnemiesMixin = {
             pulseMul: shapeDef.pulseMul,
             rotationMul: shapeDef.rotationMul,
             displayRotation: Math.random() * Math.PI * 2,
+            renderStretchX: shape === 'rect' ? 1.32 : shape === 'dart' ? 1.18 : 1,
+            renderStretchY: shape === 'rect' ? 0.62 : shape === 'dart' ? 0.72 : 1,
             pulse: Math.random() * Math.PI * 2,
             spin: 0,
             hitFlash: 0,
@@ -1721,6 +1750,417 @@ const SceneEnemiesMixin = {
             chase.peakThreat = Math.max(chase.peakThreat, threat);
         }
     },
+    getEncounterBehaviorTuning(speciesId, key, fallback) {
+        if (!speciesId) {
+            return fallback;
+        }
+        return this.getRunTuningValue(`gameplayBehavior${key}__${speciesId}`, fallback);
+    },
+    sampleEncounterThreat(prey, distanceFromCenter, rangeMul = 1) {
+        const away = normalize(
+            prey.x - this.player.centroidX,
+            prey.y - this.player.centroidY,
+            Math.cos(prey.escapeAngle || prey.seed),
+            Math.sin(prey.escapeAngle || prey.seed)
+        );
+        const formationRadius = Math.max(160, this.getFormationSpan() * 0.55);
+        const dangerRange = Math.max(240, this.getPreyBehaviorLodDistance() * rangeMul);
+        const threat = clamp(1 - (distanceFromCenter - formationRadius) / dangerRange, 0.04, 1);
+        const orbitSign = prey.curveSign || (Math.sin(prey.seed * 3.17) >= 0 ? 1 : -1);
+        return {
+            threat,
+            away,
+            orbit: {
+                x: -away.y * orbitSign,
+                y: away.x * orbitSign
+            }
+        };
+    },
+    buildLightSchoolSteer(prey, radius = prey.schoolRadius || 180, maxCount = 5) {
+        const neighbors = this.pickNearbyPrey(prey, radius, maxCount);
+        if (!neighbors.length) {
+            return { x: 0, y: 0 };
+        }
+        let centerX = 0;
+        let centerY = 0;
+        let separateX = 0;
+        let separateY = 0;
+        neighbors.forEach((other) => {
+            centerX += other.x;
+            centerY += other.y;
+            const dx = prey.x - other.x;
+            const dy = prey.y - other.y;
+            const distance = Math.hypot(dx, dy) || 0.0001;
+            if (distance < radius * 0.52) {
+                separateX += dx / distance;
+                separateY += dy / distance;
+            }
+        });
+        centerX /= neighbors.length;
+        centerY /= neighbors.length;
+        const cohesion = normalize(centerX - prey.x, centerY - prey.y, 0, 0);
+        const separation = normalize(separateX, separateY, 0, 0);
+        return {
+            x: cohesion.x * 0.46 + separation.x * 0.54,
+            y: cohesion.y * 0.46 + separation.y * 0.54
+        };
+    },
+    decayEncounterFeedback(prey, simDt, threat = 0) {
+        prey.fear = Math.max(0, (prey.fear || 0) - simDt * 0.28) + threat * simDt * 0.18;
+        prey.alarm = Math.max(threat * 0.58, (prey.alarm || 0) - simDt * 0.52);
+        prey.stamina = clamp((prey.stamina || 1) + simDt * 0.18, 0, 1.2);
+        prey.burstTimer = Math.max(0, (prey.burstTimer || 0) - simDt);
+        prey.recoverTimer = Math.max(0, (prey.recoverTimer || 0) - simDt);
+        prey.braceTimer = Math.max(0, (prey.braceTimer || 0) - simDt);
+        prey.guardPulse = Math.max(0, (prey.guardPulse || 0) - simDt * 2);
+        prey.pushCharge = Math.max(0, (prey.pushCharge || 0) - simDt * 1.08);
+        prey.hitFlash = Math.max(0, prey.hitFlash - simDt * 4.8);
+        prey.panic = Math.max(0, prey.panic - simDt * 0.72);
+        prey.wound = Math.max(0, prey.wound - simDt * 0.34);
+        prey.shudder = Math.max(0, prey.shudder - simDt * 1.9);
+        prey.carve = Math.max(0, prey.carve - simDt * 0.52);
+        prey.gorePulse = Math.max(0, prey.gorePulse - simDt * 1.85);
+        prey.devourGlow = Math.max(0, prey.devourGlow - simDt * 1.2);
+        prey.alertPulse = Math.max(0, (prey.alertPulse || 0) - simDt * 1.35);
+        prey.spin *= Math.exp(-2.2 * simDt);
+        prey.objectiveGlow = Math.max(0, (prey.objectiveGlow || 0) - simDt * 0.16);
+    },
+    finalizeEncounterTelemetry(prey, distanceFromCenter, threat, simDt) {
+        prey.lastThreat = threat;
+        prey.lastGapSpeed = 0;
+        const telemetryThreat = {
+            distanceFromCenter,
+            threat,
+            gapSpeed: 0,
+            schoolAlarm: 0
+        };
+        if (threat > 0.18 || (prey.attachments?.length || 0) > 0) {
+            this.startPreyChaseTelemetry(prey, telemetryThreat);
+        } else {
+            this.finishPreyChaseTelemetry(prey, 'disengaged');
+        }
+        this.recordPreyStateTelemetry(prey, telemetryThreat, simDt);
+        const chase = this.ecoTelemetry?.prey?.activeChases?.[prey.id];
+        if (chase) {
+            chase.closestDistance = Math.min(chase.closestDistance, distanceFromCenter);
+            chase.peakThreat = Math.max(chase.peakThreat, threat);
+        }
+    },
+    updateBasicEncounterBehavior(prey, distanceFromCenter, simpleFleeMode, tuning, simDt) {
+        const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 0.9);
+        const school = prey.archetype === 'school' && !simpleFleeMode
+            ? this.buildLightSchoolSteer(prey, Math.max(120, prey.schoolRadius || 180), 5)
+            : { x: 0, y: 0 };
+        const wanderAngle = this.worldTime * (prey.shape === 'triangle' ? 1.8 : prey.shape === 'circle' ? 1.32 : 1.08) + prey.seed * 3.2;
+        const jitterWeight = simpleFleeMode ? 0.04 : 0.12;
+        const desired = normalize(
+            sampled.away.x * (0.84 + sampled.threat * 0.4)
+                + school.x * 0.22
+                + Math.cos(wanderAngle) * jitterWeight,
+            sampled.away.y * (0.84 + sampled.threat * 0.4)
+                + school.y * 0.22
+                + Math.sin(wanderAngle * 0.92) * jitterWeight,
+            sampled.away.x,
+            sampled.away.y
+        );
+        const targetState = sampled.threat > 0.18 ? 'evade' : prey.archetype === 'school' ? 'schooling' : 'graze';
+        if (prey.behaviorState !== targetState) {
+            this.notePreyStateTransition(prey, targetState, { threat: sampled.threat });
+        }
+
+        prey.escapeAngle = dampAngle(prey.escapeAngle || Math.atan2(desired.y, desired.x), Math.atan2(desired.y, desired.x), 2.4 * tuning.pacing.globalTurnMul, simDt);
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+
+        const targetSpeed = clamp(
+            prey.speed * (simpleFleeMode ? (0.68 + sampled.threat * 0.34) : (0.54 + sampled.threat * 0.4)) * tuning.pacing.globalSpeedMul,
+            prey.speed * 0.24,
+            prey.speed * 1.02 * tuning.pacing.globalSpeedCapMul
+        );
+        const accel = prey.accel * (0.42 + sampled.threat * 0.34) * tuning.pacing.globalAccelMul;
+        prey.behaviorTargetSpeed = targetSpeed;
+        prey.behaviorTargetAccel = accel;
+        prey.vx += prey.escapeDirX * accel * simDt;
+        prey.vy += prey.escapeDirY * accel * simDt;
+
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+
+        const drag = (0.94 + (1 - sampled.threat) * 0.38) * tuning.pacing.globalDragMul;
+        prey.vx *= Math.exp(-drag * simDt);
+        prey.vy *= Math.exp(-drag * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        this.decayEncounterFeedback(prey, simDt, sampled.threat);
+        prey.renderStretchX = prey.shape === 'square' ? 1.08 : 1;
+        prey.renderStretchY = prey.shape === 'square' ? 0.92 : 1;
+        prey.pulse += simDt * (1.8 + prey.pulseMul * 1.12 + sampled.threat * 0.8);
+        prey.displayX = damp(prey.displayX, prey.x, 18, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 18, simDt);
+        prey.displayRotation = dampAngle(prey.displayRotation, Math.atan2(prey.vy || prey.escapeDirY, prey.vx || prey.escapeDirX), 11, simDt);
+        this.finalizeEncounterTelemetry(prey, distanceFromCenter, sampled.threat, simDt);
+    },
+    updateRectEliteBehavior(prey, distanceFromCenter, tuning, simDt) {
+        const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 1);
+        const turnRate = this.getEncounterBehaviorTuning(prey.speciesId, 'TurnRate', 1.78) * tuning.pacing.globalTurnMul;
+        const surgeSpeed = this.getEncounterBehaviorTuning(prey.speciesId, 'SurgeSpeed', 1.34) * tuning.pacing.globalSpeedMul;
+        const turnSpeed = this.getEncounterBehaviorTuning(prey.speciesId, 'TurnSpeed', 0.34) * tuning.pacing.globalSpeedMul;
+        const surgeDuration = this.getEncounterBehaviorTuning(prey.speciesId, 'SurgeDuration', 0.86);
+        const turnDuration = this.getEncounterBehaviorTuning(prey.speciesId, 'TurnDuration', 0.72);
+        const desiredAngle = Math.atan2(sampled.away.y, sampled.away.x);
+
+        prey.locomotionTimer = Math.max(0, (prey.locomotionTimer || 0) - simDt);
+        if (prey.locomotionState !== 'surge' && (prey.locomotionTimer <= 0 || Math.abs(Phaser.Math.Angle.Wrap(desiredAngle - (prey.escapeAngle || desiredAngle))) < 0.18)) {
+            prey.locomotionState = 'surge';
+            prey.locomotionTimer = surgeDuration * Phaser.Math.FloatBetween(0.9, 1.12);
+            prey.alertPulse = Math.max(prey.alertPulse || 0, 0.48);
+        } else if (prey.locomotionState === 'surge' && prey.locomotionTimer <= 0) {
+            prey.locomotionState = 'turn';
+            prey.locomotionTimer = turnDuration * Phaser.Math.FloatBetween(0.9, 1.12);
+        } else if (!prey.locomotionState) {
+            prey.locomotionState = 'turn';
+            prey.locomotionTimer = turnDuration;
+        }
+
+        const inSurge = prey.locomotionState === 'surge';
+        const nextState = inSurge ? 'burst' : 'alert';
+        if (prey.behaviorState !== nextState) {
+            this.notePreyStateTransition(prey, nextState, { threat: sampled.threat });
+        }
+
+        prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, inSurge ? turnRate * 0.42 : turnRate, simDt);
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+        const targetSpeed = prey.speed * (inSurge ? (surgeSpeed + sampled.threat * 0.2) : (turnSpeed + sampled.threat * 0.08));
+        const accel = prey.accel * (inSurge ? 0.72 : 0.34) * tuning.pacing.globalAccelMul;
+        prey.vx += prey.escapeDirX * accel * simDt;
+        prey.vy += prey.escapeDirY * accel * simDt;
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+        const drag = (inSurge ? 0.64 : 1.22) * tuning.pacing.globalDragMul;
+        prey.vx *= Math.exp(-drag * simDt);
+        prey.vy *= Math.exp(-drag * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        const pulseBeat = Math.sin(this.worldTime * (inSurge ? 10.6 : 4.8) + prey.seed);
+        this.decayEncounterFeedback(prey, simDt, sampled.threat);
+        prey.renderStretchX = 1.38 + (inSurge ? 0.18 : 0.08) + Math.max(0, pulseBeat) * 0.16;
+        prey.renderStretchY = 0.58 - Math.max(0, pulseBeat) * 0.08;
+        prey.pulse += simDt * (2.1 + prey.pulseMul * 1.34 + sampled.threat);
+        prey.displayX = damp(prey.displayX, prey.x, 16, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 16, simDt);
+        prey.displayRotation = dampAngle(prey.displayRotation, prey.escapeAngle, inSurge ? 9 : 7, simDt);
+        this.finalizeEncounterTelemetry(prey, distanceFromCenter, sampled.threat, simDt);
+    },
+    updateSpinnerEliteBehavior(prey, distanceFromCenter, tuning, simDt) {
+        const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 1);
+        const spinDuration = this.getEncounterBehaviorTuning(prey.speciesId, 'SpinDuration', 1.4);
+        const restDuration = this.getEncounterBehaviorTuning(prey.speciesId, 'RestDuration', 1.1);
+        const spinSpeed = this.getEncounterBehaviorTuning(prey.speciesId, 'SpinSpeed', 12.5);
+
+        prey.spinCycleTimer = Math.max(0, (prey.spinCycleTimer || 0) - simDt);
+        if (prey.spinCycleTimer <= 0) {
+            prey.spinHazardActive = !prey.spinHazardActive;
+            prey.spinCycleTimer = prey.spinHazardActive ? spinDuration : restDuration;
+            prey.alertPulse = Math.max(prey.alertPulse || 0, prey.spinHazardActive ? 0.72 : 0.3);
+        }
+
+        const desiredAngle = Math.atan2(sampled.away.y, sampled.away.x);
+        prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, (prey.spinHazardActive ? 1.8 : 3.1) * tuning.pacing.globalTurnMul, simDt);
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+        const targetSpeed = prey.speed * (prey.spinHazardActive ? 0.56 : 0.38 + sampled.threat * 0.1) * tuning.pacing.globalSpeedMul;
+        const accel = prey.accel * (prey.spinHazardActive ? 0.52 : 0.32) * tuning.pacing.globalAccelMul;
+        prey.vx += prey.escapeDirX * accel * simDt;
+        prey.vy += prey.escapeDirY * accel * simDt;
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+        const drag = (prey.spinHazardActive ? 0.9 : 1.18) * tuning.pacing.globalDragMul;
+        prey.vx *= Math.exp(-drag * simDt);
+        prey.vy *= Math.exp(-drag * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        if (prey.spinHazardActive) {
+            prey.spin += simDt * spinSpeed;
+            prey.guardPulse = Math.max(prey.guardPulse || 0, 0.54);
+            prey.behaviorState = 'brace';
+        } else {
+            prey.behaviorState = 'recover';
+        }
+
+        this.decayEncounterFeedback(prey, simDt, sampled.threat);
+        prey.renderStretchX = 1.06;
+        prey.renderStretchY = 1.06;
+        prey.pulse += simDt * (2 + prey.pulseMul * 1.22 + sampled.threat * 0.8);
+        prey.displayX = damp(prey.displayX, prey.x, 18, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 18, simDt);
+        prey.displayRotation = dampAngle(prey.displayRotation, prey.escapeAngle + prey.spin, 9, simDt);
+        this.finalizeEncounterTelemetry(prey, distanceFromCenter, sampled.threat, simDt);
+    },
+    updateBruteEliteBehavior(prey, distanceFromCenter, tuning, simDt) {
+        const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 1.08);
+        const desiredAngle = Math.atan2(sampled.away.y, sampled.away.x);
+        prey.behaviorState = sampled.threat > 0.2 ? 'evade' : 'graze';
+        prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, 1.64 * tuning.pacing.globalTurnMul, simDt);
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+        const targetSpeed = prey.speed * (0.42 + sampled.threat * 0.2) * tuning.pacing.globalSpeedMul;
+        const accel = prey.accel * (0.28 + sampled.threat * 0.16) * tuning.pacing.globalAccelMul;
+        prey.vx += prey.escapeDirX * accel * simDt;
+        prey.vy += prey.escapeDirY * accel * simDt;
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+        prey.vx *= Math.exp(-1.24 * tuning.pacing.globalDragMul * simDt);
+        prey.vy *= Math.exp(-1.24 * tuning.pacing.globalDragMul * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        this.decayEncounterFeedback(prey, simDt, sampled.threat);
+        prey.renderStretchX = 1.06;
+        prey.renderStretchY = 0.94;
+        prey.pulse += simDt * (1.68 + prey.pulseMul * 1.04 + sampled.threat * 0.46);
+        prey.displayX = damp(prey.displayX, prey.x, 16, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 16, simDt);
+        prey.displayRotation = dampAngle(prey.displayRotation, prey.escapeAngle, 6.4, simDt);
+        this.finalizeEncounterTelemetry(prey, distanceFromCenter, sampled.threat, simDt);
+    },
+    updateDartEliteBehavior(prey, distanceFromCenter, tuning, simDt) {
+        const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 0.94);
+        const curveStrength = this.getEncounterBehaviorTuning(prey.speciesId, 'CurveStrength', 0.68);
+        const desired = normalize(
+            sampled.away.x * (0.54 + sampled.threat * 0.26) + sampled.orbit.x * curveStrength,
+            sampled.away.y * (0.54 + sampled.threat * 0.26) + sampled.orbit.y * curveStrength,
+            sampled.away.x,
+            sampled.away.y
+        );
+        const desiredAngle = Math.atan2(desired.y, desired.x);
+        prey.behaviorState = prey.attachments.length > 0 ? 'burst' : 'evade';
+        prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, 4.8 * tuning.pacing.globalTurnMul, simDt);
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+        const targetSpeed = prey.speed * (0.86 + sampled.threat * 0.28) * tuning.pacing.globalSpeedMul;
+        const accel = prey.accel * (0.78 + sampled.threat * 0.22) * tuning.pacing.globalAccelMul;
+        prey.vx += prey.escapeDirX * accel * simDt;
+        prey.vy += prey.escapeDirY * accel * simDt;
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+        const drag = (prey.attachments.length > 0 ? 0.72 : 0.84) * tuning.pacing.globalDragMul;
+        prey.vx *= Math.exp(-drag * simDt);
+        prey.vy *= Math.exp(-drag * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        this.decayEncounterFeedback(prey, simDt, sampled.threat);
+        prey.renderStretchX = 1.18;
+        prey.renderStretchY = 0.7;
+        prey.alertPulse = Math.max(prey.alertPulse || 0, 0.24 + prey.attachments.length * 0.08);
+        prey.pulse += simDt * (2.22 + prey.pulseMul * 1.42 + sampled.threat * 1.18);
+        prey.displayX = damp(prey.displayX, prey.x, 20, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 20, simDt);
+        prey.displayRotation = dampAngle(prey.displayRotation, prey.escapeAngle, 14, simDt);
+        this.finalizeEncounterTelemetry(prey, distanceFromCenter, sampled.threat, simDt);
+    },
+    updateEliteEncounterBehavior(prey, distanceFromCenter, tuning, simDt) {
+        switch (prey.behaviorId) {
+            case 'elite-rect':
+                this.updateRectEliteBehavior(prey, distanceFromCenter, tuning, simDt);
+                break;
+            case 'elite-spinner':
+                this.updateSpinnerEliteBehavior(prey, distanceFromCenter, tuning, simDt);
+                break;
+            case 'elite-brute':
+                this.updateBruteEliteBehavior(prey, distanceFromCenter, tuning, simDt);
+                break;
+            case 'elite-dart':
+                this.updateDartEliteBehavior(prey, distanceFromCenter, tuning, simDt);
+                break;
+            default:
+                this.updateBruteEliteBehavior(prey, distanceFromCenter, tuning, simDt);
+                break;
+        }
+    },
+    emitObjectivePulse(prey) {
+        const pushRadius = this.getEncounterBehaviorTuning(prey.speciesId, 'PushRadius', 460);
+        const pushStrength = this.getEncounterBehaviorTuning(prey.speciesId, 'PushStrength', 380);
+        const life = this.getEncounterBehaviorTuning(prey.speciesId, 'PulseLife', 0.82);
+        this.createRing(prey.x, prey.y, prey.radius + 30, prey.signalColor || COLORS.core, life, 3, 'objective-wave');
+        this.createRing(prey.x, prey.y, prey.radius + pushRadius * 0.22, prey.signalColor || COLORS.core, life * 1.08, 2, 'objective-wave');
+        this.activeNodes.forEach((node) => {
+            const dx = node.x - prey.x;
+            const dy = node.y - prey.y;
+            const distance = Math.hypot(dx, dy) || 0.0001;
+            if (distance > pushRadius) {
+                return;
+            }
+            const force = Math.max(0, 1 - distance / pushRadius);
+            node.vx += dx / distance * pushStrength * force * 0.018;
+            node.vy += dy / distance * pushStrength * force * 0.018;
+            node.hookTension = Math.max(node.hookTension || 0, 0.24 + force * 0.42);
+        });
+    },
+    updateObjectiveEncounterBehavior(prey, distanceFromCenter, tuning, simDt) {
+        const sampled = this.sampleEncounterThreat(prey, distanceFromCenter, 1.14);
+        const desiredAngle = Math.atan2(sampled.away.y, sampled.away.x);
+        const driftSpeed = this.getEncounterBehaviorTuning(prey.speciesId, 'DriftSpeed', 0.24) * tuning.pacing.globalSpeedMul;
+        const pulseInterval = this.getEncounterBehaviorTuning(prey.speciesId, 'PulseInterval', 1.42);
+        prey.behaviorState = 'objective';
+        prey.escapeAngle = dampAngle(prey.escapeAngle || desiredAngle, desiredAngle, 1.2 * tuning.pacing.globalTurnMul, simDt);
+        prey.escapeDirX = Math.cos(prey.escapeAngle);
+        prey.escapeDirY = Math.sin(prey.escapeAngle);
+        prey.vx += prey.escapeDirX * prey.accel * driftSpeed * simDt * 0.2;
+        prey.vy += prey.escapeDirY * prey.accel * driftSpeed * simDt * 0.2;
+        const targetSpeed = prey.speed * driftSpeed;
+        const speed = Math.hypot(prey.vx, prey.vy);
+        if (speed > targetSpeed) {
+            const scale = targetSpeed / Math.max(speed, 0.0001);
+            prey.vx *= scale;
+            prey.vy *= scale;
+        }
+        prey.vx *= Math.exp(-1.34 * tuning.pacing.globalDragMul * simDt);
+        prey.vy *= Math.exp(-1.34 * tuning.pacing.globalDragMul * simDt);
+        prey.x += prey.vx * simDt;
+        prey.y += prey.vy * simDt;
+
+        prey.objectivePulseTimer = Math.max(0, (prey.objectivePulseTimer || pulseInterval) - simDt);
+        if (prey.objectivePulseTimer <= 0) {
+            prey.objectivePulseTimer = pulseInterval * Phaser.Math.FloatBetween(0.92, 1.08);
+            prey.objectiveGlow = Math.max(prey.objectiveGlow || 0, 1.18);
+            this.emitObjectivePulse(prey);
+        }
+
+        this.decayEncounterFeedback(prey, simDt, sampled.threat * 0.5);
+        prey.objectiveGlow = Math.max(prey.objectiveGlow || 0, 0.28);
+        prey.renderStretchX = 1 + Math.sin(this.worldTime * 2.6 + prey.seed) * 0.04;
+        prey.renderStretchY = 1 + Math.cos(this.worldTime * 2.1 + prey.seed) * 0.04;
+        prey.pulse += simDt * (2.4 + prey.pulseMul * 1.6 + sampled.threat * 0.6);
+        prey.displayX = damp(prey.displayX, prey.x, 14, simDt);
+        prey.displayY = damp(prey.displayY, prey.y, 14, simDt);
+        prey.displayRotation = dampAngle(prey.displayRotation, prey.escapeAngle, 5.4, simDt);
+        this.finalizeEncounterTelemetry(prey, distanceFromCenter, sampled.threat, simDt);
+    },
     updatePrey(simDt) {
         this.refreshPreySpatialCache();
         const tuning = this.getPreyBehaviorTuning();
@@ -1737,6 +2177,19 @@ const SceneEnemiesMixin = {
                 const last = this.prey.length - 1;
                 if (i !== last) { this.prey[i] = this.prey[last]; }
                 this.prey.pop();
+                continue;
+            }
+
+            if (prey.encounterClass === 'basic') {
+                this.updateBasicEncounterBehavior(prey, distanceFromCenter, simpleFleeMode, tuning, simDt);
+                continue;
+            }
+            if (prey.encounterClass === 'elite') {
+                this.updateEliteEncounterBehavior(prey, distanceFromCenter, tuning, simDt);
+                continue;
+            }
+            if (prey.isObjective) {
+                this.updateObjectiveEncounterBehavior(prey, distanceFromCenter, tuning, simDt);
                 continue;
             }
 

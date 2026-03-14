@@ -85,6 +85,8 @@ const SceneRenderMixin = {
             { key: 'baked-shape-circle', width: 128, height: 128, draw: (g) => drawShape(g, 'circle', 64, 64, 100, 0xffffff, 1, 0) },
             { key: 'baked-shape-square', width: 128, height: 128, draw: (g) => drawShape(g, 'square', 64, 64, 100, 0xffffff, 1, 0) },
             { key: 'baked-shape-triangle', width: 128, height: 128, draw: (g) => drawShape(g, 'triangle', 64, 64, 100, 0xffffff, 1, 0) },
+            { key: 'baked-shape-rect', width: 128, height: 128, draw: (g) => drawShape(g, 'rect', 64, 64, 76, 0xffffff, 1, 0) },
+            { key: 'baked-shape-dart', width: 128, height: 128, draw: (g) => drawShape(g, 'dart', 64, 64, 76, 0xffffff, 1, 0) },
             {
                 key: 'baked-ring-circle',
                 width: 128,
@@ -781,11 +783,18 @@ const SceneRenderMixin = {
         }
     },
     getBakedShapeTexture(shape) {
-        return shape === 'square'
-            ? 'baked-shape-square'
-            : shape === 'triangle'
-                ? 'baked-shape-triangle'
-                : 'baked-shape-circle';
+        switch (shape) {
+            case 'square':
+                return 'baked-shape-square';
+            case 'triangle':
+                return 'baked-shape-triangle';
+            case 'rect':
+                return 'baked-shape-rect';
+            case 'dart':
+                return 'baked-shape-dart';
+            default:
+                return 'baked-shape-circle';
+        }
     },
     beginBakedSpriteFrame(enabled) {
         this.initBakedSpriteRenderer();
@@ -829,14 +838,14 @@ const SceneRenderMixin = {
         sprite.clearTint();
         return sprite;
     },
-    stampBakedShape(poolName, shape, x, y, size, color, alpha, rotation = 0) {
+    stampBakedShape(poolName, shape, x, y, size, color, alpha, rotation = 0, stretchX = 1, stretchY = stretchX) {
         const sprite = this.acquireBakedSprite(poolName, this.getBakedShapeTexture(shape));
         if (!sprite) {
             return;
         }
         const scale = size / this.bakedSpriteMetrics.shapeLogicalSize;
         sprite.setPosition(x, y);
-        sprite.setScale(scale);
+        sprite.setScale(scale * stretchX, scale * stretchY);
         sprite.setRotation(rotation);
         sprite.setTint(color);
         sprite.setAlpha(alpha);
@@ -1072,12 +1081,14 @@ const SceneRenderMixin = {
                 return;
             }
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
+            const bodyStretchX = prey.renderStretchX || 1;
+            const bodyStretchY = prey.renderStretchY || 1;
             if (drawBaseShapes) {
-                this.stampBakedShape('prey', prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
-                this.stampBakedShape('prey', prey.shape, x, y, size, color, 0.95, prey.displayRotation);
+                this.stampBakedShape('prey', prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation, bodyStretchX, bodyStretchY);
+                this.stampBakedShape('prey', prey.shape, x, y, size, color, 0.95, prey.displayRotation, bodyStretchX, bodyStretchY);
             }
             if (drawDamageOverlays && prey.sizeKey !== 'small') {
-                this.stampBakedShape('prey', prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
+                this.stampBakedShape('prey', prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation, bodyStretchX, bodyStretchY);
             }
             if (drawSignals && drawGuardRings && (prey.guardPulse || 0) > 0.04) {
                 this.stampBakedRing('prey', x, y, size * 0.66, prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
@@ -1086,11 +1097,14 @@ const SceneRenderMixin = {
                 const ringColor = prey.behaviorState === 'burst' ? COLORS.inverse : COLORS.health;
                 this.stampBakedRing('prey', x, y, size * (0.74 + alertPulse * 0.08), ringColor, 0.12 + alertPulse * 0.22);
             }
+            if (drawSignals && prey.isElite) {
+                this.stampBakedRing('prey', x, y, size * 0.78, prey.signalColor || prey.color, 0.18 + clamp(prey.alertPulse || 0, 0, 1) * 0.12);
+            }
             if (drawDamageOverlays && prey.wound > 0.02) {
-                this.stampBakedShape('prey', prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);
+                this.stampBakedShape('prey', prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation, bodyStretchX, bodyStretchY);
             }
             if (drawDamageOverlays && devourGlow > 0.02) {
-                this.stampBakedShape('prey', prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03);
+                this.stampBakedShape('prey', prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03, bodyStretchX, bodyStretchY);
             }
             if (drawDamageOverlays && prey.exposed > 0.03) {
                 this.stampBakedShape(
@@ -1101,7 +1115,9 @@ const SceneRenderMixin = {
                     size * (0.38 + prey.exposed * 0.22),
                     prey.shape === 'circle' ? COLORS.energy : COLORS.core,
                     0.14 + prey.exposed * 0.42,
-                    prey.displayRotation + prey.spin * 0.02
+                    prey.displayRotation + prey.spin * 0.02,
+                    bodyStretchX,
+                    bodyStretchY
                 );
             }
             if (drawAttachmentMarks && prey.attachments.length > 0) {
@@ -1551,13 +1567,15 @@ const SceneRenderMixin = {
                 return;
             }
             const color = prey.hitFlash > 0 ? COLORS.core : prey.color;
+            const bodyStretchX = prey.renderStretchX || 1;
+            const bodyStretchY = prey.renderStretchY || 1;
 
             if (drawBaseShapes) {
-                drawShape(g, prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation);
-                drawShape(g, prey.shape, x, y, size, color, 0.95, prey.displayRotation);
+                drawShape(g, prey.shape, x + 4, y + 5, size * 1.1, COLORS.shadow, 0.46, prey.displayRotation, bodyStretchX, bodyStretchY);
+                drawShape(g, prey.shape, x, y, size, color, 0.95, prey.displayRotation, bodyStretchX, bodyStretchY);
             }
             if (drawDamageOverlays && prey.sizeKey !== 'small') {
-                drawShape(g, prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation);
+                drawShape(g, prey.shape, x, y, size * (1.12 + carve * 0.05), COLORS.shadow, 0.14 + gorePulse * 0.08, prey.displayRotation, bodyStretchX, bodyStretchY);
             }
             if (drawSignals && drawGuardRings && (prey.guardPulse || 0) > 0.04) {
                 g.lineStyle(clamp((2 + prey.guardPulse * 3) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.2 + prey.guardPulse * 0.26);
@@ -1567,11 +1585,15 @@ const SceneRenderMixin = {
                 g.lineStyle(clamp((1.8 + alertPulse * 2.4) * this.cameraRig.zoom, 1, 5), prey.behaviorState === 'burst' ? COLORS.inverse : COLORS.health, 0.12 + alertPulse * 0.22);
                 g.strokeCircle(x, y, size * (0.74 + alertPulse * 0.08));
             }
+            if (drawSignals && prey.isElite) {
+                g.lineStyle(clamp((2 + Math.sin(this.worldTime * 4 + prey.seed) * 0.35) * this.cameraRig.zoom, 1, 5), prey.signalColor || prey.color, 0.18 + clamp(prey.alertPulse || 0, 0, 1) * 0.12);
+                g.strokeCircle(x, y, size * 0.78);
+            }
             if (drawDamageOverlays && prey.wound > 0.02) {
-                drawShape(g, prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation);
+                drawShape(g, prey.shape, x, y, size * (1.04 + prey.wound * 0.08), COLORS.gore, 0.2 + prey.wound * 0.34 + gorePulse * 0.08, prey.displayRotation, bodyStretchX, bodyStretchY);
             }
             if (drawDamageOverlays && devourGlow > 0.02) {
-                drawShape(g, prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03);
+                drawShape(g, prey.shape, x, y, size * (0.68 + devourGlow * 0.06), COLORS.energy, 0.08 + devourGlow * 0.14, prey.displayRotation + prey.spin * 0.03, bodyStretchX, bodyStretchY);
             }
             if (drawDamageOverlays && prey.exposed > 0.03) {
                 drawShape(
@@ -1582,7 +1604,9 @@ const SceneRenderMixin = {
                     size * (0.38 + prey.exposed * 0.22),
                     prey.shape === 'circle' ? COLORS.energy : COLORS.core,
                     0.14 + prey.exposed * 0.42,
-                    prey.displayRotation + prey.spin * 0.02
+                    prey.displayRotation + prey.spin * 0.02,
+                    bodyStretchX,
+                    bodyStretchY
                 );
             }
             if (drawAttachmentMarks && prey.attachments.length > 0) {

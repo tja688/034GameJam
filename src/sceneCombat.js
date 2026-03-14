@@ -366,6 +366,25 @@ const SceneCombatMixin = {
                 1
             );
 
+            if (prey.behaviorId === 'elite-spinner' && prey.spinHazardActive && prey.attachments.length > 0) {
+                const spinDrainRate = Math.max(0, this.getRunTuningValue?.('gameplayBehaviorSpinDrain__elite-spinner', 6.8) ?? 6.8);
+                const drainLoad = Math.max(0.2, pressure.feedCount + pressure.cutterCount * 0.42 + pressure.grindCount * 0.28);
+                this.applyEnergyDelta?.(-spinDrainRate * drainLoad * simDt, 0.04 + drainLoad * 0.02, 'elite-spinner');
+                prey.guardPulse = Math.max(prey.guardPulse || 0, 0.66);
+            }
+            if (prey.behaviorId === 'elite-dart' && prey.attachments.length > 0) {
+                const holdGate = Math.max(0, this.getRunTuningValue?.('gameplayBehaviorHoldPressure__elite-dart', 0.54) ?? 0.54);
+                const escapeDrain = Math.max(0, this.getRunTuningValue?.('gameplayBehaviorEscapeDrain__elite-dart', 1.4) ?? 1.4);
+                const holdScore = pressure.pressure * 0.72 + pressure.encirclement * 0.56 + pressure.feedCount * 0.08;
+                const deficit = Math.max(0, holdGate - holdScore);
+                if (deficit > 0) {
+                    prey.attachments.forEach((attachment) => {
+                        attachment.life -= deficit * escapeDrain * simDt;
+                    });
+                    prey.alertPulse = Math.max(prey.alertPulse || 0, 0.42 + deficit * 0.36);
+                }
+            }
+
             for (let j = prey.attachments.length - 1; j >= 0; j -= 1) {
                 const attachment = prey.attachments[j];
                 const node = nodeByIndex.get(attachment.nodeIndex);

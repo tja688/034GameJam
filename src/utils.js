@@ -67,17 +67,59 @@ function polygonPoints(x, y, radius, sides, rotation) {
     return points;
 }
 
-function drawShape(graphics, shape, x, y, size, color, alpha, rotation = 0) {
+function rotatePointLocal(x, y, rotation) {
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return {
+        x: x * cos - y * sin,
+        y: x * sin + y * cos
+    };
+}
+
+function buildShapePoints(x, y, points, rotation = 0) {
+    return points.map((point) => {
+        const rotated = rotatePointLocal(point.x, point.y, rotation);
+        return new Phaser.Geom.Point(x + rotated.x, y + rotated.y);
+    });
+}
+
+function drawShape(graphics, shape, x, y, size, color, alpha, rotation = 0, stretchX = 1, stretchY = stretchX) {
     graphics.fillStyle(color, alpha);
     if (shape === 'circle') {
         graphics.fillCircle(x, y, size * 0.5);
         return;
     }
-    if (shape === 'square') {
-        graphics.fillPoints(polygonPoints(x, y, size * 0.78, 4, rotation + Math.PI * 0.25), true);
+    if (shape === 'rect') {
+        graphics.fillPoints(buildShapePoints(x, y, [
+            { x: size * 0.68 * stretchX, y: size * 0.26 * stretchY },
+            { x: size * 0.68 * stretchX, y: -size * 0.26 * stretchY },
+            { x: -size * 0.68 * stretchX, y: -size * 0.26 * stretchY },
+            { x: -size * 0.68 * stretchX, y: size * 0.26 * stretchY }
+        ], rotation), true);
         return;
     }
-    graphics.fillPoints(polygonPoints(x, y, size * 0.82, 3, rotation - Math.PI * 0.5), true);
+    if (shape === 'dart') {
+        graphics.fillPoints(buildShapePoints(x, y, [
+            { x: size * 0.84 * stretchX, y: 0 },
+            { x: -size * 0.48 * stretchX, y: size * 0.28 * stretchY },
+            { x: -size * 0.34 * stretchX, y: 0 },
+            { x: -size * 0.48 * stretchX, y: -size * 0.28 * stretchY }
+        ], rotation), true);
+        return;
+    }
+    if (shape === 'square') {
+        graphics.fillPoints(
+            buildShapePoints(x, y, [
+                { x: size * 0.55 * stretchX, y: size * 0.55 * stretchY },
+                { x: size * 0.55 * stretchX, y: -size * 0.55 * stretchY },
+                { x: -size * 0.55 * stretchX, y: -size * 0.55 * stretchY },
+                { x: -size * 0.55 * stretchX, y: size * 0.55 * stretchY }
+            ], rotation + Math.PI * 0.25),
+            true
+        );
+        return;
+    }
+    graphics.fillPoints(polygonPoints(x, y, size * 0.82 * Math.max(stretchX, stretchY), 3, rotation - Math.PI * 0.5), true);
 }
 
 function getChainMass(count) {

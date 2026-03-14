@@ -167,6 +167,12 @@ const SceneProgressionMixin = {
     },
     getStageEncounterProfile(stage = this.getCurrentStageDef(), nodeCount = this.getPlayerNodeCount()) {
         const band = this.getCurrentStageNodeBand(nodeCount, stage);
+        const basicBase = {
+            size: Math.max(0.2, this.getRunTuningValue('gameplayBasicGlobalSizeMul', 1) * this.getStageScopedTuningValue('gameplayStageBasicSize', stage?.id, 1)),
+            health: Math.max(0.2, this.getRunTuningValue('gameplayBasicGlobalHealthMul', 1) * this.getStageScopedTuningValue('gameplayStageBasicHealth', stage?.id, 1)),
+            speed: Math.max(0.2, this.getRunTuningValue('gameplayBasicGlobalSpeedMul', 1) * this.getStageScopedTuningValue('gameplayStageBasicSpeed', stage?.id, 1)),
+            yield: Math.max(0.2, this.getRunTuningValue('gameplayBasicGlobalYieldMul', 1) * this.getStageScopedTuningValue('gameplayStageBasicYield', stage?.id, 1))
+        };
         const eliteSizeFallbacks = { underweight: 1.12, comfort: 1, heavy: 0.98, oversized: 0.94 };
         const eliteHealthFallbacks = { underweight: 1.15, comfort: 1, heavy: 1.04, oversized: 1 };
         const eliteSpeedFallbacks = { underweight: 1.06, comfort: 1, heavy: 1, oversized: 1 };
@@ -174,14 +180,16 @@ const SceneProgressionMixin = {
         const objectiveHealthFallbacks = { underweight: 1.08, comfort: 1, heavy: 1, oversized: 1 };
         const objectiveSpeedFallbacks = { underweight: 1, comfort: 1, heavy: 1, oversized: 1 };
         const eliteBase = {
-            size: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageEliteSize', stage?.id, 1)),
-            health: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageEliteHealth', stage?.id, 1)),
-            speed: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageEliteSpeed', stage?.id, 1))
+            size: Math.max(0.2, this.getRunTuningValue('gameplayEliteGlobalSizeMul', 1) * this.getStageScopedTuningValue('gameplayStageEliteSize', stage?.id, 1)),
+            health: Math.max(0.2, this.getRunTuningValue('gameplayEliteGlobalHealthMul', 1) * this.getStageScopedTuningValue('gameplayStageEliteHealth', stage?.id, 1)),
+            speed: Math.max(0.2, this.getRunTuningValue('gameplayEliteGlobalSpeedMul', 1) * this.getStageScopedTuningValue('gameplayStageEliteSpeed', stage?.id, 1)),
+            yield: Math.max(0.2, this.getRunTuningValue('gameplayEliteGlobalYieldMul', 1))
         };
         const objectiveBase = {
-            size: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageObjectiveSize', stage?.id, 1)),
-            health: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageObjectiveHealth', stage?.id, 1)),
-            speed: Math.max(0.2, this.getStageScopedTuningValue('gameplayStageObjectiveSpeed', stage?.id, 1))
+            size: Math.max(0.2, this.getRunTuningValue('gameplayObjectiveGlobalSizeMul', 1) * this.getStageScopedTuningValue('gameplayStageObjectiveSize', stage?.id, 1)),
+            health: Math.max(0.2, this.getRunTuningValue('gameplayObjectiveGlobalHealthMul', 1) * this.getStageScopedTuningValue('gameplayStageObjectiveHealth', stage?.id, 1)),
+            speed: Math.max(0.2, this.getRunTuningValue('gameplayObjectiveGlobalSpeedMul', 1) * this.getStageScopedTuningValue('gameplayStageObjectiveSpeed', stage?.id, 1)),
+            yield: Math.max(0.2, this.getRunTuningValue('gameplayObjectiveGlobalYieldMul', 1))
         };
         const eliteBand = {
             size: this.getBandScopedTuningValue('gameplayEliteBandSize', band, eliteSizeFallbacks[band] ?? 1),
@@ -195,45 +203,40 @@ const SceneProgressionMixin = {
         };
         return {
             band,
+            basic: {
+                sizeMul: basicBase.size,
+                healthMul: basicBase.health,
+                speedMul: basicBase.speed,
+                yieldMul: basicBase.yield
+            },
             elite: {
                 sizeMul: eliteBase.size * eliteBand.size,
                 healthMul: eliteBase.health * eliteBand.health,
-                speedMul: eliteBase.speed * eliteBand.speed
+                speedMul: eliteBase.speed * eliteBand.speed,
+                yieldMul: eliteBase.yield
             },
             objective: {
                 sizeMul: objectiveBase.size * eliteBand.size * objectiveBand.size,
                 healthMul: objectiveBase.health * eliteBand.health * objectiveBand.health,
-                speedMul: objectiveBase.speed * eliteBand.speed * objectiveBand.speed
+                speedMul: objectiveBase.speed * eliteBand.speed * objectiveBand.speed,
+                yieldMul: objectiveBase.yield
             }
         };
     },
     getPreySpawnTierAdjustment(spawnConfig, isObjective = false, stage = this.getCurrentStageDef(), nodeCount = this.getPlayerNodeCount()) {
-        const tier = isObjective ? 'objective' : (spawnConfig?.tier || 'common');
+        const encounterClass = isObjective
+            ? 'objective'
+            : (spawnConfig?.encounterClass || (spawnConfig?.tier === 'elite' ? 'elite' : 'basic'));
         const encounter = this.getStageEncounterProfile(stage, nodeCount);
-        if (tier === 'elite') {
-            return {
-                band: encounter.band,
-                tier,
-                sizeMul: encounter.elite.sizeMul,
-                healthMul: encounter.elite.healthMul,
-                speedMul: encounter.elite.speedMul
-            };
-        }
-        if (tier === 'objective') {
-            return {
-                band: encounter.band,
-                tier,
-                sizeMul: encounter.objective.sizeMul,
-                healthMul: encounter.objective.healthMul,
-                speedMul: encounter.objective.speedMul
-            };
-        }
+        const scoped = encounter[encounterClass] || encounter.basic;
         return {
             band: encounter.band,
-            tier: 'common',
-            sizeMul: 1,
-            healthMul: 1,
-            speedMul: 1
+            tier: encounterClass === 'basic' ? 'common' : encounterClass,
+            encounterClass,
+            sizeMul: scoped.sizeMul,
+            healthMul: scoped.healthMul,
+            speedMul: scoped.speedMul,
+            yieldMul: scoped.yieldMul
         };
     },
     getCurrentStageObjectiveRevealProgress(stage = this.getCurrentStageDef()) {
@@ -273,6 +276,20 @@ const SceneProgressionMixin = {
             nodeTargets.max
         );
 
+        const scaleRules = (rules = []) => rules.map((rule) => {
+            const desired = Math.max(1, Math.round(rule.desired * spawnDensityMul));
+            const packMin = Math.min(desired, Math.max(1, Math.round((rule.packMin || 1) * spawnDensityMul)));
+            const packMaxBase = Math.max(rule.packMax || packMin, packMin);
+            const packMax = Math.min(desired, Math.max(packMin, Math.round(packMaxBase * spawnDensityMul)));
+            return {
+                ...rule,
+                desired,
+                packMin,
+                packMax,
+                interval: Math.max(0.12, rule.interval * spawnIntervalMul)
+            };
+        });
+
         return {
             ...baseStage,
             nodeTargets,
@@ -283,19 +300,8 @@ const SceneProgressionMixin = {
             growthEconomy,
             metabolism: Math.max(0.1, baseStage.metabolism * metabolismMul),
             spawnCap: Math.max(1, Math.round(baseStage.spawnCap * spawnCapMul)),
-            spawnRules: baseStage.spawnRules.map((rule) => {
-                const desired = Math.max(1, Math.round(rule.desired * spawnDensityMul));
-                const packMin = Math.min(desired, Math.max(1, Math.round((rule.packMin || 1) * spawnDensityMul)));
-                const packMaxBase = Math.max(rule.packMax || packMin, packMin);
-                const packMax = Math.min(desired, Math.max(packMin, Math.round(packMaxBase * spawnDensityMul)));
-                return {
-                    ...rule,
-                    desired,
-                    packMin,
-                    packMax,
-                    interval: Math.max(0.12, rule.interval * spawnIntervalMul)
-                };
-            }),
+            spawnRules: scaleRules(baseStage.spawnRules),
+            eliteRules: scaleRules(baseStage.eliteRules),
             objective: baseStage.objective ? { ...baseStage.objective, tier: baseStage.objective.tier || 'objective' } : null
         };
     },
@@ -369,7 +375,7 @@ const SceneProgressionMixin = {
         this.ensureRunProgressionState();
         const stage = this.getCurrentStageDef();
         const timers = this.runState.spawnTimers || {};
-        stage.spawnRules.forEach((rule, index) => {
+        (this.getStageEncounterRules?.(stage) || stage.spawnRules || []).forEach((rule, index) => {
             if (forceReset || !Number.isFinite(timers[rule.id])) {
                 timers[rule.id] = rule.interval * (0.2 + index * 0.08);
             }
@@ -429,65 +435,91 @@ const SceneProgressionMixin = {
             progress: Math.max(0.1, this.getRunTuningValue('gameplayPreyProgressYieldMul', 1) * Math.max(0.72, Math.pow(visualScale, 0.18)))
         };
     },
+    getEncounterSpeciesStatMultiplier(speciesId, stat, fallback = 1) {
+        if (!speciesId) {
+            return fallback;
+        }
+        const suffix = stat.charAt(0).toUpperCase() + stat.slice(1);
+        return Math.max(0.2, this.getRunTuningValue(`gameplaySpecies${suffix}__${speciesId}`, fallback));
+    },
+    pickEncounterSpawnColor(prey, spawnConfig, stage, encounterClass) {
+        if (spawnConfig.color != null) {
+            const tintTarget = encounterClass === 'elite' ? stage.palette.threat : stage.palette.pulse;
+            const tintWeight = clamp(spawnConfig.stageColorMix ?? (encounterClass === 'elite' ? 0.16 : 0.12), 0, 1);
+            return tintWeight > 0 ? blendColor(spawnConfig.color, tintTarget, tintWeight) : spawnConfig.color;
+        }
+
+        if (encounterClass === 'basic') {
+            const pool = [COLORS.base, COLORS.circle, COLORS.triangle, COLORS.square, COLORS.link];
+            const base = pool[Math.floor((prey.seed || 0) * 10) % pool.length];
+            return blendColor(base, stage.palette.pulse, 0.22);
+        }
+
+        return prey.color;
+    },
     applySpawnConfigToPrey(prey, spawnConfig, groupId = '') {
         const stage = this.getCurrentStageDef();
-        const archetype = PREY_ARCHETYPE_DEFS[spawnConfig.archetype] || PREY_ARCHETYPE_DEFS.skittish;
+        const speciesId = spawnConfig.speciesId || spawnConfig.id || spawnConfig.archetype || '';
+        const archetype = PREY_ARCHETYPE_DEFS[spawnConfig.archetype] || PREY_ARCHETYPE_DEFS.basic;
         const spawnAdjustment = this.getPreySpawnTierAdjustment(spawnConfig, !!spawnConfig.isObjective, stage);
+        const encounterClass = spawnAdjustment.encounterClass || (spawnConfig.isObjective ? 'objective' : spawnConfig.tier === 'elite' ? 'elite' : 'basic');
         const sizeFactor = prey.sizeKey === 'large' ? 1.95 : prey.sizeKey === 'medium' ? 1.35 : 1;
-        const healthMul = spawnConfig.archetype === 'bulwark'
-            ? this.getRunTuningValue('gameplayBulwarkHealthMul', 1.42)
-            : spawnConfig.archetype === 'weakspot'
-                ? this.getRunTuningValue('gameplayWeakspotHealthMul', 1.28)
-                : spawnConfig.archetype === 'apex'
-                    ? this.getRunTuningValue('gameplayApexHealthMul', 2.1)
-                    : spawnConfig.archetype === 'school'
-                        ? this.getRunTuningValue('gameplaySchoolHealthMul', 0.9)
-                        : 1;
-        const objectiveMul = spawnConfig.isObjective
-            ? this.getRunTuningValue('gameplayObjectiveHealthMul', 1.22)
-            : 1;
-        const bulwarkMassMul = this.getRunTuningValue('gameplayBulwarkMassMul', 1.2);
-        const apexMassMul = this.getRunTuningValue('gameplayApexMassMul', 1.42);
-        const bulwarkExtraAnchors = Math.max(0, Math.round(this.getRunTuningValue('gameplayBulwarkExtraAnchors', 1)));
-        const weakspotExtraAnchors = Math.max(0, Math.round(this.getRunTuningValue('gameplayWeakspotExtraAnchors', 1)));
-        const apexExtraAnchors = Math.max(0, Math.round(this.getRunTuningValue('gameplayApexExtraAnchors', 2)));
+        const speciesSizeMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'size', 1);
+        const speciesHealthMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'health', 1);
+        const speciesSpeedMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'speed', 1);
+        const speciesYieldMul = this.getEncounterSpeciesStatMultiplier(speciesId, 'yield', 1);
+        const jitterDefault = encounterClass === 'basic'
+            ? this.getRunTuningValue('gameplayBasicSizeJitter', 0.18)
+            : encounterClass === 'elite'
+                ? this.getRunTuningValue('gameplayEliteSizeJitter', 0.08)
+                : this.getRunTuningValue('gameplayObjectiveSizeJitter', 0.03);
+        const sizeJitter = Math.max(0, spawnConfig.sizeJitter ?? jitterDefault);
+        const sizeVariance = Phaser.Math.FloatBetween(Math.max(0.55, 1 - sizeJitter), 1 + sizeJitter);
+        const classYieldMul = spawnAdjustment.yieldMul || 1;
 
         prey.archetype = spawnConfig.archetype;
         prey.spawnRuleId = spawnConfig.id || spawnConfig.archetype;
         prey.spawnTier = spawnAdjustment.tier;
         prey.spawnBand = spawnAdjustment.band;
+        prey.encounterClass = encounterClass;
+        prey.speciesId = speciesId;
+        prey.behaviorId = spawnConfig.behaviorId || speciesId || encounterClass;
         prey.groupId = groupId;
-        prey.isObjective = !!spawnConfig.isObjective;
+        prey.isElite = encounterClass === 'elite';
+        prey.isObjective = encounterClass === 'objective';
         prey.stageId = stage.id;
-        prey.color = spawnConfig.color ?? prey.color;
+        prey.color = this.pickEncounterSpawnColor(prey, spawnConfig, stage, encounterClass);
         prey.baseColor = prey.color;
-        prey.signalColor = spawnConfig.signalColor ?? (prey.isObjective ? stage.palette.signal : stage.palette.pulse);
+        prey.signalColor = spawnConfig.signalColor
+            ?? (prey.isObjective
+                ? COLORS.core
+                : prey.isElite
+                    ? blendColor(prey.color, stage.palette.signal, 0.36)
+                    : blendColor(prey.color, stage.palette.pulse, 0.42));
         const visualScale = this.getPreyVisualMultiplier(prey, spawnConfig)
             * (spawnConfig.radiusMul ?? (prey.isObjective ? 1.08 : 1))
-            * spawnAdjustment.sizeMul;
+            * spawnAdjustment.sizeMul
+            * speciesSizeMul
+            * sizeVariance;
         prey.visualScale = visualScale;
         prey.radius *= visualScale;
         prey.baseRadius = prey.radius;
         prey.chunkBurst = Math.max(1, Math.round(prey.chunkBurst * Math.max(1, Math.pow(visualScale, 0.62))));
-        prey.maxHealth *= healthMul * objectiveMul * spawnAdjustment.healthMul * Math.max(0.85, Math.pow(visualScale, 0.28));
+        prey.maxHealth *= spawnAdjustment.healthMul
+            * speciesHealthMul
+            * (spawnConfig.healthMul ?? 1)
+            * Math.max(0.82, Math.pow(visualScale, encounterClass === 'basic' ? 0.88 : prey.isObjective ? 0.56 : 0.42));
         prey.health = prey.maxHealth;
-        prey.speed *= archetype.speedMul * spawnAdjustment.speedMul;
-        prey.accel *= archetype.accelMul * spawnAdjustment.speedMul;
+        prey.speed *= archetype.speedMul * spawnAdjustment.speedMul * speciesSpeedMul * (spawnConfig.speedMul ?? 1);
+        prey.accel *= archetype.accelMul * spawnAdjustment.speedMul * speciesSpeedMul * (spawnConfig.speedMul ?? 1);
         prey.fleeMul *= archetype.fleeMul;
         prey.wander *= archetype.wanderMul;
-        prey.mass *= (spawnConfig.archetype === 'bulwark' ? bulwarkMassMul : spawnConfig.archetype === 'apex' ? apexMassMul : 1)
-            * Math.max(0.8, Math.pow(visualScale, 1.18));
-        prey.maxAnchors += spawnConfig.archetype === 'bulwark'
-            ? bulwarkExtraAnchors
-            : spawnConfig.archetype === 'apex'
-                ? apexExtraAnchors
-                : spawnConfig.archetype === 'weakspot'
-                    ? weakspotExtraAnchors
-                    : 0;
+        prey.mass *= Math.max(0.8, Math.pow(visualScale, encounterClass === 'basic' ? 1.04 : 1.18)) * (spawnConfig.massMul ?? 1);
+        prey.maxAnchors += Math.max(0, Math.round(spawnConfig.extraAnchors || 0));
         const yieldMul = this.getPreyYieldMultiplier(prey);
-        prey.energyValue = (archetype.energyValue * sizeFactor + (spawnConfig.energyBonus || 0)) * yieldMul.energy;
-        prey.biomassValue = (archetype.biomassValue * sizeFactor + (spawnConfig.biomassBonus || 0)) * yieldMul.biomass;
-        prey.progressValue = (archetype.progressValue * sizeFactor + (spawnConfig.progressBonus || 0)) * yieldMul.progress;
+        prey.energyValue = (archetype.energyValue * sizeFactor + (spawnConfig.energyBonus || 0)) * yieldMul.energy * classYieldMul * speciesYieldMul * (spawnConfig.yieldMul ?? 1);
+        prey.biomassValue = (archetype.biomassValue * sizeFactor + (spawnConfig.biomassBonus || 0)) * yieldMul.biomass * classYieldMul * speciesYieldMul * (spawnConfig.yieldMul ?? 1);
+        prey.progressValue = (archetype.progressValue * sizeFactor + (spawnConfig.progressBonus || 0)) * yieldMul.progress * classYieldMul * speciesYieldMul * (spawnConfig.yieldMul ?? 1);
         prey.growthBonus = spawnConfig.growthBonus || 0;
         prey.armor = archetype.armor;
         prey.compressionNeed = archetype.compressionNeed;
@@ -505,10 +537,16 @@ const SceneProgressionMixin = {
         prey.bulwarkPulse = archetype.bulwarkPulse;
         prey.guardPulse = 0;
         prey.pushCharge = 0;
-        prey.objectiveGlow = prey.isObjective ? 1 : 0;
+        prey.objectiveGlow = prey.isObjective ? 1 : prey.isElite ? 0.18 : 0;
         prey.pulseGain = prey.isObjective ? 0.68 : 0.18;
         prey.exposed = prey.isObjective ? Math.max(prey.exposed || 0, archetype.weakExpose + 0.04) : Math.max(prey.exposed || 0, archetype.weakExpose);
-        prey.behaviorState = prey.archetype === 'school' ? 'schooling' : 'graze';
+        prey.behaviorState = prey.isObjective
+            ? 'objective'
+            : prey.isElite
+                ? 'elite'
+                : prey.archetype === 'school'
+                    ? 'schooling'
+                    : 'graze';
         prey.behaviorStateTime = 0;
         prey.behaviorStateAge = 0;
         prey.fear = prey.isObjective ? 0.12 : 0;
@@ -527,6 +565,14 @@ const SceneProgressionMixin = {
         prey.groupAlarm = 0;
         prey.alertPulse = 0;
         prey.chaseStartedAt = 0;
+        prey.locomotionState = prey.behaviorId === 'elite-rect' ? 'turn' : 'cruise';
+        prey.locomotionTimer = Phaser.Math.FloatBetween(0.4, 1.2);
+        prey.curveSign = Math.random() < 0.5 ? -1 : 1;
+        prey.spinHazardActive = false;
+        prey.spinCycleTimer = Phaser.Math.FloatBetween(0.6, 1.4);
+        prey.objectivePulseTimer = Phaser.Math.FloatBetween(0.6, 1.2);
+        prey.renderStretchX = (prey.renderStretchX || 1) * (spawnConfig.renderStretchX || 1);
+        prey.renderStretchY = (prey.renderStretchY || 1) * (spawnConfig.renderStretchY || 1);
         this.notePreyStateTransition?.(prey, prey.behaviorState, {
             stateDuration: 0,
             threat: 0,
@@ -565,32 +611,20 @@ const SceneProgressionMixin = {
         const weakAccess = this.getWeakspotAccess(prey, node, pressure);
         let multiplier = 1;
 
-        if (prey.archetype === 'bulwark') {
-            multiplier *= this.getRunTuningValue('gameplayBulwarkBaseDamage', 0.16)
-                + compressionAccess * this.getRunTuningValue('gameplayBulwarkCompressionDamage', 0.96)
-                + encircle * this.getRunTuningValue('gameplayBulwarkEncircleDamage', 0.32);
-            if (attachment?.mode === 'feed' && compressionAccess < this.getRunTuningValue('gameplayBulwarkFeedCompressionGate', 0.4)) {
-                multiplier *= this.getRunTuningValue('gameplayBulwarkFeedPenalty', 0.58);
-            }
-        } else if (prey.archetype === 'weakspot') {
-            multiplier *= this.getRunTuningValue('gameplayWeakspotBaseDamage', 0.12)
-                + weakAccess * this.getRunTuningValue('gameplayWeakspotWeakArcDamage', 1.08);
-            if (attachment?.mode === 'feed' && weakAccess < this.getRunTuningValue('gameplayWeakspotFeedGate', 0.42)) {
-                multiplier *= this.getRunTuningValue('gameplayWeakspotFeedPenalty', 0.4);
-            }
-        } else if (prey.archetype === 'apex') {
-            multiplier *= this.getRunTuningValue('gameplayApexBaseDamage', 0.08)
-                + compressionAccess * this.getRunTuningValue('gameplayApexCompressionDamage', 0.44)
-                + weakAccess * this.getRunTuningValue('gameplayApexWeakspotDamage', 0.88)
-                + encircle * this.getRunTuningValue('gameplayApexEncircleDamage', 0.26);
-            if (
-                attachment?.mode === 'feed'
-                && (
-                    compressionAccess < this.getRunTuningValue('gameplayApexFeedCompressionGate', 0.38)
-                    || weakAccess < this.getRunTuningValue('gameplayApexFeedWeakGate', 0.36)
-                )
-            ) {
-                multiplier *= this.getRunTuningValue('gameplayApexFeedPenalty', 0.34);
+        if (prey.behaviorId === 'elite-spinner') {
+            multiplier *= prey.spinHazardActive
+                ? this.getRunTuningValue('gameplayEliteSpinnerSpinDamageMul', 0.72)
+                : this.getRunTuningValue('gameplayEliteSpinnerRestDamageMul', 1.12);
+        } else if (prey.behaviorId === 'elite-brute') {
+            multiplier *= this.getRunTuningValue('gameplayEliteBruteBaseDamageMul', 0.82)
+                + encircle * this.getRunTuningValue('gameplayEliteBruteEncircleDamageMul', 0.24)
+                + clamp((pressure?.cutterCount || 0) / 4, 0, 1) * this.getRunTuningValue('gameplayEliteBruteCutterDamageMul', 0.26);
+        } else if (prey.behaviorId === 'elite-dart') {
+            multiplier *= this.getRunTuningValue('gameplayEliteDartBaseDamageMul', 0.68)
+                + encircle * this.getRunTuningValue('gameplayEliteDartEncircleDamageMul', 0.54)
+                + clamp((pressure?.pressure || 0) / 1.2, 0, 1) * this.getRunTuningValue('gameplayEliteDartPressureDamageMul', 0.3);
+            if (attachment?.mode === 'feed' && encircle < this.getRunTuningValue('gameplayEliteDartFeedEncircleGate', 0.34)) {
+                multiplier *= this.getRunTuningValue('gameplayEliteDartFeedPenalty', 0.52);
             }
         }
 

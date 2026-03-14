@@ -54,9 +54,11 @@ const NODE_LIBRARY = [
 ];
 
 const PREY_SHAPE_DEFS = {
-    triangle: { color: COLORS.triangle, speedMul: 1.16, accelMul: 1.18, massMul: 0.84, wander: 0.92, fleeMul: 1.16, pulseMul: 0.86, rotationMul: 1.28, yieldMul: 0.9 },
-    square: { color: COLORS.square, speedMul: 0.82, accelMul: 0.78, massMul: 1.28, wander: 0.36, fleeMul: 0.8, pulseMul: 0.74, rotationMul: 0.62, yieldMul: 1.16 },
-    circle: { color: COLORS.circle, speedMul: 0.94, accelMul: 0.92, massMul: 1.02, wander: 0.58, fleeMul: 0.96, pulseMul: 1.28, rotationMul: 0.84, yieldMul: 1.02 }
+    triangle: { color: COLORS.triangle, speedMul: 1.12, accelMul: 1.14, massMul: 0.84, wander: 0.78, fleeMul: 1.1, pulseMul: 0.86, rotationMul: 1.26, yieldMul: 0.92 },
+    square: { color: COLORS.square, speedMul: 0.84, accelMul: 0.8, massMul: 1.26, wander: 0.34, fleeMul: 0.82, pulseMul: 0.74, rotationMul: 0.62, yieldMul: 1.14 },
+    circle: { color: COLORS.circle, speedMul: 0.96, accelMul: 0.94, massMul: 1.02, wander: 0.56, fleeMul: 0.98, pulseMul: 1.26, rotationMul: 0.84, yieldMul: 1.02 },
+    rect: { color: COLORS.base, speedMul: 1.02, accelMul: 0.96, massMul: 1.08, wander: 0.28, fleeMul: 0.94, pulseMul: 0.82, rotationMul: 0.56, yieldMul: 1.08 },
+    dart: { color: COLORS.triangle, speedMul: 1.08, accelMul: 1.06, massMul: 0.78, wander: 0.7, fleeMul: 1.18, pulseMul: 1.08, rotationMul: 1.42, yieldMul: 1 }
 };
 
 const PREY_SIZE_DEFS = {
@@ -96,15 +98,15 @@ const PREY_SIZE_DEFS = {
 };
 
 const PREY_ARCHETYPE_DEFS = {
-    skittish: {
-        progressValue: 1.05,
-        biomassValue: 1.12,
-        energyValue: 8.8,
-        speedMul: 1.18,
-        accelMul: 1.14,
-        fleeMul: 1.26,
-        wanderMul: 1.08,
-        armor: 0.04,
+    basic: {
+        progressValue: 0.72,
+        biomassValue: 0.86,
+        energyValue: 6.4,
+        speedMul: 1,
+        accelMul: 1,
+        fleeMul: 1.08,
+        wanderMul: 0.6,
+        armor: 0.02,
         compressionNeed: 0,
         encircleNeed: 0,
         schoolRadius: 0,
@@ -119,92 +121,136 @@ const PREY_ARCHETYPE_DEFS = {
         bulwarkPulse: 0
     },
     school: {
-        progressValue: 0.86,
-        biomassValue: 0.94,
-        energyValue: 7.2,
-        speedMul: 0.98,
-        accelMul: 1.02,
-        fleeMul: 0.96,
-        wanderMul: 0.78,
-        armor: 0.1,
+        progressValue: 0.68,
+        biomassValue: 0.82,
+        energyValue: 5.9,
+        speedMul: 0.96,
+        accelMul: 0.98,
+        fleeMul: 1,
+        wanderMul: 0.54,
+        armor: 0.04,
         compressionNeed: 0,
         encircleNeed: 0,
-        schoolRadius: 248,
-        cohesion: 0.84,
-        alignment: 0.72,
-        separation: 0.58,
+        schoolRadius: 220,
+        cohesion: 0.34,
+        alignment: 0.3,
+        separation: 0.44,
+        weakArc: 0,
+        weakExpose: 0.18,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    eliteRect: {
+        progressValue: 2.1,
+        biomassValue: 1.86,
+        energyValue: 15.2,
+        speedMul: 1,
+        accelMul: 0.94,
+        fleeMul: 0.9,
+        wanderMul: 0.24,
+        armor: 0.12,
+        compressionNeed: 0.12,
+        encircleNeed: 0,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0,
+        weakExpose: 0.14,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    eliteSpinner: {
+        progressValue: 2.8,
+        biomassValue: 2.28,
+        energyValue: 18.2,
+        speedMul: 0.92,
+        accelMul: 0.9,
+        fleeMul: 0.86,
+        wanderMul: 0.22,
+        armor: 0.18,
+        compressionNeed: 0.2,
+        encircleNeed: 0.12,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0,
+        weakExpose: 0.12,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    eliteBrute: {
+        progressValue: 3.3,
+        biomassValue: 2.96,
+        energyValue: 23.4,
+        speedMul: 0.76,
+        accelMul: 0.8,
+        fleeMul: 0.74,
+        wanderMul: 0.16,
+        armor: 0.24,
+        compressionNeed: 0.26,
+        encircleNeed: 0.12,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0,
+        weakExpose: 0.1,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    eliteDart: {
+        progressValue: 3.6,
+        biomassValue: 2.78,
+        energyValue: 24.8,
+        speedMul: 1.06,
+        accelMul: 1.04,
+        fleeMul: 1.18,
+        wanderMul: 0.62,
+        armor: 0.08,
+        compressionNeed: 0.12,
+        encircleNeed: 0.36,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
+        weakArc: 0,
+        weakExpose: 0.18,
+        protectTurnRate: 0,
+        bulwarkChargeRate: 0,
+        bulwarkReleaseRate: 0,
+        bulwarkPulse: 0
+    },
+    objectiveOrb: {
+        progressValue: 4.2,
+        biomassValue: 3.2,
+        energyValue: 28,
+        speedMul: 0.78,
+        accelMul: 0.8,
+        fleeMul: 0.82,
+        wanderMul: 0.12,
+        armor: 0.16,
+        compressionNeed: 0,
+        encircleNeed: 0,
+        schoolRadius: 0,
+        cohesion: 0,
+        alignment: 0,
+        separation: 0,
         weakArc: 0,
         weakExpose: 0.2,
         protectTurnRate: 0,
         bulwarkChargeRate: 0,
         bulwarkReleaseRate: 0,
         bulwarkPulse: 0
-    },
-    bulwark: {
-        progressValue: 2.65,
-        biomassValue: 2.35,
-        energyValue: 18.4,
-        speedMul: 0.72,
-        accelMul: 0.74,
-        fleeMul: 0.64,
-        wanderMul: 0.24,
-        armor: 0.72,
-        compressionNeed: 0.4,
-        encircleNeed: 0.2,
-        schoolRadius: 0,
-        cohesion: 0,
-        alignment: 0,
-        separation: 0,
-        weakArc: 0,
-        weakExpose: 0.08,
-        protectTurnRate: 0,
-        bulwarkChargeRate: 1.8,
-        bulwarkReleaseRate: 1.3,
-        bulwarkPulse: 1.08
-    },
-    weakspot: {
-        progressValue: 3.1,
-        biomassValue: 2.7,
-        energyValue: 22.2,
-        speedMul: 0.88,
-        accelMul: 0.92,
-        fleeMul: 0.84,
-        wanderMul: 0.36,
-        armor: 0.82,
-        compressionNeed: 0.12,
-        encircleNeed: 0.42,
-        schoolRadius: 0,
-        cohesion: 0,
-        alignment: 0,
-        separation: 0,
-        weakArc: 0.96,
-        weakExpose: 0.12,
-        protectTurnRate: 2.7,
-        bulwarkChargeRate: 0,
-        bulwarkReleaseRate: 0,
-        bulwarkPulse: 0
-    },
-    apex: {
-        progressValue: 4.6,
-        biomassValue: 4.1,
-        energyValue: 34.5,
-        speedMul: 0.94,
-        accelMul: 0.96,
-        fleeMul: 0.9,
-        wanderMul: 0.18,
-        armor: 0.9,
-        compressionNeed: 0.32,
-        encircleNeed: 0.5,
-        schoolRadius: 0,
-        cohesion: 0,
-        alignment: 0,
-        separation: 0,
-        weakArc: 0.78,
-        weakExpose: 0.1,
-        protectTurnRate: 3.2,
-        bulwarkChargeRate: 2.2,
-        bulwarkReleaseRate: 1.45,
-        bulwarkPulse: 1.24
     }
 };
 
@@ -221,10 +267,17 @@ function createDemoStageDef(config) {
         maxNodes: nodeTargets.max,
         spawnRules: (config.spawnRules || []).map((rule) => ({
             tier: 'common',
+            encounterClass: 'basic',
+            ...rule
+        })),
+        eliteRules: (config.eliteRules || []).map((rule) => ({
+            tier: 'elite',
+            encounterClass: 'elite',
             ...rule
         })),
         objective: config.objective
             ? {
+                encounterClass: 'objective',
                 tier: 'objective',
                 ...config.objective
             }
@@ -251,16 +304,21 @@ const DEMO_STAGE_DEFS = [
         },
         growthSequence: ['source', 'shell-a', 'dart-a', 'compressor'],
         spawnRules: [
-            { id: 'forage-runner', archetype: 'skittish', sizeKey: 'small', shape: 'triangle', desired: 8, interval: 0.52, packMin: 1, packMax: 2, tier: 'common' },
-            { id: 'forage-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.18, packMin: 3, packMax: 4, tier: 'common' },
-            { id: 'forage-hunter', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 2, interval: 2.7, packMin: 1, packMax: 1, tier: 'elite' }
+            { id: 'forage-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'small', shape: 'triangle', desired: 8, interval: 0.56, packMin: 2, packMax: 3, sizeJitter: 0.14 },
+            { id: 'forage-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 6, interval: 1.16, packMin: 4, packMax: 6, sizeJitter: 0.12 }
+        ],
+        eliteRules: [
+            { id: 'forage-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3.2, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.12 }
         ],
         objective: {
-            id: 'forage-core',
-            archetype: 'skittish',
+            id: 'forage-objective',
+            speciesId: 'objective-orb',
+            behaviorId: 'objective-orb',
+            archetype: 'objectiveOrb',
             sizeKey: 'large',
             shape: 'circle',
-            color: 0xf4f0d7,
+            color: COLORS.core,
+            radiusMul: 1.26,
             energyBonus: 18,
             biomassBonus: 3.6,
             growthBonus: 1
@@ -284,16 +342,23 @@ const DEMO_STAGE_DEFS = [
         },
         growthSequence: ['shell-b', 'compressor', 'prism', 'dart-a', 'source'],
         spawnRules: [
-            { id: 'bloom-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 1.08, packMin: 3, packMax: 5, tier: 'common' },
-            { id: 'bloom-runner', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.78, packMin: 1, packMax: 2, tier: 'common' },
-            { id: 'bloom-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 2, interval: 2.58, packMin: 1, packMax: 1, tier: 'elite' }
+            { id: 'bloom-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'small', shape: 'circle', desired: 8, interval: 1.04, packMin: 4, packMax: 6, sizeJitter: 0.14 },
+            { id: 'bloom-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.82, packMin: 2, packMax: 3, sizeJitter: 0.16 },
+            { id: 'bloom-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'medium', shape: 'square', desired: 3, interval: 1.52, packMin: 2, packMax: 3, sizeJitter: 0.12 }
+        ],
+        eliteRules: [
+            { id: 'bloom-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3.1, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.16 },
+            { id: 'bloom-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 3.8, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.14 }
         ],
         objective: {
-            id: 'bloom-bulwark-core',
-            archetype: 'bulwark',
+            id: 'bloom-objective',
+            speciesId: 'objective-orb',
+            behaviorId: 'objective-orb',
+            archetype: 'objectiveOrb',
             sizeKey: 'large',
-            shape: 'square',
-            color: 0xffd147,
+            shape: 'circle',
+            color: COLORS.core,
+            radiusMul: 1.28,
             energyBonus: 20,
             biomassBonus: 4.2,
             growthBonus: 1
@@ -317,16 +382,24 @@ const DEMO_STAGE_DEFS = [
         },
         growthSequence: ['shell-a', 'shell-b', 'compressor', 'prism', 'dart-b'],
         spawnRules: [
-            { id: 'pressure-school', archetype: 'school', sizeKey: 'medium', shape: 'circle', desired: 7, interval: 1.16, packMin: 2, packMax: 3, tier: 'common' },
-            { id: 'pressure-runner', archetype: 'skittish', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.84, packMin: 1, packMax: 2, tier: 'common' },
-            { id: 'pressure-bulwark', archetype: 'bulwark', sizeKey: 'large', shape: 'square', desired: 2, interval: 2.64, packMin: 1, packMax: 1, tier: 'elite' }
+            { id: 'pressure-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'medium', shape: 'circle', desired: 7, interval: 1.12, packMin: 3, packMax: 4, sizeJitter: 0.16 },
+            { id: 'pressure-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.88, packMin: 2, packMax: 3, sizeJitter: 0.18 },
+            { id: 'pressure-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'medium', shape: 'square', desired: 4, interval: 1.46, packMin: 2, packMax: 3, sizeJitter: 0.14 }
+        ],
+        eliteRules: [
+            { id: 'pressure-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3.05, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.18 },
+            { id: 'pressure-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 3.56, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.16 },
+            { id: 'pressure-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 4.4, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.12, radiusMul: 1.08 }
         ],
         objective: {
-            id: 'pressure-core',
-            archetype: 'weakspot',
+            id: 'pressure-objective',
+            speciesId: 'objective-orb',
+            behaviorId: 'objective-orb',
+            archetype: 'objectiveOrb',
             sizeKey: 'large',
-            shape: 'triangle',
-            color: 0xf4f0d7,
+            shape: 'circle',
+            color: COLORS.core,
+            radiusMul: 1.32,
             energyBonus: 24,
             biomassBonus: 5.4,
             growthBonus: 1
@@ -350,17 +423,25 @@ const DEMO_STAGE_DEFS = [
         },
         growthSequence: ['prism', 'blade', 'shell-a', 'compressor', 'dart-a', 'source'],
         spawnRules: [
-            { id: 'encircle-school', archetype: 'school', sizeKey: 'medium', shape: 'circle', desired: 6, interval: 1.02, packMin: 3, packMax: 4, tier: 'common' },
-            { id: 'encircle-bulwark', archetype: 'bulwark', sizeKey: 'medium', shape: 'square', desired: 4, interval: 2.36, packMin: 1, packMax: 1, tier: 'common' },
-            { id: 'encircle-weakspot', archetype: 'weakspot', sizeKey: 'large', shape: 'triangle', desired: 3, interval: 2.28, packMin: 1, packMax: 1, tier: 'elite' },
-            { id: 'encircle-apex', archetype: 'apex', sizeKey: 'large', shape: 'circle', desired: 1, interval: 3.18, packMin: 1, packMax: 1, tier: 'elite' }
+            { id: 'encircle-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'medium', shape: 'circle', desired: 6, interval: 1, packMin: 3, packMax: 5, sizeJitter: 0.18 },
+            { id: 'encircle-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'medium', shape: 'triangle', desired: 4, interval: 0.92, packMin: 2, packMax: 3, sizeJitter: 0.18 },
+            { id: 'encircle-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'medium', shape: 'square', desired: 4, interval: 1.4, packMin: 2, packMax: 3, sizeJitter: 0.15 }
+        ],
+        eliteRules: [
+            { id: 'encircle-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 1, interval: 3, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.2 },
+            { id: 'encircle-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 1, interval: 3.38, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.18 },
+            { id: 'encircle-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 4.2, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.14, radiusMul: 1.12 },
+            { id: 'encircle-dart', speciesId: 'elite-dart', behaviorId: 'elite-dart', archetype: 'eliteDart', sizeKey: 'medium', shape: 'dart', desired: 1, interval: 4.58, packMin: 1, packMax: 1, color: 0x75d7ff, stageColorMix: 0.18 }
         ],
         objective: {
-            id: 'encircle-crown',
-            archetype: 'apex',
+            id: 'encircle-objective',
+            speciesId: 'objective-orb',
+            behaviorId: 'objective-orb',
+            archetype: 'objectiveOrb',
             sizeKey: 'large',
-            shape: 'triangle',
-            color: 0xf4f0d7,
+            shape: 'circle',
+            color: COLORS.core,
+            radiusMul: 1.36,
             energyBonus: 28,
             biomassBonus: 6.2,
             growthBonus: 2
@@ -384,18 +465,25 @@ const DEMO_STAGE_DEFS = [
         },
         growthSequence: ['blade', 'prism', 'compressor', 'shell-b', 'dart-b', 'source'],
         spawnRules: [
-            { id: 'saturation-school', archetype: 'school', sizeKey: 'large', shape: 'circle', desired: 8, interval: 0.94, packMin: 4, packMax: 6, tier: 'common' },
-            { id: 'saturation-bulwark', archetype: 'bulwark', sizeKey: 'large', shape: 'square', desired: 4, interval: 2.1, packMin: 1, packMax: 1, tier: 'common' },
-            { id: 'saturation-weakspot', archetype: 'weakspot', sizeKey: 'large', shape: 'triangle', desired: 3, interval: 2.22, packMin: 1, packMax: 1, tier: 'elite' },
-            { id: 'saturation-apex', archetype: 'apex', sizeKey: 'large', shape: 'circle', desired: 2, interval: 2.86, packMin: 1, packMax: 1, tier: 'elite' }
+            { id: 'saturation-school', speciesId: 'basic-school', archetype: 'school', sizeKey: 'large', shape: 'circle', desired: 8, interval: 0.92, packMin: 4, packMax: 6, sizeJitter: 0.2 },
+            { id: 'saturation-runner', speciesId: 'basic-runner', archetype: 'basic', sizeKey: 'medium', shape: 'triangle', desired: 5, interval: 0.84, packMin: 2, packMax: 4, sizeJitter: 0.18 },
+            { id: 'saturation-shell', speciesId: 'basic-shell', archetype: 'basic', sizeKey: 'large', shape: 'square', desired: 4, interval: 1.32, packMin: 2, packMax: 3, sizeJitter: 0.16 }
+        ],
+        eliteRules: [
+            { id: 'saturation-rect', speciesId: 'elite-rect', behaviorId: 'elite-rect', archetype: 'eliteRect', sizeKey: 'medium', shape: 'rect', desired: 2, interval: 2.82, packMin: 1, packMax: 1, color: 0x9ddf8d, stageColorMix: 0.22 },
+            { id: 'saturation-square', speciesId: 'elite-spinner', behaviorId: 'elite-spinner', archetype: 'eliteSpinner', sizeKey: 'medium', shape: 'square', desired: 2, interval: 3.12, packMin: 1, packMax: 1, color: 0xff8a64, stageColorMix: 0.2 },
+            { id: 'saturation-brute', speciesId: 'elite-brute', behaviorId: 'elite-brute', archetype: 'eliteBrute', sizeKey: 'large', shape: 'triangle', desired: 1, interval: 3.96, packMin: 1, packMax: 1, color: 0xffd147, stageColorMix: 0.16, radiusMul: 1.14 },
+            { id: 'saturation-dart', speciesId: 'elite-dart', behaviorId: 'elite-dart', archetype: 'eliteDart', sizeKey: 'medium', shape: 'dart', desired: 2, interval: 4.08, packMin: 1, packMax: 1, color: 0x75d7ff, stageColorMix: 0.2 }
         ],
         objective: {
-            id: 'saturation-heart',
-            archetype: 'apex',
+            id: 'saturation-objective',
+            speciesId: 'objective-orb',
+            behaviorId: 'objective-orb',
+            archetype: 'objectiveOrb',
             sizeKey: 'large',
             shape: 'circle',
-            color: 0xf4f0d7,
-            radiusMul: 1.18,
+            color: COLORS.core,
+            radiusMul: 1.42,
             energyBonus: 34,
             biomassBonus: 8.4,
             growthBonus: 2
