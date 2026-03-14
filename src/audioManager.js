@@ -62,6 +62,7 @@ class CoreAudioManager {
         };
         this.assetCatalog = [];
         this.assetById = new Map();
+        this.assetIdByKey = new Map();
         this.assetLoadState = {};
         this.assetLoadQueue = [];
         this.assetLoadPromises = new Map();
@@ -79,6 +80,9 @@ class CoreAudioManager {
         this.recentAudioTrace = [];
         this.lastSaveResult = { ok: true, message: '' };
         this.audioUnlockInstalled = false;
+        this.nextVoiceId = 1;
+        this.runtimeGuardInstalled = false;
+        this.lastRuntimeGuardAt = 0;
 
         this.bootstrap();
     }
@@ -87,6 +91,7 @@ class CoreAudioManager {
         this.loadManifestFromDisk();
         this.loadProfileFromStorage();
         this.installAutoplayUnlock();
+        this.installRuntimeGuards();
         this.preloadInitialAssets();
         this.emitDebugUpdate('boot');
     }
@@ -136,6 +141,27 @@ class CoreAudioManager {
         };
         window.addEventListener('pointerdown', resume, true);
         window.addEventListener('keydown', resume, true);
+    }
+
+    installRuntimeGuards() {
+        if (this.runtimeGuardInstalled || !this.scene?.events) {
+            return;
+        }
+        this.runtimeGuardInstalled = true;
+        this.scene.events.on('update', this.handleRuntimeGuardUpdate, this);
+        this.scene.events.once('shutdown', () => {
+            this.scene?.events?.off?.('update', this.handleRuntimeGuardUpdate, this);
+            this.runtimeGuardInstalled = false;
+        });
+    }
+
+    handleRuntimeGuardUpdate() {
+        const now = this.getNowMs();
+        if (now - this.lastRuntimeGuardAt < 250) {
+            return;
+        }
+        this.lastRuntimeGuardAt = now;
+        this.enforceBgmSingleton();
     }
 
     readJsonFile(filePath) {
@@ -225,6 +251,7 @@ class CoreAudioManager {
         };
         this.assetCatalog = normalizedAssets;
         this.assetById = new Map(normalizedAssets.map((asset) => [asset.id, asset]));
+        this.assetIdByKey = new Map(normalizedAssets.map((asset) => [asset.key, asset.id]));
         this.assetLoadState = {};
         normalizedAssets.forEach((asset) => {
             this.assetLoadState[asset.id] = {
@@ -439,6 +466,183 @@ class CoreAudioManager {
 
     getCurrentAssetIdForEvent(eventId) {
         return this.getCurrentVoiceForEvent(eventId)?.assetId || '';
+    }
+
+    getLiveManagerSounds() {
+        const sounds = Array.isArray(this.sound?.sounds) ? this.sound.sounds : [];
+        return sounds.filter((sound) => !!sound && !sound.isDestroyed);
+    }
+
+    stopManagerSound(sound, options = {}) {
+        if (!sound || sound.isDestroyed) {
+            return false;
+        }
+        const destroy = options.destroy !== false;
+        let touched = false;
+        if (sound.isPlaying) {
+            try {
+                sound.stop();
+                touched = true;
+            } catch (error) {
+                console.warn('Audio manager sound stop failed.', error);
+            }
+        }
+        if (destroy && !sound.isDestroyed) {
+            try {
+                sound.destroy();
+                touched = true;
+            } catch (error) {
+                console.warn('Audio manager sound destroy failed.', error);
+            }
+        }
+        return touched;
+    }
+
+    getBgmAssetIds() {
+        return normalizeAudioAssetList(this.getResolvedEventConfig('bgm_main').assetPool || []);
+    }
+
+    getBgmAssetKeys() {
+        const keys = new Set();
+        this.getBgmAssetIds().forEach((assetId) => {
+            const key = this.getAssetEntry(assetId)?.key || '';
+            if (key) {
+                keys.add(key);
+            }
+        });
+        return keys;
+    }
+
+    getTrackedSoundSet() {
+        return new Set(
+            [...this.activeVoices]
+                .filter((record) => !!record && !record.ended && !!record.sound && !record.sound.isDestroyed)
+                .map((record) => record.sound)
+        );
+    }
+
+    stopOrphanedBgmManagerSounds(options = {}) {
+        const bgmKeys = this.getBgmAssetKeys();
+        if (bgmKeys.size <= 0) {
+            return 0;
+        }
+        const trackedSounds = this.getTrackedSoundSet();
+        const exceptSound = options.exceptSound || null;
+        let cleaned = 0;
+        this.getLiveManagerSounds().forEach((sound) => {
+            if (
+                !sound
+                || sound === exceptSound
+                || trackedSounds.has(sound)
+                || !sound.isPlaying
+                || !bgmKeys.has(sound.key || '')
+            ) {
+                return;
+            }
+            if (this.stopManagerSound(sound, { destroy: true })) {
+                cleaned += 1;
+            }
+        });
+        if (cleaned > 0) {
+            this.emitDebugUpdate('orphan_bgm_cleanup', { count: cleaned });
+        }
+        return cleaned;
+    }
+
+    getActiveBgmVoiceRecords() {
+        return [...this.activeVoices]
+            .filter((record) => (
+                !!record
+                && !record.ended
+                && record.bus === 'bgm'
+                && !record.preview
+                && !!record.sound
+                && !record.sound.isDestroyed
+            ))
+            .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+    }
+
+    getLiveBgmManagerSounds() {
+        const bgmKeys = this.getBgmAssetKeys();
+        if (bgmKeys.size <= 0) {
+            return [];
+        }
+        return this.getLiveManagerSounds()
+            .filter((sound) => bgmKeys.has(sound.key || '') && !!sound.isPlaying)
+            .sort((a, b) => {
+                const aAt = Number.isFinite(a.__coreAudioStartedAt) ? a.__coreAudioStartedAt : 0;
+                const bAt = Number.isFinite(b.__coreAudioStartedAt) ? b.__coreAudioStartedAt : 0;
+                return bAt - aAt;
+            });
+    }
+
+    enforceBgmSingleton() {
+        const bgmSounds = this.getLiveBgmManagerSounds();
+        if (bgmSounds.length <= 1) {
+            return 0;
+        }
+
+        const trackedBgmVoices = this.getActiveBgmVoiceRecords();
+        const keeper = trackedBgmVoices[0]?.sound || bgmSounds[0] || null;
+        let cleaned = 0;
+        bgmSounds.forEach((sound) => {
+            if (!sound || sound === keeper) {
+                return;
+            }
+            if (this.stopManagerSound(sound, { destroy: true })) {
+                cleaned += 1;
+            }
+        });
+
+        if (cleaned > 0) {
+            this.emitDebugUpdate('bgm_singleton_enforced', {
+                cleaned,
+                keeperKey: keeper?.key || ''
+            });
+        }
+        return cleaned;
+    }
+
+    getRuntimeSnapshot() {
+        const now = this.getNowMs();
+        const trackedSounds = this.getTrackedSoundSet();
+        const bgmKeys = this.getBgmAssetKeys();
+        const activeVoices = [...this.activeVoices]
+            .filter((record) => !!record && !record.ended && !!record.sound && !record.sound.isDestroyed)
+            .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+            .map((record) => ({
+                voiceId: record.voiceId || '',
+                eventId: record.eventId,
+                assetId: record.assetId,
+                bus: record.bus,
+                preview: !!record.preview,
+                loop: !!record.loop,
+                startedAt: record.startedAt || 0,
+                ageMs: Math.max(0, now - (record.startedAt || now)),
+                isPlaying: !!record.sound?.isPlaying,
+                isPaused: !!record.sound?.isPaused,
+                volume: Number.isFinite(record.sound?.volume) ? record.sound.volume : null,
+                rate: Number.isFinite(record.sound?.rate) ? record.sound.rate : null
+            }));
+        const managerSounds = this.getLiveManagerSounds().map((sound, index) => ({
+            index,
+            key: sound.key || '',
+            assetId: sound.__coreAudioAssetId || this.assetIdByKey.get(sound.key || '') || '',
+            eventId: sound.__coreAudioEventId || '',
+            voiceId: sound.__coreAudioVoiceId || '',
+            tracked: trackedSounds.has(sound),
+            isPlaying: !!sound.isPlaying,
+            isPaused: !!sound.isPaused,
+            loop: !!sound.loop,
+            volume: Number.isFinite(sound.volume) ? sound.volume : null,
+            rate: Number.isFinite(sound.rate) ? sound.rate : null
+        }));
+        return {
+            activeVoices,
+            managerSounds,
+            pendingPlayRequests: Array.from(this.pendingPlayRequests.keys()),
+            orphanBgmVoices: managerSounds.filter((entry) => entry.isPlaying && bgmKeys.has(entry.key) && !entry.tracked)
+        };
     }
 
     enforceVoiceLimit(eventId, maxVoices) {
@@ -716,12 +920,26 @@ class CoreAudioManager {
     }
 
     registerVoice(record) {
+        if (!record.voiceId) {
+            record.voiceId = `voice_${this.nextVoiceId++}`;
+        }
         const eventVoices = this.getActiveVoicesForEvent(record.eventId);
         eventVoices.push(record);
         this.activeVoices.add(record);
+        if (record.sound) {
+            record.sound.__coreAudioVoiceId = record.voiceId;
+            record.sound.__coreAudioEventId = record.eventId;
+            record.sound.__coreAudioAssetId = record.assetId;
+            record.sound.__coreAudioStartedAt = record.startedAt || this.getNowMs();
+        }
         if (record.preview) {
             this.previewVoices.add(record);
         }
+        this.emitDebugUpdate('voice_registered', {
+            voiceId: record.voiceId,
+            eventId: record.eventId,
+            assetId: record.assetId
+        });
     }
 
     onVoiceEnded(record) {
@@ -735,6 +953,11 @@ class CoreAudioManager {
         }
         this.activeVoices.delete(record);
         this.previewVoices.delete(record);
+        this.emitDebugUpdate('voice_ended', {
+            voiceId: record.voiceId || '',
+            eventId: record.eventId,
+            assetId: record.assetId
+        });
     }
 
     scheduleStop(record, fadeOutMs = 0, options = {}) {
@@ -808,6 +1031,7 @@ class CoreAudioManager {
             && record.bus === 'bgm'
             && !record.preview
         ), { fadeOutMs: 0, destroy: true });
+        this.stopOrphanedBgmManagerSounds();
     }
 
     playEvent(eventId, options = {}) {
@@ -899,7 +1123,9 @@ class CoreAudioManager {
                 ended: false
             };
             const onEnd = () => this.onVoiceEnded(voiceRecord);
-            sound.once('complete', onEnd);
+            if (!playback.loop) {
+                sound.once('complete', onEnd);
+            }
             sound.once('stop', onEnd);
             sound.once('destroy', onEnd);
             sound.setVolume(playback.volume);
@@ -961,6 +1187,9 @@ class CoreAudioManager {
             fadeOutMs,
             destroy: true
         });
+        if (eventId === 'bgm_main') {
+            this.stopOrphanedBgmManagerSounds();
+        }
     }
 
     stopAll(options = {}) {
@@ -1125,6 +1354,7 @@ class CoreAudioManager {
     }
 
     getDebugSnapshot() {
+        const runtime = this.getRuntimeSnapshot();
         return {
             manifest: cloneData(this.manifestMeta),
             manifestStats: this.getManifestStats(),
@@ -1152,7 +1382,8 @@ class CoreAudioManager {
             })),
             lastSaveResult: cloneData(this.lastSaveResult),
             recentEvents: cloneData(this.recentEvents.slice(0, 24)),
-            recentAudioTrace: cloneData(this.recentAudioTrace.slice(0, 64))
+            recentAudioTrace: cloneData(this.recentAudioTrace.slice(0, 64)),
+            runtime: cloneData(runtime)
         };
     }
 }

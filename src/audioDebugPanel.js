@@ -9,6 +9,7 @@
             position: fixed;
             right: 12px;
             top: 12px;
+            bottom: 12px;
             z-index: 21000;
             width: min(1180px, calc(100vw - 24px));
             pointer-events: none;
@@ -46,8 +47,9 @@
             border-radius: 12px;
             box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
             backdrop-filter: blur(8px);
-            overflow: hidden;
+            overflow: auto;
             display: none;
+            max-height: calc(100vh - 68px);
         }
         #audio-debug-root.open #audio-debug-panel {
             display: block;
@@ -203,6 +205,20 @@
             padding: 8px;
             background: rgba(2, 9, 14, 0.72);
         }
+        #audio-runtime-state {
+            margin: 0;
+            font-size: 11px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: rgba(215, 230, 235, 0.76);
+            border: 1px solid rgba(79, 169, 198, 0.16);
+            border-radius: 8px;
+            padding: 8px;
+            background: rgba(2, 9, 14, 0.72);
+            min-height: 132px;
+            max-height: 220px;
+            overflow: auto;
+        }
         @media (max-width: 1080px) {
             .audio-debug-content {
                 grid-template-columns: 1fr;
@@ -314,6 +330,10 @@ class CoreAudioDebugPanel {
                     <h3>Bus</h3>
                     <div id="audio-bus-grid" class="audio-bus-grid"></div>
                 </div>
+                <div class="audio-section" style="margin: 0 10px 10px; min-height: 0;">
+                    <h3>Runtime</h3>
+                    <pre id="audio-runtime-state"></pre>
+                </div>
                 <div class="audio-status">
                     <span id="audio-status-manifest"></span>
                     <span id="audio-status-save"></span>
@@ -358,6 +378,7 @@ class CoreAudioDebugPanel {
             playA: root.querySelector('#audio-play-a'),
             playB: root.querySelector('#audio-play-b'),
             busGrid: root.querySelector('#audio-bus-grid'),
+            runtimeState: root.querySelector('#audio-runtime-state'),
             statusManifest: root.querySelector('#audio-status-manifest'),
             statusSave: root.querySelector('#audio-status-save')
         };
@@ -811,10 +832,55 @@ class CoreAudioDebugPanel {
 
     renderStatus() {
         const stats = this.snapshot?.manifestStats || { total: 0, loaded: 0, loading: 0 };
+        const runtime = this.snapshot?.runtime || {};
+        const trackedVoiceCount = Array.isArray(runtime.activeVoices) ? runtime.activeVoices.length : 0;
+        const managerSoundCount = Array.isArray(runtime.managerSounds) ? runtime.managerSounds.length : 0;
+        const orphanBgmCount = Array.isArray(runtime.orphanBgmVoices) ? runtime.orphanBgmVoices.length : 0;
         this.dom.manifestPill.textContent = `manifest ${stats.loaded}/${stats.total} (loading ${stats.loading})`;
-        this.dom.statusManifest.textContent = `assets: ${stats.total} | loaded: ${stats.loaded} | queue: ${stats.loading} | preloadLimit: ${stats.preloadLimit}`;
+        this.dom.statusManifest.textContent = `assets: ${stats.total} | loaded: ${stats.loaded} | queue: ${stats.loading} | voices: ${trackedVoiceCount} | manager: ${managerSoundCount} | orphanBgm: ${orphanBgmCount}`;
         const save = this.snapshot?.lastSaveResult || { ok: true, message: '' };
         this.dom.statusSave.textContent = `last save: ${save.ok ? 'ok' : 'failed'} ${save.message || ''}`;
+    }
+
+    renderRuntimeState() {
+        const runtime = this.snapshot?.runtime || {};
+        const voices = Array.isArray(runtime.activeVoices) ? runtime.activeVoices : [];
+        const managerSounds = Array.isArray(runtime.managerSounds) ? runtime.managerSounds : [];
+        const orphanBgmVoices = Array.isArray(runtime.orphanBgmVoices) ? runtime.orphanBgmVoices : [];
+        const pending = Array.isArray(runtime.pendingPlayRequests) ? runtime.pendingPlayRequests : [];
+        const lines = [
+            `trackedVoices=${voices.length} managerSounds=${managerSounds.length} pending=${pending.length} orphanBgm=${orphanBgmVoices.length}`
+        ];
+
+        if (orphanBgmVoices.length > 0) {
+            lines.push('orphanBgm:');
+            orphanBgmVoices.slice(0, 6).forEach((entry) => {
+                lines.push(`  ${entry.key} asset=${entry.assetId || '-'} event=${entry.eventId || '-'} loop=${entry.loop} playing=${entry.isPlaying}`);
+            });
+        }
+
+        if (voices.length > 0) {
+            lines.push('activeVoices:');
+            voices.slice(0, 10).forEach((voice) => {
+                lines.push(`  ${voice.voiceId} ${voice.eventId}/${voice.assetId} bus=${voice.bus} loop=${voice.loop} playing=${voice.isPlaying} age=${this.formatAge(voice.ageMs)}`);
+            });
+        }
+
+        if (pending.length > 0) {
+            lines.push('pendingRequests:');
+            pending.slice(0, 10).forEach((key) => {
+                lines.push(`  ${key}`);
+            });
+        }
+
+        if (managerSounds.length > 0) {
+            lines.push('managerSounds:');
+            managerSounds.slice(0, 10).forEach((entry) => {
+                lines.push(`  ${entry.key} asset=${entry.assetId || '-'} event=${entry.eventId || '-'} tracked=${entry.tracked} playing=${entry.isPlaying} loop=${entry.loop}`);
+            });
+        }
+
+        this.dom.runtimeState.textContent = lines.join('\n');
     }
 
     render() {
@@ -827,6 +893,7 @@ class CoreAudioDebugPanel {
         this.renderEventDetail();
         this.renderAssetList();
         this.renderBusGrid();
+        this.renderRuntimeState();
         this.renderStatus();
         this.dom.abA.value = this.assetAB.a;
         this.dom.abB.value = this.assetAB.b;

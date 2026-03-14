@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "savedAt": 1773472786190,
+  "savedAt": 1773477025896,
   "manifestPath": "audio-library.manifest.json",
   "busVolumes": {
     "master": 0.5,
-    "bgm": 0.51,
+    "bgm": 0.76,
     "sfx": 0.75,
-    "ui": 0.58,
+    "ui": 0.66,
     "ambience": 0.62
   },
   "appliedEventBindings": {
