@@ -407,6 +407,165 @@ const SceneInitMixin = {
     createPoolNodesFromLibrary() {
         return NODE_LIBRARY.map((node, index) => ({ ...node, index }));
     },
+    createDefaultStartupSequence() {
+        return {
+            phase: 'loading',
+            queueCursor: 0,
+            queueTimer: 0,
+            queueInterval: 0.06,
+            completed: 0,
+            total: 0,
+            roamTime: 0,
+            readyShown: false,
+            introSettleTime: 0
+        };
+    },
+    hideExternalDebugUi() {
+        const tuningPanel = document.getElementById('tuning-panel');
+        const tuningToggle = document.getElementById('tuning-toggle');
+        const floatingAddNode = document.getElementById('floating-add-node');
+        if (tuningPanel) {
+            tuningPanel.style.display = 'none';
+        }
+        if (tuningToggle) {
+            tuningToggle.style.display = 'none';
+        }
+        if (floatingAddNode) {
+            floatingAddNode.style.display = 'none';
+        }
+        this.ui?.overlay?.classList.add('hidden');
+    },
+    beginStartupSequence() {
+        this.hideExternalDebugUi();
+        this.startupSequence = this.createDefaultStartupSequence();
+        const manager = this.ensureAudioSystem?.();
+        const assetIds = manager?.assetCatalog?.map((asset) => asset.id).filter((id) => typeof id === 'string' && id.length > 0) || [];
+        this.startupSequence.assetIds = assetIds;
+        this.startupSequence.total = assetIds.length;
+        this.paused = true;
+        this.menuMode = null;
+        this.sessionStarted = false;
+        this.showStartupLoading?.(0);
+    },
+    isStartupSequenceActive() {
+        const phase = this.startupSequence?.phase || '';
+        return phase === 'loading' || phase === 'ready';
+    },
+    isStartupWorldPreviewOnly() {
+        const phase = this.startupSequence?.phase || '';
+        return phase === 'loading' || phase === 'ready';
+    },
+    updateStartupPreviewCamera(frameDt) {
+        const state = this.startupSequence;
+        if (!state || !this.cameraRig) {
+            return;
+        }
+        state.roamTime = (state.roamTime || 0) + frameDt;
+        const t = state.roamTime;
+        const radiusX = 680;
+        const radiusY = 460;
+        const driftX = Math.cos(t * 0.16) * radiusX + Math.sin(t * 0.07) * 220;
+        const driftY = Math.sin(t * 0.13) * radiusY + Math.cos(t * 0.05) * 180;
+        const zoom = 0.34 + Math.sin(t * 0.11) * 0.02;
+        this.cameraRig.initialized = true;
+        this.cameraRig.x = driftX;
+        this.cameraRig.y = driftY;
+        this.cameraRig.targetX = driftX;
+        this.cameraRig.targetY = driftY;
+        this.cameraRig.baseFocusX = driftX;
+        this.cameraRig.baseFocusY = driftY;
+        this.cameraRig.focusX = driftX;
+        this.cameraRig.focusY = driftY;
+        this.cameraRig.leadX = 0;
+        this.cameraRig.leadY = 0;
+        this.cameraRig.zoom = zoom;
+        this.cameraRig.targetZoom = zoom;
+        this.cameraRig.manualZoom = zoom;
+        this.cameraRig.desiredZoom = zoom;
+        this.cameraRig.autoZoomEnabled = false;
+        this.cameraRig.renderOffsetX = 0;
+        this.cameraRig.renderOffsetY = 0;
+        this.cameraRig.hudOffsetX = 0;
+        this.cameraRig.hudOffsetY = 0;
+    },
+    getStartupLoadProgress() {
+        const state = this.startupSequence;
+        const manager = this.audioManager;
+        const assetIds = state?.assetIds || [];
+        let completed = 0;
+        let loaded = 0;
+        assetIds.forEach((assetId) => {
+            const status = manager?.getAssetState?.(assetId)?.status || 'idle';
+            if (status === 'loaded') {
+                loaded += 1;
+                completed += 1;
+            } else if (status === 'error' || status === 'missing') {
+                completed += 1;
+            }
+        });
+        return {
+            loaded,
+            completed,
+            total: assetIds.length,
+            progress: assetIds.length > 0 ? completed / assetIds.length : 1
+        };
+    },
+    updateStartupLoading(frameDt) {
+        const state = this.startupSequence;
+        const manager = this.audioManager;
+        if (!state || !manager) {
+            return;
+        }
+        state.queueTimer = Math.max(0, (state.queueTimer || 0) - frameDt);
+        while (state.queueCursor < state.assetIds.length && state.queueTimer <= 0) {
+            const assetId = state.assetIds[state.queueCursor];
+            state.queueCursor += 1;
+            state.queueTimer = state.queueInterval;
+            manager.ensureAssetLoaded?.(assetId);
+            break;
+        }
+        const progress = this.getStartupLoadProgress();
+        state.completed = progress.completed;
+        state.total = progress.total;
+        this.showStartupLoading?.(progress.progress);
+        if (state.queueCursor >= state.assetIds.length && progress.completed >= progress.total) {
+            state.phase = 'ready';
+        }
+    },
+    handleStartupAction() {
+        if (this.startupSequence?.phase !== 'ready') {
+            return;
+        }
+        this.resetSimulation(true);
+        this.playAudioEvent?.('game_start_new_run', { source: 'startup-sequence' });
+        this.startupSequence = null;
+        this.menuMode = null;
+        this.paused = false;
+        this.sessionStarted = true;
+        this.hideStartupOverlay?.();
+    },
+    updateStartupSequence(frameDt, deltaMs) {
+        const state = this.startupSequence;
+        if (!state) {
+            return false;
+        }
+        this.hideExternalDebugUi();
+        if (state.phase === 'loading' || state.phase === 'ready') {
+            this.worldTime += frameDt * 0.18;
+            this.updateStartupPreviewCamera(frameDt);
+            if (state.phase === 'loading') {
+                this.profileFrameSection('startupLoading', () => this.updateStartupLoading(frameDt));
+            } else if (!state.readyShown) {
+                state.readyShown = true;
+                this.showStartupReady?.();
+            }
+            this.profileFrameSection('display', () => this.updateDisplay(frameDt));
+            this.profileFrameSection('render', () => this.render());
+            this.endFramePerformanceProbe();
+            return true;
+        }
+        return false;
+    },
     resetSimulation(startSession = true) {
         this.paused = false;
         this.sessionStarted = startSession;
@@ -451,7 +610,11 @@ const SceneInitMixin = {
         this.beginFramePerformanceProbe(deltaMs);
         this.profileFrameSection('fpsOverlay', () => this.updateFpsOverlay?.(deltaMs));
 
-            if (this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
+        if (this.isStartupSequenceActive?.() && this.updateStartupSequence(frameDt, deltaMs)) {
+            return;
+        }
+
+            if (this.isMenuUiEnabled?.() && this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
                 if (this.menuMode === 'pause') {
                     this.endFramePerformanceProbe();
                     this.resumeGame();
