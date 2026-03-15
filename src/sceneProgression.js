@@ -1042,6 +1042,57 @@ const SceneProgressionMixin = {
         });
         return objective;
     },
+    getStageEntryNodeTarget(stage = this.getCurrentStageDef()) {
+        const baseNodes = DEFAULT_BASE_CHAIN.length;
+        if (!stage) {
+            return baseNodes;
+        }
+        return Math.max(baseNodes, Math.round(stage?.nodeTargets?.entry ?? baseNodes));
+    },
+    growClusterToTargetNodeCount(targetNodeCount) {
+        const target = Math.max(DEFAULT_BASE_CHAIN.length, Math.round(targetNodeCount || DEFAULT_BASE_CHAIN.length));
+        const current = this.getPlayerNodeCount();
+        const missing = Math.max(0, target - current);
+        if (missing <= 0) {
+            return 0;
+        }
+        const grown = this.growCluster(missing);
+        const nodeCount = this.getPlayerNodeCount();
+        this.player.nextGrowthCost = this.getGrowthCostForNodeCount(nodeCount);
+        return grown;
+    },
+    debugSwitchToStage(stageNumber) {
+        if (!this.isDebugToolsEnabled()) {
+            return false;
+        }
+
+        this.ensureRunProgressionState();
+        const stageIndex = clamp(Math.round(stageNumber) - 1, 0, this.getStageCount() - 1);
+        const previousStageIndex = this.runState.stageIndex || 0;
+
+        this.runState.complete = false;
+        this.runState.completeTimer = 0;
+        this.player.dead = false;
+        this.player.deathTimer = 0;
+        this.clearActivePreyChases?.('stage-switch');
+        this.prey = [];
+        this.runState.stageIndex = stageIndex;
+        this.runState.stageProgress = 0;
+        this.runState.objectiveSpawned = false;
+        this.runState.objectiveId = '';
+        this.runState.stageFlash = 1.1;
+        this.runState.stageSignal = 1;
+        this.runState.stageChangedAt = this.worldTime;
+        this.syncSpawnTimersForStage(true);
+        this.populateStagePrey?.(true);
+        this.growClusterToTargetNodeCount(this.getStageEntryNodeTarget());
+        this.syncSceneBgm?.({ source: 'debug-stage-switch' });
+        this.playAudioEvent?.('stage_advance', {
+            fromStage: previousStageIndex,
+            toStage: this.runState.stageIndex || 0
+        });
+        return true;
+    },
     advanceStage() {
         const previousStageIndex = this.runState.stageIndex || 0;
         if ((this.runState.stageIndex || 0) >= this.getStageCount() - 1) {

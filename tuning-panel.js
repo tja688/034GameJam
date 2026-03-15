@@ -2288,17 +2288,11 @@ function buildTuningPanel() {
     const uiState = loadTuningUiState();
     panel.className = 'collapsed';
 
-    // ─── 切换按钮 ──────────────────────────────────
-    const toggle = document.createElement('button');
-    toggle.id = 'tuning-toggle';
-    toggle.textContent = '⚙ 开发调参';
+    // ─── 面板折叠状态 ──────────────────────────────
     const setPanelCollapsed = (collapsed) => {
         panel.classList.toggle('collapsed', collapsed);
         syncTuningPanelState();
     };
-    toggle.addEventListener('click', () => {
-        setPanelCollapsed(isTuningPanelOpen());
-    });
 
     // ─── Header ───────────────────────────────────
     const header = document.createElement('div');
@@ -2539,7 +2533,7 @@ function buildTuningPanel() {
 
     panel.appendChild(body);
     document.body.appendChild(panel);
-    document.body.appendChild(toggle);
+    // 不放置浮动按钮，统一由快捷键开关。
 
     const updateCompareStatus = () => {
         if (!DEV_WRITE_API_AVAILABLE) {
@@ -2697,9 +2691,13 @@ function buildTuningPanel() {
         });
     });
 
-    // ─── 键盘: Tab 切换面板 ─────────────────────────
+    // ─── 键盘: ` / ~ / · 切换面板 ───────────────────
     document.addEventListener('keydown', (e) => {
-        if (e.key === '`' || e.key === '~') {
+        const isToggleKey = e.code === 'Backquote'
+            || e.key === '`'
+            || e.key === '~'
+            || e.key === '·';
+        if (isToggleKey) {
             setPanelCollapsed(isTuningPanelOpen());
             e.preventDefault();
         }

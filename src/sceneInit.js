@@ -661,6 +661,11 @@ const SceneInitMixin = {
             }
 
             if (this.isDebugToolsEnabled() && !this.player.dead && !this.player.edit.active) {
+                const stageHotkeys = [this.keys.stage1, this.keys.stage2, this.keys.stage3, this.keys.stage4, this.keys.stage5];
+                const stageHotkeyIndex = stageHotkeys.findIndex((key) => key && Phaser.Input.Keyboard.JustDown(key));
+                if (stageHotkeyIndex >= 0) {
+                    this.debugSwitchToStage?.(stageHotkeyIndex + 1);
+                }
                 if (Phaser.Input.Keyboard.JustDown(this.keys.expand)) {
                     this.addDebugNode();
                     this.expandHoldTimer = 0;
