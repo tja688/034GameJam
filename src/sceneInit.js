@@ -11,7 +11,11 @@ const SceneInitMixin = {
             pendingDevourBurst: 0,
             lastDevourBurst: 0,
             pendingDevourBatch: 0,
-            lastDevourBatch: 0
+            lastDevourBatch: 0,
+            stutterLogLoaded: false,
+            stutterLogEntries: [],
+            stutterLogUnsavedCount: 0,
+            stutterLogLastFlushAt: 0
         };
     },
     beginFramePerformanceProbe(deltaMs = 16.67) {
@@ -62,6 +66,8 @@ const SceneInitMixin = {
         probe.lastPeakMs = peakMs;
         probe.lastDevourBurst = probe.pendingDevourBurst || 0;
         probe.lastDevourBatch = probe.pendingDevourBatch || 0;
+        this.recordStutterFrame(probe.current.deltaMs, peakSection, peakMs, probe.current.sections);
+        this.flushStutterLog(false);
         probe.pendingDevourBurst = 0;
         probe.pendingDevourBatch = 0;
         probe.current = null;
@@ -77,6 +83,119 @@ const SceneInitMixin = {
             this.performanceProbe = this.createDefaultPerformanceProbe();
         }
         this.performanceProbe.pendingDevourBatch += Math.max(0, Math.round(count) || 0);
+    },
+    getStutterThresholdMs() {
+        return Math.max(8, this.getRunTuningValue?.('performanceStutterThresholdMs', 22) || 22);
+    },
+    ensureStutterLogLoaded() {
+        if (!this.performanceProbe) {
+            this.performanceProbe = this.createDefaultPerformanceProbe();
+        }
+        if (this.performanceProbe.stutterLogLoaded) {
+            return;
+        }
+        this.performanceProbe.stutterLogLoaded = true;
+        const persisted = typeof readStoredJson === 'function'
+            ? readStoredJson(STORAGE_KEYS.performanceLog)
+            : null;
+        const entries = Array.isArray(persisted?.entries) ? persisted.entries : [];
+        this.performanceProbe.stutterLogEntries = entries.slice(-400);
+        this.performanceProbe.stutterLogUnsavedCount = 0;
+    },
+    flushStutterLog(force = false) {
+        const probe = this.performanceProbe;
+        if (!probe) {
+            return false;
+        }
+        if (probe.stutterLogUnsavedCount <= 0 && !force) {
+            return true;
+        }
+        const now = Date.now();
+        if (!force && now - (probe.stutterLogLastFlushAt || 0) < 5000) {
+            return false;
+        }
+        const payload = {
+            version: 1,
+            updatedAt: now,
+            thresholdMs: this.getStutterThresholdMs(),
+            entries: (probe.stutterLogEntries || []).slice(-400)
+        };
+        const ok = typeof writeStoredJson === 'function'
+            ? writeStoredJson(STORAGE_KEYS.performanceLog, payload)
+            : false;
+        if (ok) {
+            probe.stutterLogUnsavedCount = 0;
+            probe.stutterLogLastFlushAt = now;
+        }
+        return ok;
+    },
+    recordStutterFrame(deltaMs, peakSection, peakMs, sections = {}) {
+        if (!this.performanceProbe) {
+            this.performanceProbe = this.createDefaultPerformanceProbe();
+        }
+        const thresholdMs = this.getStutterThresholdMs();
+        if (!Number.isFinite(deltaMs) || deltaMs <= thresholdMs) {
+            return;
+        }
+        this.ensureStutterLogLoaded();
+        const probe = this.performanceProbe;
+        const sectionEntries = Object.entries(sections || {})
+            .map(([name, value]) => ({ name, ms: Number(value) || 0 }))
+            .filter((entry) => entry.ms > 0)
+            .sort((a, b) => b.ms - a.ms);
+        const sectionTotalMs = sectionEntries.reduce((sum, entry) => sum + entry.ms, 0);
+        const sectionBreakdown = sectionEntries.slice(0, 16).map((entry) => ({
+            name: entry.name,
+            ms: Number(entry.ms.toFixed(3)),
+            ratio: Number((deltaMs > 0 ? entry.ms / deltaMs : 0).toFixed(4))
+        }));
+        const now = Date.now();
+        const isoTime = new Date(now).toISOString();
+        const mode = this.startupSequence
+            ? 'startup'
+            : this.menuMode
+                ? `menu:${this.menuMode}`
+                : this.paused
+                    ? 'paused'
+                    : 'gameplay';
+        const entry = {
+            timestamp: now,
+            isoTime,
+            frame: probe.frame || 0,
+            deltaMs: Number(deltaMs.toFixed(3)),
+            thresholdMs,
+            peakSection: peakSection || '',
+            peakMs: Number((peakMs || 0).toFixed(3)),
+            sectionTotalMs: Number(sectionTotalMs.toFixed(3)),
+            sectionBreakdown,
+            state: {
+                mode,
+                stageIndex: this.runState?.stageIndex ?? -1,
+                nodeCount: this.activeNodes?.length || 0,
+                preyCount: this.prey?.length || 0,
+                fragmentCount: this.fragments?.length || 0,
+                effectCount: this.effects?.length || 0,
+                devourBurst: probe.pendingDevourBurst || 0,
+                devourBatch: probe.pendingDevourBatch || 0
+            }
+        };
+
+        probe.stutterLogEntries.push(entry);
+        if (probe.stutterLogEntries.length > 400) {
+            probe.stutterLogEntries = probe.stutterLogEntries.slice(-400);
+        }
+        probe.stutterLogUnsavedCount = (probe.stutterLogUnsavedCount || 0) + 1;
+
+        console.warn(
+            `[STUTTER] ${isoTime} frame=${entry.frame} delta=${entry.deltaMs}ms threshold=${thresholdMs}ms peak=${entry.peakSection}:${entry.peakMs}ms mode=${mode}`
+        );
+        if (sectionBreakdown.length > 0) {
+            console.warn('[STUTTER] sections:', sectionBreakdown);
+        }
+        console.warn('[STUTTER] state:', entry.state);
+
+        const shouldFlushNow = probe.stutterLogUnsavedCount >= 5;
+        this.flushStutterLog(shouldFlushNow);
     },
     createDefaultEditState() {
         return {

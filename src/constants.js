@@ -495,7 +495,8 @@ const DEFAULT_BASE_CHAIN = [0, 2, 5, 4, 1, 7];
 
 const STORAGE_KEYS = {
     saveSlot: 'bio-core-save-slot-1',
-    audioProfile: 'bio-core-audio-profile-v1'
+    audioProfile: 'bio-core-audio-profile-v1',
+    performanceLog: 'bio-core-performance-stutter-log-v1'
 };
 
 let TOPOLOGY_EDGE_UID = 1;
