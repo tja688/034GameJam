@@ -94,6 +94,47 @@ const SceneRenderMixin = {
             pool.lastVisibleCount = 0;
         });
     },
+    resetBakedSpritePools(poolName = null) {
+        const pools = this.bakedSpritePools || {};
+        const targets = poolName ? [pools[poolName]].filter(Boolean) : Object.values(pools);
+        targets.forEach((pool) => {
+            if (!pool) {
+                return;
+            }
+            (pool.sprites || []).forEach((sprite) => {
+                if (!sprite) {
+                    return;
+                }
+                sprite.setVisible(false);
+                sprite.setAlpha(1);
+                sprite.setScale(1);
+                sprite.setRotation(0);
+                sprite.clearTint();
+            });
+            pool.cursor = 0;
+            pool.idleFrames = 0;
+            pool.lastVisibleCount = 0;
+        });
+    },
+    ensureBakedSpritePoolCapacity(poolName, targetSize = 0, textureKey = 'baked-shape-circle', maxCreate = Infinity) {
+        this.initBakedSpriteRenderer();
+        const pool = this.bakedSpritePools?.[poolName];
+        if (!pool) {
+            return 0;
+        }
+        const target = Math.max(0, Math.round(targetSize) || 0);
+        const budget = Number.isFinite(maxCreate) ? Math.max(0, Math.round(maxCreate) || 0) : Infinity;
+        let created = 0;
+        while (pool.sprites.length < target && created < budget) {
+            const sprite = this.add.image(0, 0, textureKey);
+            sprite.setVisible(false);
+            sprite.setOrigin(0.5, 0.5);
+            pool.layer.add(sprite);
+            pool.sprites.push(sprite);
+            created += 1;
+        }
+        return created;
+    },
     trimBakedSpritePool(pool, activeCount = 0) {
         if (!pool || !Array.isArray(pool.sprites)) {
             return;
@@ -104,9 +145,12 @@ const SceneRenderMixin = {
         if (pool.sprites.length <= targetSize) {
             return;
         }
-        for (let i = pool.sprites.length - 1; i >= targetSize; i -= 1) {
+        const maxTrimPerPass = 16;
+        let trimmed = 0;
+        for (let i = pool.sprites.length - 1; i >= targetSize && trimmed < maxTrimPerPass; i -= 1) {
             pool.sprites[i]?.destroy();
             pool.sprites.pop();
+            trimmed += 1;
         }
         pool.cursor = Math.min(pool.cursor || 0, pool.sprites.length);
         pool.lastVisibleCount = Math.min(pool.lastVisibleCount || 0, pool.sprites.length);
@@ -850,7 +894,7 @@ const SceneRenderMixin = {
                 return;
             }
             pool.idleFrames = (pool.idleFrames || 0) + 1;
-            if (pool.idleFrames >= 180) {
+            if (pool.idleFrames >= 900) {
                 this.trimBakedSpritePool(pool, visibleCount);
                 pool.idleFrames = 0;
             }

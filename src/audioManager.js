@@ -157,7 +157,28 @@ class CoreAudioManager {
 
     handleRuntimeGuardUpdate() {
         const now = this.getNowMs();
-        if (now - this.lastRuntimeGuardAt < 250) {
+        if (now - this.lastRuntimeGuardAt < 1500) {
+            return;
+        }
+        const sounds = Array.isArray(this.sound?.sounds) ? this.sound.sounds : [];
+        if (sounds.length <= 1) {
+            return;
+        }
+        const bgmKeys = this.getBgmAssetKeys();
+        if (bgmKeys.size <= 0) {
+            return;
+        }
+        let liveBgmCount = 0;
+        for (let i = 0; i < sounds.length; i += 1) {
+            const sound = sounds[i];
+            if (sound?.isPlaying && bgmKeys.has(sound.key || '')) {
+                liveBgmCount += 1;
+                if (liveBgmCount > 1) {
+                    break;
+                }
+            }
+        }
+        if (liveBgmCount <= 1) {
             return;
         }
         this.lastRuntimeGuardAt = now;
@@ -577,13 +598,36 @@ class CoreAudioManager {
     }
 
     enforceBgmSingleton() {
-        const bgmSounds = this.getLiveBgmManagerSounds();
+        const bgmKeys = this.getBgmAssetKeys();
+        if (bgmKeys.size <= 0) {
+            return 0;
+        }
+        const managerSounds = this.getLiveManagerSounds();
+        if (managerSounds.length <= 1) {
+            return 0;
+        }
+        const bgmSounds = [];
+        let keeper = null;
+        let keeperStartedAt = -Infinity;
+        managerSounds.forEach((sound) => {
+            if (!sound?.isPlaying || !bgmKeys.has(sound.key || '')) {
+                return;
+            }
+            bgmSounds.push(sound);
+            const startedAt = Number.isFinite(sound.__coreAudioStartedAt) ? sound.__coreAudioStartedAt : 0;
+            if (startedAt >= keeperStartedAt) {
+                keeperStartedAt = startedAt;
+                keeper = sound;
+            }
+        });
         if (bgmSounds.length <= 1) {
             return 0;
         }
 
-        const trackedBgmVoices = this.getActiveBgmVoiceRecords();
-        const keeper = trackedBgmVoices[0]?.sound || bgmSounds[0] || null;
+        const trackedKeeper = this.getCurrentVoiceForEvent('bgm_main')?.sound || null;
+        if (trackedKeeper && bgmSounds.includes(trackedKeeper)) {
+            keeper = trackedKeeper;
+        }
         let cleaned = 0;
         bgmSounds.forEach((sound) => {
             if (!sound || sound === keeper) {

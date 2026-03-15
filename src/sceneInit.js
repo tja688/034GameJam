@@ -417,7 +417,73 @@ const SceneInitMixin = {
             total: 0,
             roamTime: 0,
             readyShown: false,
-            introSettleTime: 0
+            introSettleTime: 0,
+            renderWarmupJobs: [],
+            renderWarmupCursor: 0,
+            renderWarmupCreated: 0,
+            renderWarmupTotal: 0,
+            renderWarmupBudget: 24
+        };
+    },
+    buildStartupRenderWarmupJobs() {
+        const useBaked = this.isGraphicsToggleEnabled?.('graphicsUseBakedSpriteRenderer', true) !== false;
+        if (!useBaked) {
+            return [];
+        }
+        return [
+            { pool: 'prey', target: 420, textureKey: 'baked-shape-circle' },
+            { pool: 'predation', target: 360, textureKey: 'baked-line-core' },
+            { pool: 'fragments', target: 220, textureKey: 'baked-shape-circle' },
+            { pool: 'effects', target: 140, textureKey: 'baked-ring-circle' }
+        ];
+    },
+    runStartupRenderWarmupStep() {
+        const state = this.startupSequence;
+        if (!state || !Array.isArray(state.renderWarmupJobs) || state.renderWarmupJobs.length <= 0) {
+            return;
+        }
+        let budget = Math.max(0, Math.round(state.renderWarmupBudget || 0));
+        if (budget <= 0) {
+            return;
+        }
+        while (budget > 0 && state.renderWarmupCursor < state.renderWarmupJobs.length) {
+            const job = state.renderWarmupJobs[state.renderWarmupCursor];
+            if (!job) {
+                state.renderWarmupCursor += 1;
+                continue;
+            }
+            const created = this.ensureBakedSpritePoolCapacity?.(
+                job.pool,
+                job.target,
+                job.textureKey || 'baked-shape-circle',
+                budget
+            ) || 0;
+            if (created > 0) {
+                state.renderWarmupCreated += created;
+                budget -= created;
+            }
+            const poolSize = this.bakedSpritePools?.[job.pool]?.sprites?.length || 0;
+            if (poolSize >= job.target || created <= 0) {
+                state.renderWarmupCursor += 1;
+            }
+        }
+    },
+    getStartupCombinedProgress() {
+        const state = this.startupSequence;
+        const audio = this.getStartupLoadProgress();
+        const renderTotal = Math.max(0, Math.round(state?.renderWarmupTotal || 0));
+        const renderCompleted = Math.min(
+            renderTotal,
+            Math.max(0, Math.round(state?.renderWarmupCreated || 0))
+        );
+        const total = audio.total + renderTotal;
+        const completed = audio.completed + renderCompleted;
+        return {
+            audio,
+            render: { completed: renderCompleted, total: renderTotal },
+            completed,
+            total,
+            progress: total > 0 ? completed / total : 1
         };
     },
     hideExternalDebugUi() {
@@ -438,10 +504,19 @@ const SceneInitMixin = {
     beginStartupSequence() {
         this.hideExternalDebugUi();
         this.startupSequence = this.createDefaultStartupSequence();
+        this.initBakedSpriteRenderer?.();
+        this.initInfiniteMapBackgrounds?.();
+        this.initLivingEnergyBar?.();
         const manager = this.ensureAudioSystem?.();
         const assetIds = manager?.assetCatalog?.map((asset) => asset.id).filter((id) => typeof id === 'string' && id.length > 0) || [];
         this.startupSequence.assetIds = assetIds;
         this.startupSequence.total = assetIds.length;
+        this.startupSequence.renderWarmupJobs = this.buildStartupRenderWarmupJobs();
+        this.startupSequence.renderWarmupCursor = 0;
+        this.startupSequence.renderWarmupCreated = 0;
+        this.startupSequence.renderWarmupTotal = this.startupSequence.renderWarmupJobs.reduce((sum, job) => (
+            sum + Math.max(0, Math.round(job?.target || 0))
+        ), 0);
         this.paused = true;
         this.menuMode = null;
         this.sessionStarted = false;
@@ -524,11 +599,14 @@ const SceneInitMixin = {
             manager.ensureAssetLoaded?.(assetId);
             break;
         }
-        const progress = this.getStartupLoadProgress();
+        this.runStartupRenderWarmupStep();
+        const progress = this.getStartupCombinedProgress();
         state.completed = progress.completed;
         state.total = progress.total;
         this.showStartupLoading?.(progress.progress);
-        if (state.queueCursor >= state.assetIds.length && progress.completed >= progress.total) {
+        const audioDone = state.queueCursor >= state.assetIds.length && progress.audio.completed >= progress.audio.total;
+        const renderDone = progress.render.completed >= progress.render.total;
+        if (audioDone && renderDone) {
             state.phase = 'ready';
         }
     },
@@ -536,7 +614,7 @@ const SceneInitMixin = {
         if (this.startupSequence?.phase !== 'ready') {
             return;
         }
-        this.resetSimulation(true);
+        this.resetSimulation(true, { preserveBakedPools: true });
         this.playAudioEvent?.('game_start_new_run', { source: 'startup-sequence' });
         this.startupSequence = null;
         this.menuMode = null;
@@ -566,12 +644,16 @@ const SceneInitMixin = {
         }
         return false;
     },
-    resetSimulation(startSession = true) {
+    resetSimulation(startSession = true, options = {}) {
         this.paused = false;
         this.sessionStarted = startSession;
         this.timeScaleFactor = 1;
         this.worldTime = 0;
-        this.destroyBakedSpritePool?.();
+        if (options?.preserveBakedPools === false) {
+            this.destroyBakedSpritePool?.();
+        } else {
+            this.resetBakedSpritePools?.();
+        }
         this.effects = [];
         this.fragments = [];
         this.resetFragmentPool?.();
