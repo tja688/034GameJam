@@ -775,24 +775,50 @@ class CoreAudioManager {
             .map((candidate) => candidate.id);
     }
 
+    isPlayerPulseEvent(eventId) {
+        return isNonEmptyString(eventId) && eventId.startsWith('player_pulse_');
+    }
+
+    isPulseFriendlyAssetId(assetId) {
+        if (!isNonEmptyString(assetId)) {
+            return false;
+        }
+        const normalized = assetId.trim().toLowerCase();
+        return /(^pulse_|pulse_|step_|swim|bubble_moves|move_|source|compressor|shell|prism|dart|blade|inverse)/.test(normalized);
+    }
+
+    filterCandidatePoolForEvent(eventId, pool) {
+        const normalizedPool = normalizeAudioAssetList(pool);
+        if (normalizedPool.length <= 0) {
+            return [];
+        }
+        if (!this.isPlayerPulseEvent(eventId)) {
+            return normalizedPool;
+        }
+        return normalizedPool.filter((assetId) => this.isPulseFriendlyAssetId(assetId));
+    }
+
     findGroupFallbackPool(eventId, config, limit = 8) {
         const definition = getAudioEventDefinition(eventId) || {};
         const hintsByGroup = {
             ui: ['ui', 'button', 'click', 'open', 'close', 'select'],
             editor: ['ui', 'button', 'click', 'select'],
             topology: ['ui', 'button', 'click', 'select'],
-            player: ['player', 'hit', 'hurt', 'jump', 'swim', 'step'],
+            player: ['player', 'pulse', 'source', 'compressor', 'shell', 'prism', 'dart', 'blade', 'inverse', 'swim', 'step', 'move', 'bubble'],
             prey: ['spawn', 'hit', 'capture', 'explode', 'jellyfish'],
             progression: ['transition', 'task', 'completed', 'spawn', 'open', 'close'],
             system: ['ui', 'button', 'transition', 'open']
         };
         const groupHints = hintsByGroup[definition.group] || [];
-        const busHints = config.bus === 'ui'
+        const busHints = this.isPlayerPulseEvent(eventId)
+            ? ['pulse', 'step', 'swim', 'move', 'bubble']
+            : config.bus === 'ui'
             ? ['ui', 'button', 'click', 'select']
             : config.bus === 'ambience'
                 ? ['ambience', 'ocean', 'main']
                 : ['hit', 'spawn', 'move', 'step'];
-        return this.findHintAssetPool([...groupHints, ...busHints], limit);
+        const pool = this.findHintAssetPool([...groupHints, ...busHints], limit);
+        return this.filterCandidatePoolForEvent(eventId, pool);
     }
 
     resolveCandidatePool(eventId, config, forcedAssetId = '') {
@@ -800,11 +826,14 @@ class CoreAudioManager {
             return [forcedAssetId.trim()];
         }
         const configuredPool = normalizeAudioAssetList(config.assetPool || []);
-        const knownPool = configuredPool.filter((assetId) => this.assetById.has(assetId));
+        const knownPool = this.filterCandidatePoolForEvent(
+            eventId,
+            configuredPool.filter((assetId) => this.assetById.has(assetId))
+        );
         if (knownPool.length > 0) {
             return knownPool;
         }
-        const fuzzy = this.findFuzzyAssetPool(eventId, 8);
+        const fuzzy = this.filterCandidatePoolForEvent(eventId, this.findFuzzyAssetPool(eventId, 8));
         if (fuzzy.length > 0) {
             return fuzzy;
         }
@@ -812,8 +841,11 @@ class CoreAudioManager {
         if (groupFallback.length > 0) {
             return groupFallback;
         }
+        if (this.isPlayerPulseEvent(eventId)) {
+            return [];
+        }
         if (configuredPool.length > 0) {
-            return configuredPool;
+            return this.filterCandidatePoolForEvent(eventId, configuredPool);
         }
         return fuzzy;
     }
