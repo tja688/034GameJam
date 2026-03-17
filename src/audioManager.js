@@ -90,6 +90,7 @@ class CoreAudioManager {
         this.nextVoiceId = 1;
         this.runtimeGuardInstalled = false;
         this.lastRuntimeGuardAt = 0;
+        this.eventSkipRecordAt = {};
 
         this.bootstrap();
     }
@@ -563,6 +564,30 @@ class CoreAudioManager {
         this.emitDebugUpdate('event', { eventId, status, reason, assetId });
     }
 
+    shouldThrottleSkipRecord(eventId, reason, nowMs) {
+        if (!isNonEmptyString(eventId) || !isNonEmptyString(reason)) {
+            return false;
+        }
+        const throttleMsByReason = {
+            disabled: 220,
+            suppressed: 220
+        };
+        const throttleMs = throttleMsByReason[reason] || 0;
+        if (throttleMs <= 0) {
+            return false;
+        }
+        if (!this.eventSkipRecordAt[eventId] || typeof this.eventSkipRecordAt[eventId] !== 'object') {
+            this.eventSkipRecordAt[eventId] = {};
+        }
+        const bucket = this.eventSkipRecordAt[eventId];
+        const lastAt = Number.isFinite(bucket[reason]) ? bucket[reason] : 0;
+        if (nowMs - lastAt < throttleMs) {
+            return true;
+        }
+        bucket[reason] = nowMs;
+        return false;
+    }
+
     buildPendingPlayRequestKey(eventId, assetId) {
         return `${eventId}::${assetId || ''}`;
     }
@@ -688,6 +713,114 @@ class CoreAudioManager {
                 .filter((record) => !!record && !record.ended && !!record.sound && !record.sound.isDestroyed)
                 .map((record) => record.sound)
         );
+    }
+
+    getEventAssetKeys(eventId) {
+        if (!isNonEmptyString(eventId)) {
+            return new Set();
+        }
+        const keys = new Set();
+        const assetIds = normalizeAudioAssetList(this.getResolvedEventConfig(eventId).assetPool || []);
+        assetIds.forEach((assetId) => {
+            const key = this.getAssetEntry(assetId)?.key || '';
+            if (key) {
+                keys.add(key);
+            }
+        });
+        return keys;
+    }
+
+    stopContinuousVoices(options = {}) {
+        const now = this.getNowMs();
+        const minAgeMs = Number.isFinite(options.minAgeMs) ? Math.max(0, options.minAgeMs) : 900;
+        const includeBgm = options.includeBgm !== false;
+        const includeAmbience = options.includeAmbience !== false;
+        let stoppedVoiceCount = 0;
+
+        this.stopVoicesByPredicate((record) => {
+            if (!record || record.preview || record.ended) {
+                return false;
+            }
+            if (!includeBgm && record.bus === 'bgm') {
+                return false;
+            }
+            if (!includeAmbience && record.bus === 'ambience') {
+                return false;
+            }
+            const ageMs = Math.max(0, now - (record.startedAt || now));
+            const isContinuous = !!record.loop || ageMs >= minAgeMs || record.bus === 'ambience';
+            if (isContinuous) {
+                stoppedVoiceCount += 1;
+            }
+            return isContinuous;
+        }, { fadeOutMs: 0, destroy: true });
+
+        const trackedSounds = this.getTrackedSoundSet();
+        let stoppedManagerCount = 0;
+        this.getLiveManagerSounds().forEach((sound) => {
+            if (!sound || !sound.isPlaying || trackedSounds.has(sound)) {
+                return;
+            }
+            if (!includeBgm && this.getBgmAssetKeys().has(sound.key || '')) {
+                return;
+            }
+            const isContinuous = !!sound.loop || includeAmbience;
+            if (!isContinuous) {
+                return;
+            }
+            if (this.stopManagerSound(sound, { destroy: true })) {
+                stoppedManagerCount += 1;
+            }
+        });
+
+        if (stoppedVoiceCount + stoppedManagerCount > 0) {
+            this.emitDebugUpdate('continuous_audio_stop', {
+                stoppedVoiceCount,
+                stoppedManagerCount
+            });
+        }
+        return { stoppedVoiceCount, stoppedManagerCount };
+    }
+
+    brutalStopForSweep(eventId, options = {}) {
+        const includeBgm = options.includeBgm === true;
+        const includeAmbience = options.includeAmbience !== false;
+        const eventKeys = this.getEventAssetKeys(eventId);
+
+        this.stopEvent(eventId, { fadeOutMs: 0 });
+        const continuous = this.stopContinuousVoices({
+            includeBgm,
+            includeAmbience,
+            minAgeMs: 600
+        });
+
+        let stoppedByEventKey = 0;
+        if (eventKeys.size > 0) {
+            this.getLiveManagerSounds().forEach((sound) => {
+                if (!sound || !sound.isPlaying || !eventKeys.has(sound.key || '')) {
+                    return;
+                }
+                if (this.stopManagerSound(sound, { destroy: true })) {
+                    stoppedByEventKey += 1;
+                }
+            });
+        }
+
+        this.cleanupInactiveManagerSounds({ maxCount: 256 });
+        this.emitDebugUpdate('brutal_sweep_stop', {
+            eventId: eventId || '',
+            includeBgm,
+            includeAmbience,
+            stoppedByEventKey,
+            ...continuous
+        });
+        return {
+            eventId: eventId || '',
+            includeBgm,
+            includeAmbience,
+            stoppedByEventKey,
+            ...continuous
+        };
     }
 
     stopOrphanedBgmManagerSounds(options = {}) {
@@ -1244,14 +1377,18 @@ class CoreAudioManager {
     }
 
     playEvent(eventId, options = {}) {
+        const now = this.getNowMs();
         if (this.isEventSuppressed(eventId)) {
-            this.recordEvent(eventId, 'skipped', 'suppressed', '', options.meta);
+            if (!this.shouldThrottleSkipRecord(eventId, 'suppressed', now)) {
+                this.recordEvent(eventId, 'skipped', 'suppressed', '', options.meta);
+            }
             return Promise.resolve(false);
         }
         const config = this.getResolvedEventConfig(eventId, options.overridePatch || null);
-        const now = this.getNowMs();
         if (!config.enabled) {
-            this.recordEvent(eventId, 'skipped', 'disabled', '', options.meta);
+            if (!this.shouldThrottleSkipRecord(eventId, 'disabled', now)) {
+                this.recordEvent(eventId, 'skipped', 'disabled', '', options.meta);
+            }
             return Promise.resolve(false);
         }
         if (!options.forceReplay && this.isEventInCooldown(eventId, config.cooldown, now)) {

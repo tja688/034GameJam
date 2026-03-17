@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1773477025896,
+  "savedAt": 1773732113320,
   "manifestPath": "audio-library.manifest.json",
   "busVolumes": {
     "master": 0.5,
@@ -301,6 +301,21 @@
       "strategy": "random",
       "assetPool": [
         "snd_player_hurt"
+      ]
+    },
+    "player_pulse_source": {
+      "enabled": true,
+      "bus": "sfx",
+      "volume": 0.4,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.035,
+      "maxVoices": 8,
+      "strategy": "random",
+      "assetPool": [
+        "pulse_source_01",
+        "pulse_source_02"
       ]
     }
   },

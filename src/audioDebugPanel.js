@@ -292,7 +292,7 @@ class CoreAudioDebugPanel {
 
         ensureAudioDebugPanelStyles();
         this.buildDom();
-        this.unsubscribe = this.audio.onDebugUpdate(() => this.queueRender());
+        this.unsubscribe = this.audio.onDebugUpdate((reason) => this.handleAudioDebugUpdate(reason));
         this.bindDomEvents();
         this.render();
         this.emitPanelState();
@@ -552,6 +552,17 @@ class CoreAudioDebugPanel {
         });
     }
 
+    handleAudioDebugUpdate(reason = '') {
+        const normalizedReason = typeof reason === 'string' ? reason : '';
+        if (!this.isOpen() && normalizedReason === 'event') {
+            return;
+        }
+        if (this.quickSweep.active && !this.isOpen() && (normalizedReason === 'asset_queue' || normalizedReason === 'asset_loaded')) {
+            return;
+        }
+        this.queueRender();
+    }
+
     isEditableTarget(target) {
         if (!target || typeof target.closest !== 'function') {
             return false;
@@ -563,15 +574,24 @@ class CoreAudioDebugPanel {
     }
 
     isQuickSweepPrevKey(event) {
-        return event.key === '{' || (event.code === 'BracketLeft' && !!event.shiftKey);
+        if (!event || event.metaKey || event.ctrlKey || event.altKey) {
+            return false;
+        }
+        return event.key === '{' || event.key === '[' || event.code === 'BracketLeft';
     }
 
     isQuickSweepNextKey(event) {
-        return event.key === '}' || (event.code === 'BracketRight' && !!event.shiftKey);
+        if (!event || event.metaKey || event.ctrlKey || event.altKey) {
+            return false;
+        }
+        return event.key === '}' || event.key === ']' || event.code === 'BracketRight';
     }
 
     isQuickSweepConfirmKey(event) {
-        return event.key === '|' || (event.code === 'Backslash' && !!event.shiftKey);
+        if (!event || event.metaKey || event.ctrlKey || event.altKey) {
+            return false;
+        }
+        return event.key === '|' || event.key === '\\' || event.code === 'Backslash';
     }
 
     showQuickToast(message, tone = '') {
@@ -652,7 +672,7 @@ class CoreAudioDebugPanel {
     buildQuickSweepCandidates() {
         const events = Array.isArray(this.snapshot?.events) ? this.snapshot.events : [];
         const now = this.audio.getNowMs();
-        const excludedGroups = new Set(['ui', 'editor', 'progression']);
+        const excludedGroups = new Set(['editor']);
         const excludedIds = new Set([
             'system_boot',
             'game_start_new_run',
@@ -670,21 +690,15 @@ class CoreAudioDebugPanel {
                 _quickScore: this.scoreQuickSweepCandidate(entry, now)
             }));
 
-        const strict = base.filter((entry) => (
+        const picked = base.filter((entry) => (
             !excludedGroups.has(entry.group)
             && !excludedIds.has(entry.id)
-            && entry._quickScore >= 18
         ));
-        const mid = base.filter((entry) => (
-            !excludedGroups.has(entry.group)
-            && entry._quickScore >= 8
-        ));
-        const fallback = base;
+        const fallback = base.filter((entry) => !excludedIds.has(entry.id));
 
-        const picked = strict.length > 0 ? strict : (mid.length > 0 ? mid : fallback);
-        return picked
+        return (picked.length > 0 ? picked : fallback)
             .sort((a, b) => b._quickScore - a._quickScore || a.id.localeCompare(b.id))
-            .slice(0, 48);
+            .slice(0, 96);
     }
 
     restoreQuickSweepPreview() {
@@ -701,7 +715,7 @@ class CoreAudioDebugPanel {
         this.quickSweep.previewHadRuntime = false;
     }
 
-    applyQuickSweepPreview(eventId) {
+    applyQuickSweepPreview(eventId, options = {}) {
         if (!eventId) {
             return;
         }
@@ -717,7 +731,10 @@ class CoreAudioDebugPanel {
             ...effective,
             enabled: false
         }, { persist: false });
-        this.audio.stopEvent(eventId, { fadeOutMs: 70 });
+        this.audio.brutalStopForSweep?.(eventId, {
+            includeBgm: false,
+            includeAmbience: true
+        });
 
         if (entry) {
             const total = this.quickSweep.candidates.length;
@@ -725,7 +742,8 @@ class CoreAudioDebugPanel {
             const cfg = entry.effective || effective;
             const meta = `${entry.group || 'misc'} | ${entry.module || '-'} | ${entry.anchor || '-'}`;
             const configText = `bus=${cfg.bus} cd=${Number(cfg.cooldown || 0).toFixed(3)} loop=${!!cfg.loop} voices=${cfg.maxVoices || 1}`;
-            this.showQuickToast(`[${position}/${total}] mute ${entry.id} | ${meta} | ${configText}`);
+            const hints = options.includeHint ? ' | 上一: {/[ | 下一: }/] | 确认: |/\\' : '';
+            this.showQuickToast(`[${position}/${total}] mute ${entry.id} | ${meta} | ${configText}${hints}`);
         }
         this.queueRender();
     }
@@ -741,8 +759,7 @@ class CoreAudioDebugPanel {
         this.quickSweep.candidates = candidates;
         this.quickSweep.index = 0;
         this.selectedEventId = candidates[0].id;
-        this.applyQuickSweepPreview(candidates[0].id);
-        this.showQuickToast('音效排查已开启：{ 上一个，} 下一个，| 确认，Ctrl+M 退出');
+        this.applyQuickSweepPreview(candidates[0].id, { includeHint: true });
     }
 
     stopQuickSweep(options = {}) {
