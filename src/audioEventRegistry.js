@@ -500,6 +500,17 @@ const AUDIO_EVENT_REGISTRY = Object.freeze([
         defaults: { bus: 'sfx', volume: 0.46, cooldown: 0.03, maxVoices: 8, assetPool: ['prey_bite_grind_01', 'prey_bite_grind_02'] }
     },
     {
+        id: 'prey_hit_elite_objective',
+        label: 'Prey Hit Elite Objective',
+        group: 'prey',
+        module: 'sceneCombat.js',
+        scene: 'core-demo',
+        anchor: 'damagePrey(elite/objective)',
+        description: 'Elite and objective prey share the spinner hit cue on damage.',
+        status: 'wired',
+        defaults: { bus: 'sfx', volume: 0.2, cooldown: 0.04, maxVoices: 4, strategy: 'round_robin', assetPool: ['snd_jellyfish_bubble_hit_01', 'snd_jellyfish_bubble_hit_02', 'snd_jellyfish_bubble_hit_03'] }
+    },
+    {
         id: 'prey_bite_feed',
         label: 'Prey Bite Feed',
         group: 'prey',
@@ -555,6 +566,17 @@ const AUDIO_EVENT_REGISTRY = Object.freeze([
         defaults: { bus: 'sfx', volume: 0.86, cooldown: 0.2, maxVoices: 1, assetPool: ['prey_devour_objective_01'] }
     },
     {
+        id: 'prey_devoured_elite_objective_burst',
+        label: 'Elite Objective Death Burst',
+        group: 'prey',
+        module: 'sceneCombat.js',
+        scene: 'core-demo',
+        anchor: 'finishPreyDevour(elite/objective burst)',
+        description: 'Elite and objective prey explosion burst on death.',
+        status: 'wired',
+        defaults: { bus: 'sfx', volume: 0.82, cooldown: 0.08, maxVoices: 2, assetPool: ['sfx_boss_hit2'] }
+    },
+    {
         id: 'prey_guard_pulse',
         label: 'Prey Guard Pulse',
         group: 'prey',
@@ -585,7 +607,7 @@ const AUDIO_EVENT_REGISTRY = Object.freeze([
         anchor: 'consumeFragment(kind energy)',
         description: 'Energy loot absorbed.',
         status: 'wired',
-        defaults: { bus: 'sfx', volume: 0.42, cooldown: 0.02, maxVoices: 10, assetPool: ['loot_absorb_energy_01', 'loot_absorb_energy_02'] }
+        defaults: { bus: 'sfx', volume: 0.32, cooldown: 0.02, maxVoices: 10, strategy: 'random', assetPool: ['snd_coin_collect_01', 'snd_coin_collect_02', 'snd_coin_collect_03'] }
     },
     {
         id: 'loot_absorb_biomass',
@@ -596,7 +618,7 @@ const AUDIO_EVENT_REGISTRY = Object.freeze([
         anchor: 'consumeFragment(kind meat)',
         description: 'Biomass loot absorbed.',
         status: 'wired',
-        defaults: { bus: 'sfx', volume: 0.36, cooldown: 0.02, maxVoices: 10, assetPool: ['loot_absorb_biomass_01', 'loot_absorb_biomass_02'] }
+        defaults: { bus: 'sfx', volume: 0.3, cooldown: 0.02, maxVoices: 10, strategy: 'random', assetPool: ['snd_coin_collect_01', 'snd_coin_collect_02', 'snd_coin_collect_03'] }
     },
     {
         id: 'objective_spawn',

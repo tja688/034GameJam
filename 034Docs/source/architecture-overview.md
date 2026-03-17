@@ -49,6 +49,9 @@
 - `CoreAudioManager` 必须在 voice 自然结束时销毁对应 `Phaser.Sound` 实例，不能只把 record 从追踪表里移除
 - runtime guard 除了维持 BGM singleton，还要周期性清扫 `sound.sounds` 中“未追踪且已停止”的历史实例
 - `resetSimulation` 必须主动触发一次音频残留清扫，避免高关卡结束后回到第一关仍背着旧 run 的短音效对象
+- `sceneCombat.damagePrey` 现在负责统一触发 elite / objective 受击音；该事件复用 weakspot spinner 的受击素材，避免把“是否是 grind bite”与“是否该播精英受击反馈”绑死在一起
+- `sceneCombat.finishPreyDevour` 现在为所有 elite / objective 死亡爆裂统一触发 `SFX_boss_hit2.wav`，与普通 prey 的吞噬收口音分离
+- `sceneCombat.consumeFragment` 的成功吸收音现在统一走 `snd_coin_collect_01/02/03` 随机池，并在运行时附加轻微 `rate/detune` 抖动，避免连续吸收时机械重复
 
 音频排查快捷流（快速降噪定位）：
 

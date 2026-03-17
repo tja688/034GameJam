@@ -1072,6 +1072,22 @@
       ]
     },
     {
+      "id": "sfx_boss_hit2",
+      "label": "Sfx Boss Hit2",
+      "group": "misc",
+      "tags": [
+        "boss",
+        "hit2",
+        "misc",
+        "sfx",
+        "sfx_boss_hit2"
+      ],
+      "preload": false,
+      "files": [
+        "SFX_boss_hit2.wav"
+      ]
+    },
+    {
       "id": "snd_jellyfish_hit_01",
       "label": "Snd Jellyfish Hit 01",
       "group": "misc",

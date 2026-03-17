@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "savedAt": 1773734314788,
+  "savedAt": 1773755153260,
   "manifestPath": "audio-library.manifest.json",
   "busVolumes": {
     "master": 0.5,
     "bgm": 0.76,
-    "sfx": 0.75,
+    "sfx": 0.89,
     "ui": 0.66,
     "ambience": 0.62
   },
@@ -464,37 +464,54 @@
       ]
     },
     "loot_absorb_energy": {
-      "enabled": false,
+      "enabled": true,
       "bus": "sfx",
-      "volume": 0.2,
+      "volume": 0.19,
       "rate": 1,
       "detune": 0,
       "loop": false,
-      "cooldown": 0.04,
-      "maxVoices": 6,
-      "strategy": "round_robin",
+      "cooldown": 0.02,
+      "maxVoices": 10,
+      "strategy": "random",
       "assetPool": [
-        "snd_coral_bubble_01",
-        "snd_coral_bubble_02",
-        "snd_bubblegun_bubble_pop"
+        "snd_coin_collect_01",
+        "snd_coin_collect_02",
+        "snd_coin_collect_03"
       ]
     },
     "loot_absorb_biomass": {
-      "enabled": false,
+      "enabled": true,
       "bus": "sfx",
-      "volume": 0.2,
+      "volume": 0.16,
       "rate": 1,
       "detune": 0,
       "loop": false,
-      "cooldown": 0.04,
-      "maxVoices": 6,
-      "strategy": "round_robin",
+      "cooldown": 0.02,
+      "maxVoices": 10,
+      "strategy": "random",
       "assetPool": [
-        "snd_coral_bubble_01",
-        "snd_coral_bubble_02",
-        "snd_bubblegun_bubble_pop"
+        "snd_coin_collect_01",
+        "snd_coin_collect_02",
+        "snd_coin_collect_03"
       ]
     }
   },
-  "runtimeOverrides": {}
+  "runtimeOverrides": {
+    "loot_absorb_energy": {
+      "enabled": true,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.02,
+      "maxVoices": 10,
+      "strategy": "random",
+      "assetPool": [
+        "snd_coin_collect_01",
+        "snd_coin_collect_02",
+        "snd_coin_collect_03"
+      ]
+    }
+  }
 }

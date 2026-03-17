@@ -518,6 +518,16 @@ const SceneCombatMixin = {
         const hitPushMul = 0;
         prey.vx += dirX * (28 + amount * 2.6) * hitPushMul / Math.max(prey.mass, 0.1);
         prey.vy += dirY * (28 + amount * 2.6) * hitPushMul / Math.max(prey.mass, 0.1);
+        const useSharedEliteHitCue = (prey.encounterClass === 'elite' || prey.encounterClass === 'objective')
+            && !(prey.behaviorId === 'elite-spinner' && attachment?.mode === 'grind');
+        if (useSharedEliteHitCue) {
+            this.playAudioEvent?.('prey_hit_elite_objective', {
+                preyId: prey.id,
+                preySize: prey.sizeKey,
+                behaviorId: prey.behaviorId || '',
+                encounterClass: prey.encounterClass
+            });
+        }
 
         const healthRatio = prey.health / Math.max(prey.maxHealth, 1);
         while (prey.chunkCursor < prey.chunkThresholds.length && healthRatio <= prey.chunkThresholds[prey.chunkCursor]) {
@@ -587,13 +597,15 @@ const SceneCombatMixin = {
             prey.sizeKey === 'large' ? 0.8 : prey.sizeKey === 'medium' ? 0.46 : 0.24,
             prey.sizeKey === 'large' ? 0.95 : prey.sizeKey === 'medium' ? 0.56 : 0.3
         );
-        const devourEventId = prey.isObjective
-            ? 'prey_devoured_objective'
-            : prey.sizeKey === 'large'
-                ? 'prey_devoured_large'
-                : prey.sizeKey === 'medium'
-                    ? 'prey_devoured_medium'
-                    : 'prey_devoured_small';
+        const devourEventId = (prey.encounterClass === 'elite' || prey.encounterClass === 'objective')
+            ? 'prey_devoured_elite_objective_burst'
+            : prey.isObjective
+                ? 'prey_devoured_objective'
+                : prey.sizeKey === 'large'
+                    ? 'prey_devoured_large'
+                    : prey.sizeKey === 'medium'
+                        ? 'prey_devoured_medium'
+                        : 'prey_devoured_small';
         this.playAudioEvent?.(devourEventId, {
             preyId: prey.id,
             preySize: prey.sizeKey,
@@ -1068,12 +1080,21 @@ const SceneCombatMixin = {
             node.absorbFlash = clamp((node.absorbFlash || 0) + 0.3 + rewardMagnitude * 0.3, 0, 2.8);
         }
         this.bumpFeastMeter(fragment.kind === 'energy' ? 0.08 : 0.04);
+        const absorbRateMul = fragment.kind === 'energy'
+            ? Phaser.Math.FloatBetween(1.04, 1.16)
+            : Phaser.Math.FloatBetween(0.94, 1.08);
+        const absorbDetuneAdd = fragment.kind === 'energy'
+            ? Phaser.Math.Between(10, 90)
+            : Phaser.Math.Between(-70, 35);
         this.playAudioEvent?.(fragment.kind === 'energy' ? 'loot_absorb_energy' : 'loot_absorb_biomass', {
             kind: fragment.kind,
             nodeIndex: node?.index ?? -1,
             rewardEnergy: fragment.rewardEnergy || 0,
             rewardBiomass: fragment.rewardBiomass || 0,
             rewardProgress: fragment.rewardProgress || 0
+        }, {
+            rateMul: absorbRateMul,
+            detuneAdd: absorbDetuneAdd
         });
         if (typeof this.absorbFragment === 'function') {
             this.absorbFragment(fragment);
