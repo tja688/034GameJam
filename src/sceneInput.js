@@ -621,13 +621,7 @@ const SceneInputMixin = {
         state.corePullScale = clamp(1 - expansion * (T.clusterVolumeCorePullRelax ?? 0.55) + stableWeight * 0.12, 0.2, 1.6);
         return state;
     },
-    readIntent(frameDt = 1 / 60) {
-        const allowKeyboardDrive = this.isDebugToolsEnabled() && !this.player.edit.active;
-        const moveX = allowKeyboardDrive ? (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0) : 0;
-        const moveY = allowKeyboardDrive ? (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0) : 0;
-        const move = normalize(moveX, moveY);
-
-        const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
+    commitIntentState(move, worldPointer, frameDt = 1 / 60) {
         const aim = normalize(worldPointer.x - this.player.centroidX, worldPointer.y - this.player.centroidY, Math.cos(this.player.heading), Math.sin(this.player.heading));
         const T = window.TUNING || {};
         const heading = vectorFromAngle(this.player.heading);
@@ -696,6 +690,14 @@ const SceneInputMixin = {
         this.intent.clusterVolumeScale = volumeState.radialScale;
         this.intent.clusterVolumeForwardScale = volumeState.forwardScale;
         this.intent.clusterVolumeLateralScale = volumeState.lateralScale;
+    },
+    readIntent(frameDt = 1 / 60) {
+        const allowKeyboardDrive = this.isDebugToolsEnabled() && !this.player.edit.active;
+        const moveX = allowKeyboardDrive ? (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0) : 0;
+        const moveY = allowKeyboardDrive ? (this.keys.down.isDown ? 1 : 0) - (this.keys.up.isDown ? 1 : 0) : 0;
+        const move = normalize(moveX, moveY);
+        const worldPointer = this.screenToWorld(this.input.activePointer.x, this.input.activePointer.y);
+        this.commitIntentState(move, worldPointer, frameDt);
     },
     handleModeInputs() {
         const T = window.TUNING || {};

@@ -306,6 +306,9 @@ const SceneProgressionMixin = {
         };
     },
     getRunPalette() {
+        if (this.isStartupSequenceActive?.()) {
+            return STARTUP_SCENE_PALETTE;
+        }
         return this.getCurrentStageDef()?.palette || {
             arena: COLORS.arena,
             grid: COLORS.grid,
@@ -313,6 +316,18 @@ const SceneProgressionMixin = {
             pulse: COLORS.pulse,
             signal: COLORS.core,
             threat: COLORS.health
+        };
+    },
+    getStagePresentation(stageIndex = this.runState?.stageIndex || 0) {
+        const normalizedIndex = clamp(stageIndex, 0, Math.max(0, DEMO_STAGE_DEFS.length - 1));
+        const stage = DEMO_STAGE_DEFS[normalizedIndex] || null;
+        const meta = STAGE_DISPLAY_DEFS[normalizedIndex] || {};
+        return {
+            stageIndex: normalizedIndex,
+            stageId: stage?.id || meta.id || '',
+            title: meta.title || `第 ${normalizedIndex + 1} 关`,
+            subtitle: meta.subtitle || (stage?.id || '').toUpperCase(),
+            palette: stage?.palette || this.getRunPalette()
         };
     },
     ensureRunProgressionState() {
@@ -1074,6 +1089,10 @@ const SceneProgressionMixin = {
             toStage: this.runState.stageIndex || 0
         });
         this.syncSceneBgm?.({ source: 'stage-advance' });
+        this.showStageTransition?.(this.runState.stageIndex || 0, {
+            source: 'stage-advance',
+            fromStageIndex: previousStageIndex
+        });
     },
     triggerVictory() {
         if (this.runState.complete) {

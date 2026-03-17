@@ -44,6 +44,13 @@
 9. `updateHud`
 10. `render`
 
+启动序列 / 关卡转场补充：
+
+- 默认主流程入口先进入 startup sequence，而不是直接开局；该状态会拦截常规主循环，单独驱动基础 player cluster 预览、资产渐进加载、专用 startup palette / map background，以及 DOM 启动控件
+- startup sequence 不再复用 stage 1 预览，而是清空 prey / fragments / effects，只保留基础人物；人物保持自然游走，并允许鼠标吸引跟随
+- startup sequence 的 BGM 固定复用第三关素材；离开 startup sequence 后恢复正式 stage-aware BGM
+- stage transition 现在是一套统一 DOM 转场层：第一关起手和后续 `advanceStage()` 共用同一表现，不再只有后续关卡有切场反馈
+
 运行时资源回收约束：
 
 - `CoreAudioManager` 必须在 voice 自然结束时销毁对应 `Phaser.Sound` 实例，不能只把 record 从追踪表里移除

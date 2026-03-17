@@ -417,7 +417,14 @@ const SceneInitMixin = {
             total: 0,
             roamTime: 0,
             readyShown: false,
-            introSettleTime: 0
+            introSettleTime: 0,
+            anchorX: 0,
+            anchorY: 0,
+            pointerActivated: false,
+            lastPointerScreenX: NaN,
+            lastPointerScreenY: NaN,
+            targetX: 0,
+            targetY: 0
         };
     },
     hideExternalDebugUi() {
@@ -442,10 +449,18 @@ const SceneInitMixin = {
         const assetIds = manager?.assetCatalog?.map((asset) => asset.id).filter((id) => typeof id === 'string' && id.length > 0) || [];
         this.startupSequence.assetIds = assetIds;
         this.startupSequence.total = assetIds.length;
+        this.startupSequence.anchorX = this.player.centroidX;
+        this.startupSequence.anchorY = this.player.centroidY;
+        this.startupSequence.targetX = this.player.centroidX;
+        this.startupSequence.targetY = this.player.centroidY;
         this.paused = true;
         this.menuMode = null;
         this.sessionStarted = false;
+        this.prey = [];
+        this.effects = [];
+        this.fragments = [];
         this.showStartupLoading?.(0);
+        this.syncSceneBgm?.({ source: 'startup-sequence', forceReplay: true });
     },
     isStartupSequenceActive() {
         const phase = this.startupSequence?.phase || '';
@@ -455,30 +470,64 @@ const SceneInitMixin = {
         const phase = this.startupSequence?.phase || '';
         return phase === 'loading' || phase === 'ready';
     },
+    updateStartupIntent(frameDt) {
+        const state = this.startupSequence;
+        if (!state) {
+            return;
+        }
+
+        state.roamTime += frameDt;
+        const idleTarget = {
+            x: state.anchorX + Math.cos(state.roamTime * 0.48) * 176 + Math.sin(state.roamTime * 0.21) * 82,
+            y: state.anchorY + Math.sin(state.roamTime * 0.36) * 118 + Math.cos(state.roamTime * 0.18) * 54
+        };
+        const pointer = this.input?.activePointer || null;
+        if (pointer) {
+            const moved = Number.isFinite(state.lastPointerScreenX) && Number.isFinite(state.lastPointerScreenY)
+                ? Math.hypot(pointer.x - state.lastPointerScreenX, pointer.y - state.lastPointerScreenY) > 0.6
+                : false;
+            if ((moved && (pointer.x > 4 || pointer.y > 4)) || pointer.isDown) {
+                state.pointerActivated = true;
+            }
+            state.lastPointerScreenX = pointer.x;
+            state.lastPointerScreenY = pointer.y;
+        }
+
+        const pointerWorld = state.pointerActivated && pointer
+            ? this.screenToWorld(pointer.x, pointer.y)
+            : idleTarget;
+        const target = state.pointerActivated
+            ? {
+                x: lerp(idleTarget.x, pointerWorld.x, 0.92),
+                y: lerp(idleTarget.y, pointerWorld.y, 0.92)
+            }
+            : idleTarget;
+
+        state.targetX = target.x;
+        state.targetY = target.y;
+        this.commitIntentState?.(normalize(0, 0), target, frameDt);
+    },
     updateStartupPreviewCamera(frameDt) {
         const state = this.startupSequence;
         if (!state || !this.cameraRig) {
             return;
         }
-        state.roamTime = (state.roamTime || 0) + frameDt;
-        const t = state.roamTime;
-        const radiusX = 680;
-        const radiusY = 460;
-        const driftX = Math.cos(t * 0.16) * radiusX + Math.sin(t * 0.07) * 220;
-        const driftY = Math.sin(t * 0.13) * radiusY + Math.cos(t * 0.05) * 180;
-        const zoom = 0.34 + Math.sin(t * 0.11) * 0.02;
+        const t = state.roamTime || 0;
+        const focusX = this.player.centroidX + Math.cos(t * 0.24) * 18;
+        const focusY = this.player.centroidY + Math.sin(t * 0.19) * 14;
+        const zoom = 0.76 + Math.sin(t * 0.12) * 0.015;
         this.cameraRig.initialized = true;
-        this.cameraRig.x = driftX;
-        this.cameraRig.y = driftY;
-        this.cameraRig.targetX = driftX;
-        this.cameraRig.targetY = driftY;
-        this.cameraRig.baseFocusX = driftX;
-        this.cameraRig.baseFocusY = driftY;
-        this.cameraRig.focusX = driftX;
-        this.cameraRig.focusY = driftY;
+        this.cameraRig.x = damp(this.cameraRig.x, focusX, 4.8, frameDt);
+        this.cameraRig.y = damp(this.cameraRig.y, focusY, 4.8, frameDt);
+        this.cameraRig.targetX = focusX;
+        this.cameraRig.targetY = focusY;
+        this.cameraRig.baseFocusX = focusX;
+        this.cameraRig.baseFocusY = focusY;
+        this.cameraRig.focusX = focusX;
+        this.cameraRig.focusY = focusY;
         this.cameraRig.leadX = 0;
         this.cameraRig.leadY = 0;
-        this.cameraRig.zoom = zoom;
+        this.cameraRig.zoom = damp(this.cameraRig.zoom, zoom, 5.4, frameDt);
         this.cameraRig.targetZoom = zoom;
         this.cameraRig.manualZoom = zoom;
         this.cameraRig.desiredZoom = zoom;
@@ -536,13 +585,14 @@ const SceneInitMixin = {
         if (this.startupSequence?.phase !== 'ready') {
             return;
         }
+        this.startupSequence = null;
         this.resetSimulation(true);
         this.playAudioEvent?.('game_start_new_run', { source: 'startup-sequence' });
-        this.startupSequence = null;
         this.menuMode = null;
         this.paused = false;
         this.sessionStarted = true;
         this.hideStartupOverlay?.();
+        this.showStageTransition?.(this.runState?.stageIndex || 0, { source: 'startup-sequence' });
     },
     updateStartupSequence(frameDt, deltaMs) {
         const state = this.startupSequence;
@@ -551,7 +601,13 @@ const SceneInitMixin = {
         }
         this.hideExternalDebugUi();
         if (state.phase === 'loading' || state.phase === 'ready') {
-            this.worldTime += frameDt * 0.18;
+            const simDt = frameDt * 0.72;
+            this.worldTime += simDt;
+            this.profileFrameSection('startupIntent', () => this.updateStartupIntent(frameDt));
+            this.profileFrameSection('startupPulse', () => this.updatePulse(simDt));
+            this.profileFrameSection('startupFormation', () => this.updateFormation(simDt));
+            this.profileFrameSection('startupPlayerState', () => this.updatePlayerState(simDt));
+            this.profileFrameSection('startupDisplay', () => this.updateDisplay(frameDt));
             this.updateStartupPreviewCamera(frameDt);
             if (state.phase === 'loading') {
                 this.profileFrameSection('startupLoading', () => this.updateStartupLoading(frameDt));

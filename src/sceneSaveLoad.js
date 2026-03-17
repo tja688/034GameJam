@@ -288,6 +288,7 @@ const SceneSaveLoadMixin = {
         this.resetSimulation(true);
         this.playAudioEvent?.('game_start_new_run', { source: 'startNewGame' });
         this.resumeGame();
+        this.showStageTransition?.(this.runState?.stageIndex || 0, { source: 'start-new-game' });
     },
     handleMainContinue() {
         if (this.sessionStarted) {

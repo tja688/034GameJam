@@ -1,5 +1,6 @@
 const STAGE_BGM_EVENT_ID = 'bgm_main';
 const STAGE_BGM_ASSET_IDS = Object.freeze(['dem_1', 'dem_2', 'dem_3', 'dem_4', 'dem_5']);
+const STARTUP_BGM_ASSET_ID = 'dem_3';
 const STAGE_BGM_VOLUME_MUL_BY_ASSET_ID = Object.freeze({});
 const STAGE_BGM_START_SEEK_BY_ASSET_ID = Object.freeze({
     // Manual musical-entry cuts so stage swaps land on the groove instead of the cold intro.
@@ -81,16 +82,24 @@ const SceneAudioMixin = {
     },
 
     getSceneBgmSpec() {
+        const isStartupScene = !!(this.isStartupSequenceActive?.() && !this.sessionStarted);
         const isMainMenu = this.menuMode === 'main';
-        const stageIndex = isMainMenu ? 0 : clampStageBgmIndex(this.runState?.stageIndex || 0);
-        const assetId = STAGE_BGM_ASSET_IDS[stageIndex] || STAGE_BGM_ASSET_IDS[0];
+        const startupStageIndex = STAGE_BGM_ASSET_IDS.indexOf(STARTUP_BGM_ASSET_ID);
+        const stageIndex = isStartupScene
+            ? Math.max(0, startupStageIndex)
+            : isMainMenu
+                ? 0
+                : clampStageBgmIndex(this.runState?.stageIndex || 0);
+        const assetId = isStartupScene
+            ? STARTUP_BGM_ASSET_ID
+            : (STAGE_BGM_ASSET_IDS[stageIndex] || STAGE_BGM_ASSET_IDS[0]);
         return {
             eventId: STAGE_BGM_EVENT_ID,
             assetId,
             stageIndex,
             volumeMul: STAGE_BGM_VOLUME_MUL_BY_ASSET_ID[assetId] || 1,
             startSeek: STAGE_BGM_START_SEEK_BY_ASSET_ID[assetId] || 0,
-            source: isMainMenu ? 'main-menu' : 'stage'
+            source: isStartupScene ? 'startup' : isMainMenu ? 'main-menu' : 'stage'
         };
     },
 
@@ -168,6 +177,14 @@ const SceneAudioMixin = {
     playAudioEvent(eventId, meta = null, options = {}) {
         const manager = this.ensureAudioSystem();
         if (!manager || !eventId) {
+            return Promise.resolve(false);
+        }
+        if (this.isStartupSequenceActive?.() && ![
+            STAGE_BGM_EVENT_ID,
+            'system_boot',
+            'ui_click',
+            'game_start_new_run'
+        ].includes(eventId)) {
             return Promise.resolve(false);
         }
         if (manager.isEventSuppressed?.(eventId)) {

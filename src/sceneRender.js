@@ -972,6 +972,9 @@ const SceneRenderMixin = {
             this.drawWorld(worldGraphics);
         }
         if (this.isStartupWorldPreviewOnly?.()) {
+            if (this.isGraphicsToggleEnabled('graphicsRenderFormationEnabled', true)) {
+                this.drawFormation(midGraphics);
+            }
             this.endBakedSpriteFrame(useBakedSpriteRenderer);
             return;
         }
@@ -1243,9 +1246,14 @@ const SceneRenderMixin = {
             });
         });
     },
+    getMapBackgroundThemeKey() {
+        return this.isStartupSequenceActive?.() ? 'startup' : 'stage';
+    },
     initInfiniteMapBackgrounds() {
-        const keyBase = 'map-bg-static-base';
-        const keyMacro = 'map-bg-static-macro';
+        const themeKey = this.getMapBackgroundThemeKey();
+        const isStartupTheme = themeKey === 'startup';
+        const keyBase = isStartupTheme ? 'map-bg-startup-base' : 'map-bg-static-base';
+        const keyMacro = isStartupTheme ? 'map-bg-startup-macro' : 'map-bg-static-macro';
         const sizeBase = 2048;
         const sizeMacro = 2048;
 
@@ -1286,45 +1294,55 @@ const SceneRenderMixin = {
 
         if (!this.textures.exists(keyBase)) {
             const scratch = this.add.graphics();
-            const rand = createSeededRandom(0x034034);
+            const rand = createSeededRandom(isStartupTheme ? 0x0f3403 : 0x034034);
             scratch.setVisible(false);
             scratch.clear();
 
-            for (let cluster = 0; cluster < 28; cluster++) {
+            const clusterCount = isStartupTheme ? 18 : 28;
+            for (let cluster = 0; cluster < clusterCount; cluster++) {
                 const clusterX = rand() * sizeBase;
                 const clusterY = rand() * sizeBase;
-                const clusterRadius = 140 + rand() * 320;
-                const count = 8 + Math.floor(rand() * 14);
+                const clusterRadius = (isStartupTheme ? 180 : 140) + rand() * (isStartupTheme ? 240 : 320);
+                const count = (isStartupTheme ? 10 : 8) + Math.floor(rand() * (isStartupTheme ? 10 : 14));
                 for (let i = 0; i < count; i++) {
                     const angle = rand() * Math.PI * 2;
                     const dist = Math.pow(rand(), 0.72) * clusterRadius;
                     const x = clusterX + Math.cos(angle) * dist;
                     const y = clusterY + Math.sin(angle) * dist;
-                    const size = 28 + rand() * 160;
-                    const alpha = 0.02 + rand() * 0.045;
+                    const size = (isStartupTheme ? 38 : 28) + rand() * (isStartupTheme ? 120 : 160);
+                    const alpha = (isStartupTheme ? 0.026 : 0.02) + rand() * (isStartupTheme ? 0.05 : 0.045);
                     const rotation = rand() * Math.PI * 2;
-                    const filled = rand() > 0.42;
+                    const filled = rand() > (isStartupTheme ? 0.56 : 0.42);
                     const shapeRoll = rand();
-                    const shape = shapeRoll < 0.3
-                        ? 'circle'
-                        : shapeRoll < 0.58
-                            ? 'square'
-                            : shapeRoll < 0.82
-                                ? 'triangle'
-                                : 'bar';
+                    const shape = isStartupTheme
+                        ? (shapeRoll < 0.42
+                            ? 'circle'
+                            : shapeRoll < 0.74
+                                ? 'bar'
+                                : 'triangle')
+                        : shapeRoll < 0.3
+                            ? 'circle'
+                            : shapeRoll < 0.58
+                                ? 'square'
+                                : shapeRoll < 0.82
+                                    ? 'triangle'
+                                    : 'bar';
                     drawGroundShape(scratch, shape, x, y, size, alpha, rotation, filled);
                 }
             }
 
-            for (let i = 0; i < 180; i++) {
+            const scatterCount = isStartupTheme ? 120 : 180;
+            for (let i = 0; i < scatterCount; i++) {
                 const x = rand() * sizeBase;
                 const y = rand() * sizeBase;
-                const size = 18 + rand() * 56;
-                const alpha = 0.018 + rand() * 0.034;
+                const size = (isStartupTheme ? 24 : 18) + rand() * (isStartupTheme ? 46 : 56);
+                const alpha = (isStartupTheme ? 0.022 : 0.018) + rand() * (isStartupTheme ? 0.032 : 0.034);
                 const rotation = rand() * Math.PI * 2;
                 const shapeRoll = rand();
-                const shape = shapeRoll < 0.34 ? 'circle' : shapeRoll < 0.67 ? 'square' : 'triangle';
-                drawGroundShape(scratch, shape, x, y, size, alpha, rotation, rand() > 0.3);
+                const shape = isStartupTheme
+                    ? (shapeRoll < 0.5 ? 'circle' : shapeRoll < 0.8 ? 'bar' : 'triangle')
+                    : shapeRoll < 0.34 ? 'circle' : shapeRoll < 0.67 ? 'square' : 'triangle';
+                drawGroundShape(scratch, shape, x, y, size, alpha, rotation, rand() > (isStartupTheme ? 0.5 : 0.3));
             }
 
             scratch.generateTexture(keyBase, sizeBase, sizeBase);
@@ -1333,41 +1351,58 @@ const SceneRenderMixin = {
 
         if (!this.textures.exists(keyMacro)) {
             const scratch = this.add.graphics();
-            const rand = createSeededRandom(0x340340);
+            const rand = createSeededRandom(isStartupTheme ? 0x34030f : 0x340340);
             scratch.setVisible(false);
             scratch.clear();
 
-            for (let band = 0; band < 16; band++) {
+            const bandCount = isStartupTheme ? 12 : 16;
+            for (let band = 0; band < bandCount; band++) {
                 const originX = rand() * sizeMacro;
                 const originY = rand() * sizeMacro;
                 const rotation = rand() * Math.PI * 2;
-                const stepCount = 5 + Math.floor(rand() * 7);
+                const stepCount = (isStartupTheme ? 6 : 5) + Math.floor(rand() * (isStartupTheme ? 5 : 7));
                 for (let i = 0; i < stepCount; i++) {
-                    const travel = (i / Math.max(1, stepCount - 1)) * (220 + rand() * 360);
-                    const offset = (rand() - 0.5) * 160;
+                    const travel = (i / Math.max(1, stepCount - 1)) * ((isStartupTheme ? 280 : 220) + rand() * (isStartupTheme ? 240 : 360));
+                    const offset = (rand() - 0.5) * (isStartupTheme ? 120 : 160);
                     const x = originX + Math.cos(rotation) * travel - Math.sin(rotation) * offset;
                     const y = originY + Math.sin(rotation) * travel + Math.cos(rotation) * offset;
-                    const size = 120 + rand() * 260;
-                    const alpha = 0.014 + rand() * 0.026;
+                    const size = (isStartupTheme ? 150 : 120) + rand() * (isStartupTheme ? 220 : 260);
+                    const alpha = (isStartupTheme ? 0.016 : 0.014) + rand() * (isStartupTheme ? 0.024 : 0.026);
                     const shapeRoll = rand();
-                    const shape = shapeRoll < 0.24
-                        ? 'circle'
-                        : shapeRoll < 0.5
-                            ? 'square'
-                            : shapeRoll < 0.76
-                                ? 'triangle'
-                                : 'bar';
+                    const shape = isStartupTheme
+                        ? (shapeRoll < 0.34
+                            ? 'circle'
+                            : shapeRoll < 0.72
+                                ? 'bar'
+                                : 'triangle')
+                        : shapeRoll < 0.24
+                            ? 'circle'
+                            : shapeRoll < 0.5
+                                ? 'square'
+                                : shapeRoll < 0.76
+                                    ? 'triangle'
+                                    : 'bar';
                     drawGroundShape(scratch, shape, x, y, size, alpha, rotation + rand() * 0.55, rand() > 0.35);
                 }
             }
 
-            for (let i = 0; i < 56; i++) {
+            const accentCount = isStartupTheme ? 34 : 56;
+            for (let i = 0; i < accentCount; i++) {
                 const x = rand() * sizeMacro;
                 const y = rand() * sizeMacro;
-                const size = 180 + rand() * 420;
-                const alpha = 0.01 + rand() * 0.02;
+                const size = (isStartupTheme ? 220 : 180) + rand() * (isStartupTheme ? 280 : 420);
+                const alpha = (isStartupTheme ? 0.012 : 0.01) + rand() * (isStartupTheme ? 0.018 : 0.02);
                 const rotation = rand() * Math.PI * 2;
-                drawGroundShape(scratch, rand() > 0.5 ? 'triangle' : 'square', x, y, size, alpha, rotation, rand() > 0.5);
+                drawGroundShape(
+                    scratch,
+                    isStartupTheme ? (rand() > 0.52 ? 'circle' : 'triangle') : (rand() > 0.5 ? 'triangle' : 'square'),
+                    x,
+                    y,
+                    size,
+                    alpha,
+                    rotation,
+                    rand() > 0.5
+                );
             }
 
             scratch.generateTexture(keyMacro, sizeMacro, sizeMacro);
@@ -1385,10 +1420,12 @@ const SceneRenderMixin = {
             this.mapBgSprites.macro.setTexture(keyMacro).setSize(this.scale.width, this.scale.height);
             this.mapBgSprites.base.setTexture(keyBase).setSize(this.scale.width, this.scale.height);
         }
+        this.mapBgSprites.themeKey = themeKey;
     },
 
     updateMapBackgrounds() {
-        if (!this.mapBgSprites) {
+        const themeKey = this.getMapBackgroundThemeKey();
+        if (!this.mapBgSprites || this.mapBgSprites.themeKey !== themeKey) {
             this.initInfiniteMapBackgrounds();
         }
 

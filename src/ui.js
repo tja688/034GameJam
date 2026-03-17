@@ -141,76 +141,185 @@ function ensureGameUiStyles() {
             inset: 0;
             z-index: 21000;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: center;
+            padding-top: min(76vh, calc(50vh + 180px));
             background:
-                radial-gradient(circle at 50% 35%, rgba(92, 208, 255, 0.12), transparent 24%),
-                linear-gradient(180deg, rgba(3, 8, 12, 0.16), rgba(3, 8, 12, 0.42));
+                radial-gradient(circle at 50% 38%, rgba(92, 208, 255, 0.08), transparent 26%),
+                linear-gradient(180deg, rgba(3, 8, 12, 0.04), rgba(3, 8, 12, 0.28));
             transition: opacity 0.28s ease;
-            pointer-events: auto;
+            pointer-events: none;
         }
         #game-startup-overlay.hidden {
             opacity: 0;
             pointer-events: none;
         }
         .game-startup-panel {
-            width: min(420px, calc(100vw - 48px));
+            width: min(420px, calc(100vw - 32px));
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
+            gap: 12px;
         }
-        .game-startup-progress {
-            width: min(280px, 62vw);
-        }
-        .game-startup-progress.hidden {
-            display: none;
-        }
-        .game-startup-progress-bar {
+        .game-startup-cta {
+            width: min(360px, 72vw);
+            height: 18px;
+            padding: 0;
+            border: 1px solid rgba(132, 214, 243, 0.22);
+            border-radius: 5px;
+            background: rgba(5, 12, 18, 0.54);
+            box-shadow: 0 0 0 1px rgba(8, 20, 28, 0.46);
             overflow: hidden;
-            height: 6px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.07);
+            cursor: default;
+            pointer-events: auto;
+            transition:
+                width 0.28s ease,
+                height 0.28s ease,
+                border-radius 0.28s ease,
+                border-color 0.22s ease,
+                background 0.22s ease,
+                box-shadow 0.22s ease,
+                transform 0.16s ease;
+        }
+        .game-startup-cta:disabled {
+            cursor: default;
+        }
+        .game-startup-cta.ready {
+            width: 92px;
+            height: 92px;
+            border-radius: 24px;
+            border-color: rgba(180, 238, 255, 0.36);
+            background: rgba(7, 17, 24, 0.82);
+            box-shadow:
+                0 0 0 1px rgba(180, 238, 255, 0.06),
+                0 20px 48px rgba(0, 0, 0, 0.34);
+            cursor: pointer;
+        }
+        .game-startup-cta.ready:hover {
+            transform: translateY(-1px) scale(1.02);
+        }
+        .game-startup-cta-track {
+            position: relative;
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.06);
+            transition:
+                clip-path 0.28s ease,
+                background 0.28s ease,
+                transform 0.28s ease;
         }
         .game-startup-progress-fill {
             width: 0%;
             height: 100%;
-            border-radius: inherit;
             background: linear-gradient(90deg, rgba(96, 210, 255, 0.82), rgba(255, 255, 255, 0.96));
-            transition: width 0.18s ease;
+            transition: width 0.18s ease, opacity 0.18s ease;
         }
-        .game-startup-play {
-            display: flex;
-            justify-content: center;
+        .game-startup-cta.ready .game-startup-cta-track {
+            clip-path: polygon(28% 18%, 80% 50%, 28% 82%);
+            background: linear-gradient(135deg, rgba(138, 230, 255, 0.96), rgba(245, 240, 215, 0.96));
+            transform: scale(0.82);
         }
-        .game-startup-play.hidden {
-            display: none;
+        .game-startup-cta.ready .game-startup-progress-fill {
+            opacity: 0;
         }
-        .game-startup-play-button {
-            position: relative;
-            width: 88px;
-            height: 88px;
-            border: 0;
-            background: transparent;
-            cursor: pointer;
-            transition: transform 0.16s ease, opacity 0.16s ease;
+        .game-startup-caption {
+            min-height: 18px;
+            color: rgba(212, 228, 236, 0.62);
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            font-size: 12px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            transition: opacity 0.18s ease, color 0.18s ease;
         }
-        .game-startup-play-button:hover {
-            transform: scale(1.04);
-            opacity: 0.92;
+        .game-startup-caption.ready {
+            color: rgba(244, 240, 215, 0.82);
         }
-        .game-startup-play-button::before {
-            content: '';
+        #game-stage-transition {
+            position: fixed;
+            inset: 0;
+            z-index: 20950;
+            pointer-events: none;
+            opacity: 0;
+        }
+        #game-stage-transition.active {
+            opacity: 1;
+        }
+        .game-stage-transition-shutter {
             position: absolute;
-            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 50vh;
+            background:
+                linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent),
+                linear-gradient(180deg, rgba(3, 8, 12, 0.96), rgba(3, 8, 12, 0.86));
+            border-color: rgba(var(--transition-accent-rgb, 244, 240, 215), 0.26);
+            border-style: solid;
+        }
+        .game-stage-transition-shutter.top {
+            top: 0;
+            border-width: 0 0 1px 0;
+            transform: translateY(-100%);
+        }
+        .game-stage-transition-shutter.bottom {
+            bottom: 0;
+            border-width: 1px 0 0 0;
+            transform: translateY(100%);
+        }
+        .game-stage-transition-card {
+            position: absolute;
             left: 50%;
-            transform: translate(-38%, -50%);
-            width: 0;
-            height: 0;
-            border-top: 24px solid transparent;
-            border-bottom: 24px solid transparent;
-            border-left: 38px solid rgba(255, 255, 255, 0.96);
-            filter: drop-shadow(0 0 16px rgba(255, 255, 255, 0.16));
+            top: 50%;
+            min-width: min(460px, calc(100vw - 48px));
+            padding: 22px 28px;
+            border: 1px solid rgba(var(--transition-accent-rgb, 244, 240, 215), 0.28);
+            border-radius: 18px;
+            background: rgba(4, 10, 14, 0.76);
+            box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
+            color: #f4f0d7;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            text-align: center;
+            transform: translate(-50%, -50%) scale(0.94);
+            opacity: 0;
+        }
+        .game-stage-transition-index {
+            color: rgba(var(--transition-accent-rgb, 244, 240, 215), 0.88);
+            font-size: 13px;
+            letter-spacing: 0.32em;
+            text-transform: uppercase;
+        }
+        .game-stage-transition-name {
+            margin-top: 10px;
+            font-size: clamp(28px, 4vw, 42px);
+            letter-spacing: 0.08em;
+        }
+        #game-stage-transition.animating .game-stage-transition-shutter.top {
+            animation: game-stage-shutter-top 1180ms cubic-bezier(0.2, 0.86, 0.24, 1) both;
+        }
+        #game-stage-transition.animating .game-stage-transition-shutter.bottom {
+            animation: game-stage-shutter-bottom 1180ms cubic-bezier(0.2, 0.86, 0.24, 1) both;
+        }
+        #game-stage-transition.animating .game-stage-transition-card {
+            animation: game-stage-card 1180ms cubic-bezier(0.22, 0.86, 0.28, 1) both;
+        }
+        @keyframes game-stage-shutter-top {
+            0% { transform: translateY(-100%); }
+            18% { transform: translateY(0); }
+            72% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+        @keyframes game-stage-shutter-bottom {
+            0% { transform: translateY(100%); }
+            18% { transform: translateY(0); }
+            72% { transform: translateY(0); }
+            100% { transform: translateY(100%); }
+        }
+        @keyframes game-stage-card {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+            20% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            72% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.04); }
         }
         @media (max-width: 640px) {
             .game-menu-panel {
@@ -223,9 +332,30 @@ function ensureGameUiStyles() {
             .game-startup-panel {
                 width: calc(100vw - 24px);
             }
+            .game-startup-cta {
+                width: min(320px, calc(100vw - 48px));
+            }
+            .game-startup-cta.ready {
+                width: 80px;
+                height: 80px;
+            }
+            .game-stage-transition-card {
+                min-width: calc(100vw - 32px);
+                padding: 18px 20px;
+            }
         }
     `;
     document.head.appendChild(style);
+}
+
+function formatUiColorRgb(value, fallback = COLORS.core) {
+    const color = Number.isFinite(value) ? value : fallback;
+    const safeColor = Math.max(0, Math.min(0xffffff, Math.round(color)));
+    return [
+        (safeColor >> 16) & 0xff,
+        (safeColor >> 8) & 0xff,
+        safeColor & 0xff
+    ].join(', ');
 }
 
 const SceneUiMixin = {
@@ -269,26 +399,37 @@ const SceneUiMixin = {
         startup.className = 'hidden';
         startup.innerHTML = `
             <div class="game-startup-panel">
-                <div class="game-startup-progress" id="game-startup-progress">
-                    <div class="game-startup-progress-bar">
-                        <div class="game-startup-progress-fill" id="game-startup-progress-fill"></div>
-                    </div>
-                </div>
-                <div class="game-startup-play hidden" id="game-startup-play">
-                    <button class="game-startup-play-button" id="game-startup-play-button" aria-label="开始游戏"></button>
-                </div>
+                <button class="game-startup-cta" id="game-startup-cta" type="button" aria-label="资源加载中" disabled>
+                    <span class="game-startup-cta-track">
+                        <span class="game-startup-progress-fill" id="game-startup-progress-fill"></span>
+                    </span>
+                </button>
+                <div class="game-startup-caption" id="game-startup-caption">资源加载中 0%</div>
+            </div>
+        `;
+
+        const stageTransition = document.createElement('div');
+        stageTransition.id = 'game-stage-transition';
+        stageTransition.innerHTML = `
+            <div class="game-stage-transition-shutter top"></div>
+            <div class="game-stage-transition-shutter bottom"></div>
+            <div class="game-stage-transition-card">
+                <div class="game-stage-transition-index" id="game-stage-transition-index">第一关</div>
+                <div class="game-stage-transition-name" id="game-stage-transition-name">FORAGE</div>
             </div>
         `;
 
         document.body.appendChild(overlay);
         document.body.appendChild(toast);
         document.body.appendChild(fps);
+        document.body.appendChild(stageTransition);
         document.body.appendChild(startup);
 
         this.ui = {
             overlay,
             toast,
             fps,
+            stageTransition,
             startup,
             title: overlay.querySelector('#game-menu-title'),
             subtitle: overlay.querySelector('#game-menu-subtitle'),
@@ -303,10 +444,11 @@ const SceneUiMixin = {
             saveButton: overlay.querySelector('#menu-save-btn'),
             loadButton: overlay.querySelector('#menu-load-btn'),
             mainMenuButton: overlay.querySelector('#menu-main-menu-btn'),
-            startupProgress: startup.querySelector('#game-startup-progress'),
+            stageTransitionIndex: stageTransition.querySelector('#game-stage-transition-index'),
+            stageTransitionName: stageTransition.querySelector('#game-stage-transition-name'),
+            startupCta: startup.querySelector('#game-startup-cta'),
             startupProgressFill: startup.querySelector('#game-startup-progress-fill'),
-            startupPlay: startup.querySelector('#game-startup-play'),
-            startupPlayButton: startup.querySelector('#game-startup-play-button')
+            startupCaption: startup.querySelector('#game-startup-caption')
         };
 
         this.ui.startButton.addEventListener('click', () => {
@@ -337,8 +479,8 @@ const SceneUiMixin = {
             this.playAudioEvent?.('ui_click', { control: 'menu-main-menu-btn' });
             this.showMainMenu();
         });
-        this.ui.startupPlayButton.addEventListener('click', () => {
-            this.playAudioEvent?.('ui_click', { control: 'game-startup-play-button' });
+        this.ui.startupCta.addEventListener('click', () => {
+            this.playAudioEvent?.('ui_click', { control: 'game-startup-cta' });
             this.handleStartupAction?.();
         });
     },
@@ -349,9 +491,12 @@ const SceneUiMixin = {
         }
         const clampedProgress = clamp(progress, 0, 1);
         this.ui.startup.classList.remove('hidden');
-        this.ui.startupProgress.classList.remove('hidden');
-        this.ui.startupPlay.classList.add('hidden');
+        this.ui.startupCta.classList.remove('ready');
+        this.ui.startupCaption.classList.remove('ready');
+        this.ui.startupCta.disabled = true;
+        this.ui.startupCta.setAttribute('aria-label', '资源加载中');
         this.ui.startupProgressFill.style.width = `${(clampedProgress * 100).toFixed(1)}%`;
+        this.ui.startupCaption.textContent = `资源加载中 ${(clampedProgress * 100).toFixed(0)}%`;
     },
 
     showStartupReady() {
@@ -359,12 +504,49 @@ const SceneUiMixin = {
             return;
         }
         this.ui.startup.classList.remove('hidden');
-        this.ui.startupProgress.classList.add('hidden');
-        this.ui.startupPlay.classList.remove('hidden');
+        this.ui.startupCta.classList.add('ready');
+        this.ui.startupCaption.classList.add('ready');
+        this.ui.startupCta.disabled = false;
+        this.ui.startupCta.setAttribute('aria-label', '开始游戏');
+        this.ui.startupProgressFill.style.width = '100%';
+        this.ui.startupCaption.textContent = '点击开始';
     },
 
     hideStartupOverlay() {
         this.ui?.startup?.classList.add('hidden');
+        this.ui?.startupCta?.classList.remove('ready');
+        this.ui?.startupCaption?.classList.remove('ready');
+    },
+
+    hideStageTransition() {
+        if (!this.ui?.stageTransition) {
+            return;
+        }
+        this.ui.stageTransition.classList.remove('animating');
+        this.ui.stageTransition.classList.remove('active');
+    },
+
+    showStageTransition(stageIndex = this.runState?.stageIndex || 0) {
+        if (!this.ui?.stageTransition) {
+            return;
+        }
+        const presentation = this.getStagePresentation?.(stageIndex) || {};
+        const accentRgb = formatUiColorRgb(presentation.palette?.signal, COLORS.core);
+        this.ui.stageTransitionIndex.textContent = presentation.title || `第 ${stageIndex + 1} 关`;
+        this.ui.stageTransitionName.textContent = presentation.subtitle || '';
+        this.ui.stageTransition.style.setProperty('--transition-accent-rgb', accentRgb);
+
+        if (this.stageTransitionHideTimer) {
+            window.clearTimeout(this.stageTransitionHideTimer);
+        }
+
+        this.ui.stageTransition.classList.remove('animating');
+        this.ui.stageTransition.classList.add('active');
+        void this.ui.stageTransition.offsetWidth;
+        this.ui.stageTransition.classList.add('animating');
+        this.stageTransitionHideTimer = window.setTimeout(() => {
+            this.hideStageTransition();
+        }, 1220);
     },
 
     refreshMenuState() {

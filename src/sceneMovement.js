@@ -245,7 +245,7 @@ const SceneMovementMixin = {
             }
         });
 
-        if (triggerCount > 0 && typeof this.consumePulseMetabolism === 'function') {
+        if (triggerCount > 0 && typeof this.consumePulseMetabolism === 'function' && !this.isStartupSequenceActive?.()) {
             this.consumePulseMetabolism(triggerCount);
         }
 
