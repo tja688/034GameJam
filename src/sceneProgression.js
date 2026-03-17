@@ -321,12 +321,9 @@ const SceneProgressionMixin = {
     getStagePresentation(stageIndex = this.runState?.stageIndex || 0) {
         const normalizedIndex = clamp(stageIndex, 0, Math.max(0, DEMO_STAGE_DEFS.length - 1));
         const stage = DEMO_STAGE_DEFS[normalizedIndex] || null;
-        const meta = STAGE_DISPLAY_DEFS[normalizedIndex] || {};
         return {
             stageIndex: normalizedIndex,
-            stageId: stage?.id || meta.id || '',
-            title: meta.title || `第 ${normalizedIndex + 1} 关`,
-            subtitle: meta.subtitle || (stage?.id || '').toUpperCase(),
+            stageId: stage?.id || '',
             palette: stage?.palette || this.getRunPalette()
         };
     },

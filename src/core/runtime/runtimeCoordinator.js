@@ -88,7 +88,7 @@ const RuntimeCoordinator = {
         scene.render();
     },
     handleMenuAndPause(scene, frameDt) {
-        if (scene.isMenuUiEnabled?.() && scene.ui && Phaser.Input.Keyboard.JustDown(scene.keys.cancel) && !scene.player.dead) {
+        if (scene.isMenuUiEnabled?.() && scene.ui && Phaser.Input.Keyboard.JustDown(scene.keys.pauseMenu) && !scene.player.dead) {
             if (scene.menuMode === 'pause') {
                 scene.endFramePerformanceProbe();
                 scene.resumeGame();

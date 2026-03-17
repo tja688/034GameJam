@@ -43,6 +43,7 @@ class CoreDemoScene extends Phaser.Scene {
             down: Phaser.Input.Keyboard.KeyCodes.S,
             left: Phaser.Input.Keyboard.KeyCodes.A,
             right: Phaser.Input.Keyboard.KeyCodes.D,
+            pauseMenu: Phaser.Input.Keyboard.KeyCodes.P,
             expand: Phaser.Input.Keyboard.KeyCodes.E,
             shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
             ctrl: Phaser.Input.Keyboard.KeyCodes.CTRL,

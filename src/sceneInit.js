@@ -671,7 +671,7 @@ const SceneInitMixin = {
             return;
         }
 
-            if (this.isMenuUiEnabled?.() && this.ui && Phaser.Input.Keyboard.JustDown(this.keys.cancel) && !this.player.dead) {
+            if (this.isMenuUiEnabled?.() && this.ui && Phaser.Input.Keyboard.JustDown(this.keys.pauseMenu) && !this.player.dead) {
                 if (this.menuMode === 'pause') {
                     this.endFramePerformanceProbe();
                     this.resumeGame();

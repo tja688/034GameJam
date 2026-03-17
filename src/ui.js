@@ -160,7 +160,7 @@ function ensureGameUiStyles() {
             flex-direction: column;
             align-items: center;
             justify-content: flex-start;
-            gap: 12px;
+            gap: 0;
         }
         .game-startup-cta {
             width: min(360px, 72vw);
@@ -186,14 +186,12 @@ function ensureGameUiStyles() {
             cursor: default;
         }
         .game-startup-cta.ready {
-            width: 92px;
-            height: 92px;
-            border-radius: 24px;
-            border-color: rgba(180, 238, 255, 0.36);
-            background: rgba(7, 17, 24, 0.82);
-            box-shadow:
-                0 0 0 1px rgba(180, 238, 255, 0.06),
-                0 20px 48px rgba(0, 0, 0, 0.34);
+            width: 78px;
+            height: 78px;
+            border-radius: 0;
+            border-color: transparent;
+            background: transparent;
+            box-shadow: none;
             cursor: pointer;
         }
         .game-startup-cta.ready:hover {
@@ -217,24 +215,12 @@ function ensureGameUiStyles() {
             transition: width 0.18s ease, opacity 0.18s ease;
         }
         .game-startup-cta.ready .game-startup-cta-track {
-            clip-path: polygon(28% 18%, 80% 50%, 28% 82%);
+            clip-path: polygon(22% 12%, 84% 50%, 22% 88%);
             background: linear-gradient(135deg, rgba(138, 230, 255, 0.96), rgba(245, 240, 215, 0.96));
-            transform: scale(0.82);
+            transform: scale(1);
         }
         .game-startup-cta.ready .game-startup-progress-fill {
             opacity: 0;
-        }
-        .game-startup-caption {
-            min-height: 18px;
-            color: rgba(212, 228, 236, 0.62);
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            font-size: 12px;
-            letter-spacing: 0.22em;
-            text-transform: uppercase;
-            transition: opacity 0.18s ease, color 0.18s ease;
-        }
-        .game-startup-caption.ready {
-            color: rgba(244, 240, 215, 0.82);
         }
         #game-stage-transition {
             position: fixed;
@@ -271,28 +257,31 @@ function ensureGameUiStyles() {
             position: absolute;
             left: 50%;
             top: 50%;
-            min-width: min(460px, calc(100vw - 48px));
-            padding: 22px 28px;
-            border: 1px solid rgba(var(--transition-accent-rgb, 244, 240, 215), 0.28);
-            border-radius: 18px;
+            width: min(240px, calc(100vw - 72px));
+            height: 18px;
+            padding: 0;
+            border: 1px solid rgba(var(--transition-accent-rgb, 244, 240, 215), 0.24);
+            border-radius: 5px;
             background: rgba(4, 10, 14, 0.76);
-            box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
-            color: #f4f0d7;
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            text-align: center;
-            transform: translate(-50%, -50%) scale(0.94);
+            box-shadow: 0 14px 42px rgba(0, 0, 0, 0.28);
+            overflow: hidden;
+            transform: translate(-50%, -50%) scale(0.92);
             opacity: 0;
         }
-        .game-stage-transition-index {
-            color: rgba(var(--transition-accent-rgb, 244, 240, 215), 0.88);
-            font-size: 13px;
-            letter-spacing: 0.32em;
-            text-transform: uppercase;
+        .game-stage-transition-core {
+            width: 100%;
+            height: 100%;
+            transform-origin: center;
+            background: rgba(255, 255, 255, 0.05);
         }
-        .game-stage-transition-name {
-            margin-top: 10px;
-            font-size: clamp(28px, 4vw, 42px);
-            letter-spacing: 0.08em;
+        .game-stage-transition-core::before {
+            content: '';
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, rgba(138, 230, 255, 0.9), rgba(245, 240, 215, 0.98), rgba(138, 230, 255, 0.9));
+            transform: scaleX(0.18);
+            transform-origin: center;
         }
         #game-stage-transition.animating .game-stage-transition-shutter.top {
             animation: game-stage-shutter-top 1180ms cubic-bezier(0.2, 0.86, 0.24, 1) both;
@@ -302,6 +291,9 @@ function ensureGameUiStyles() {
         }
         #game-stage-transition.animating .game-stage-transition-card {
             animation: game-stage-card 1180ms cubic-bezier(0.22, 0.86, 0.28, 1) both;
+        }
+        #game-stage-transition.animating .game-stage-transition-core::before {
+            animation: game-stage-core 1180ms cubic-bezier(0.22, 0.86, 0.28, 1) both;
         }
         @keyframes game-stage-shutter-top {
             0% { transform: translateY(-100%); }
@@ -321,6 +313,12 @@ function ensureGameUiStyles() {
             72% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             100% { opacity: 0; transform: translate(-50%, -50%) scale(1.04); }
         }
+        @keyframes game-stage-core {
+            0% { transform: scaleX(0.18); opacity: 0.24; }
+            20% { transform: scaleX(1); opacity: 1; }
+            72% { transform: scaleX(1); opacity: 1; }
+            100% { transform: scaleX(0.22); opacity: 0.2; }
+        }
         @media (max-width: 640px) {
             .game-menu-panel {
                 width: calc(100vw - 24px);
@@ -336,12 +334,11 @@ function ensureGameUiStyles() {
                 width: min(320px, calc(100vw - 48px));
             }
             .game-startup-cta.ready {
-                width: 80px;
-                height: 80px;
+                width: 68px;
+                height: 68px;
             }
             .game-stage-transition-card {
-                min-width: calc(100vw - 32px);
-                padding: 18px 20px;
+                width: calc(100vw - 64px);
             }
         }
     `;
@@ -404,7 +401,6 @@ const SceneUiMixin = {
                         <span class="game-startup-progress-fill" id="game-startup-progress-fill"></span>
                     </span>
                 </button>
-                <div class="game-startup-caption" id="game-startup-caption">资源加载中 0%</div>
             </div>
         `;
 
@@ -414,8 +410,7 @@ const SceneUiMixin = {
             <div class="game-stage-transition-shutter top"></div>
             <div class="game-stage-transition-shutter bottom"></div>
             <div class="game-stage-transition-card">
-                <div class="game-stage-transition-index" id="game-stage-transition-index">第一关</div>
-                <div class="game-stage-transition-name" id="game-stage-transition-name">FORAGE</div>
+                <div class="game-stage-transition-core"></div>
             </div>
         `;
 
@@ -444,11 +439,8 @@ const SceneUiMixin = {
             saveButton: overlay.querySelector('#menu-save-btn'),
             loadButton: overlay.querySelector('#menu-load-btn'),
             mainMenuButton: overlay.querySelector('#menu-main-menu-btn'),
-            stageTransitionIndex: stageTransition.querySelector('#game-stage-transition-index'),
-            stageTransitionName: stageTransition.querySelector('#game-stage-transition-name'),
             startupCta: startup.querySelector('#game-startup-cta'),
-            startupProgressFill: startup.querySelector('#game-startup-progress-fill'),
-            startupCaption: startup.querySelector('#game-startup-caption')
+            startupProgressFill: startup.querySelector('#game-startup-progress-fill')
         };
 
         this.ui.startButton.addEventListener('click', () => {
@@ -492,11 +484,9 @@ const SceneUiMixin = {
         const clampedProgress = clamp(progress, 0, 1);
         this.ui.startup.classList.remove('hidden');
         this.ui.startupCta.classList.remove('ready');
-        this.ui.startupCaption.classList.remove('ready');
         this.ui.startupCta.disabled = true;
         this.ui.startupCta.setAttribute('aria-label', '资源加载中');
         this.ui.startupProgressFill.style.width = `${(clampedProgress * 100).toFixed(1)}%`;
-        this.ui.startupCaption.textContent = `资源加载中 ${(clampedProgress * 100).toFixed(0)}%`;
     },
 
     showStartupReady() {
@@ -505,17 +495,14 @@ const SceneUiMixin = {
         }
         this.ui.startup.classList.remove('hidden');
         this.ui.startupCta.classList.add('ready');
-        this.ui.startupCaption.classList.add('ready');
         this.ui.startupCta.disabled = false;
         this.ui.startupCta.setAttribute('aria-label', '开始游戏');
         this.ui.startupProgressFill.style.width = '100%';
-        this.ui.startupCaption.textContent = '点击开始';
     },
 
     hideStartupOverlay() {
         this.ui?.startup?.classList.add('hidden');
         this.ui?.startupCta?.classList.remove('ready');
-        this.ui?.startupCaption?.classList.remove('ready');
     },
 
     hideStageTransition() {
@@ -532,8 +519,6 @@ const SceneUiMixin = {
         }
         const presentation = this.getStagePresentation?.(stageIndex) || {};
         const accentRgb = formatUiColorRgb(presentation.palette?.signal, COLORS.core);
-        this.ui.stageTransitionIndex.textContent = presentation.title || `第 ${stageIndex + 1} 关`;
-        this.ui.stageTransitionName.textContent = presentation.subtitle || '';
         this.ui.stageTransition.style.setProperty('--transition-accent-rgb', accentRgb);
 
         if (this.stageTransitionHideTimer) {
@@ -574,7 +559,7 @@ const SceneUiMixin = {
             this.ui.pauseButtons.classList.remove('hidden');
             this.ui.title.textContent = '暂停';
             this.ui.subtitle.textContent = '游戏已暂停。可以继续、保存当前单槽、直接读回单槽，或返回主菜单。';
-            this.ui.hint.textContent = 'ESC 继续游戏。读档会直接覆盖当前局内状态。';
+            this.ui.hint.textContent = 'P 继续游戏。读档会直接覆盖当前局内状态。';
         } else if (this.menuMode === 'main') {
             this.ui.overlay.classList.remove('hidden');
             this.ui.mainButtons.classList.remove('hidden');

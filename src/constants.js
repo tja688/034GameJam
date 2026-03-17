@@ -30,14 +30,6 @@ const STARTUP_SCENE_PALETTE = Object.freeze({
     threat: 0xffa26f
 });
 
-const STAGE_DISPLAY_DEFS = Object.freeze([
-    { id: 'forage', title: '第一关', subtitle: 'FORAGE' },
-    { id: 'bloom', title: '第二关', subtitle: 'BLOOM' },
-    { id: 'pressure', title: '第三关', subtitle: 'PRESSURE' },
-    { id: 'encircle', title: '第四关', subtitle: 'ENCIRCLE' },
-    { id: 'saturation', title: '第五关', subtitle: 'SATURATION' }
-]);
-
 const MASS_BY_COUNT = { 3: 1.0, 4: 1.18, 5: 1.42, 6: 1.72 };
 
 const CHAIN_SPAN_BY_COUNT = { 3: 150, 4: 200, 5: 250, 6: 310 };
