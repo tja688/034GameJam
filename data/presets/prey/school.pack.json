@@ -1,0 +1,8 @@
+{
+  "id": "pack",
+  "moduleId": "prey.school",
+  "archetype": "school",
+  "behaviorId": "basic-school",
+  "sizeKey": "small",
+  "shape": "circle"
+}

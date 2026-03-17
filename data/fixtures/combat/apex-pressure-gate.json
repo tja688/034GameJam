@@ -1,0 +1,27 @@
+{
+  "id": "combat/apex-pressure-gate",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "stage-saturation-late",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "moduleId": "prey.apex",
+      "preset": "objective-small",
+      "x": 560,
+      "y": -20
+    },
+    {
+      "moduleId": "prey.school",
+      "preset": "pack",
+      "x": 660,
+      "y": 120
+    }
+  ],
+  "camera": {
+    "zoom": 0.84
+  },
+  "notes": "验证 apex 压迫和 support pack 干扰。"
+}

@@ -1,0 +1,33 @@
+{
+  "id": "prey/school-sweep-line",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "compact-hunter",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "moduleId": "prey.school",
+      "preset": "pack",
+      "x": 380,
+      "y": -60
+    },
+    {
+      "moduleId": "prey.school",
+      "preset": "pack",
+      "x": 440,
+      "y": 20
+    },
+    {
+      "moduleId": "prey.school",
+      "preset": "medium",
+      "x": 500,
+      "y": -10
+    }
+  ],
+  "camera": {
+    "zoom": 0.86
+  },
+  "notes": "验证 school 群聚与扫荡线可读性。"
+}

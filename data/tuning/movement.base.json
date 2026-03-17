@@ -1,0 +1,7 @@
+{
+  "enablePulse": true,
+  "springK": 260,
+  "springDamping": 42,
+  "repulsionStiffness": 16,
+  "baseTurnRate": 3.1
+}

@@ -1,0 +1,7 @@
+{
+  "id": "stage-encircle-mid",
+  "moduleId": "player.cluster",
+  "chainIds": ["source", "shell-a", "dart-a", "prism", "compressor", "blade", "shell-b", "dart-b"],
+  "energyRatio": 0.72,
+  "growthCursor": 3
+}

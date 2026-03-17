@@ -1,0 +1,9 @@
+{
+  "id": "objective-small",
+  "moduleId": "prey.apex",
+  "archetype": "apex",
+  "behaviorId": "elite-brute",
+  "sizeKey": "large",
+  "shape": "triangle",
+  "isObjective": true
+}

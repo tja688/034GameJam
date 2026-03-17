@@ -1,0 +1,33 @@
+{
+  "id": "prey/skittish-herd-burst",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "debug-default",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "moduleId": "prey.skittish",
+      "preset": "basic",
+      "x": 320,
+      "y": -80
+    },
+    {
+      "moduleId": "prey.skittish",
+      "preset": "basic",
+      "x": 360,
+      "y": 20
+    },
+    {
+      "moduleId": "prey.skittish",
+      "preset": "medium",
+      "x": 420,
+      "y": -20
+    }
+  ],
+  "camera": {
+    "zoom": 0.88
+  },
+  "notes": "验证 skittish 群体在压力下的逃逸链。"
+}

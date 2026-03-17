@@ -1,0 +1,15 @@
+{
+  "id": "player/cluster-traction-smoke",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "debug-default",
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "camera": {
+    "zoom": 0.9
+  },
+  "notes": "验证集群牵引移动、收缩与舒张节奏。"
+}

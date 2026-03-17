@@ -1,0 +1,24 @@
+{
+  "id": "pressure/objective/first-weakspot",
+  "stageId": "pressure",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "pressure",
+    "playerPreset": "stage-encircle-mid",
+    "energy": 0.72,
+    "growthCursor": 2,
+    "cameraZoom": 0.92,
+    "x": -20,
+    "y": 0
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.weakspot",
+        "preset": "objective",
+        "x": 520,
+        "y": -30
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "basic",
+  "moduleId": "prey.bulwark",
+  "archetype": "bulwark",
+  "behaviorId": "elite-rect",
+  "sizeKey": "medium",
+  "shape": "rect",
+  "compressionNeed": 0.24
+}

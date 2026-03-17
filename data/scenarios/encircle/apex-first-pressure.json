@@ -1,0 +1,30 @@
+{
+  "id": "encircle/apex-first-pressure",
+  "stageId": "encircle",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "encircle",
+    "playerPreset": "stage-encircle-mid",
+    "energy": 0.72,
+    "growthCursor": 3,
+    "cameraZoom": 0.95,
+    "x": 220,
+    "y": 300
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.apex",
+        "preset": "objective-small",
+        "x": 620,
+        "y": 260
+      },
+      {
+        "moduleId": "prey.school",
+        "preset": "pack",
+        "x": 700,
+        "y": 360
+      }
+    ]
+  }
+}

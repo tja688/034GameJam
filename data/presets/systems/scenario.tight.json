@@ -1,0 +1,7 @@
+{
+  "id": "scenario-tight",
+  "cameraModuleId": "camera.invasive",
+  "cameraPreset": "scenario-tight",
+  "hudModuleId": "hud.main",
+  "hudPreset": "mainflow"
+}

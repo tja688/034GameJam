@@ -1,0 +1,7 @@
+{
+  "gameplayMaxEnergy": 100,
+  "gameplayStartEnergyRatio": 0.78,
+  "gameplayStageProgressGoalMul": 1,
+  "gameplayPreyGlobalSizeMul": 1,
+  "gameplayPreyRespawnEnabled": true
+}

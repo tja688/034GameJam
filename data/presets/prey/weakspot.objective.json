@@ -1,0 +1,9 @@
+{
+  "id": "objective",
+  "moduleId": "prey.weakspot",
+  "archetype": "weakspot",
+  "behaviorId": "elite-spinner",
+  "sizeKey": "large",
+  "shape": "square",
+  "isObjective": true
+}

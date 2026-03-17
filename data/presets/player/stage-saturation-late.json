@@ -1,0 +1,7 @@
+{
+  "id": "stage-saturation-late",
+  "moduleId": "player.cluster",
+  "chainIds": ["source", "shell-a", "dart-a", "prism", "compressor", "blade", "shell-b", "dart-b"],
+  "energyRatio": 0.94,
+  "growthCursor": 5
+}

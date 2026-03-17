@@ -1,0 +1,30 @@
+{
+  "id": "forage/entry-skittish-pursuit",
+  "stageId": "forage",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "forage",
+    "playerPreset": "debug-default",
+    "energy": 0.82,
+    "growthCursor": 0,
+    "cameraZoom": 0.92,
+    "x": 0,
+    "y": 0
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.skittish",
+        "preset": "basic",
+        "x": 360,
+        "y": -40
+      },
+      {
+        "moduleId": "prey.skittish",
+        "preset": "basic",
+        "x": 420,
+        "y": 80
+      }
+    ]
+  }
+}

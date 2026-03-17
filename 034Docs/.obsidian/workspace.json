@@ -180,8 +180,16 @@
       "bases:新建数据库": false
     }
   },
-  "active": "6b1911606f02b24d",
+  "active": "f65887c2b7dd11ae",
   "lastOpenFiles": [
+    "source/terminology.md",
+    "source/ai-collaboration-rules.md",
+    "source/tuning-policy.md",
+    "source/scenario-spec.md",
+    "source/playground-spec.md",
+    "source/module-spec.md",
+    "source/architecture-overview.md",
+    "source/project-north-star.md",
     "source",
     "新建文件夹",
     "项目大型重构执行方案.md",

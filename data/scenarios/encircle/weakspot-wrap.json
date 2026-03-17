@@ -1,0 +1,30 @@
+{
+  "id": "encircle/weakspot-wrap",
+  "stageId": "encircle",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "encircle",
+    "playerPreset": "stage-encircle-mid",
+    "energy": 0.7,
+    "growthCursor": 3,
+    "cameraZoom": 0.88,
+    "x": 0,
+    "y": 0
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.weakspot",
+        "preset": "basic",
+        "x": 420,
+        "y": 0
+      },
+      {
+        "moduleId": "prey.school",
+        "preset": "pack",
+        "x": 560,
+        "y": 120
+      }
+    ]
+  }
+}

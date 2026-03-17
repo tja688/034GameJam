@@ -1,0 +1,6 @@
+{
+  "enableClickToEditMode": true,
+  "editTimeScale": 0.08,
+  "editDeleteTimeScale": 0.05,
+  "displayDamping": 18
+}

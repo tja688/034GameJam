@@ -1,0 +1,36 @@
+{
+  "id": "saturation/final-apex-overload",
+  "stageId": "saturation",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "saturation",
+    "playerPreset": "stage-saturation-late",
+    "energy": 0.86,
+    "growthCursor": 5,
+    "cameraZoom": 0.82,
+    "x": 0,
+    "y": 0
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.apex",
+        "preset": "objective-large",
+        "x": 700,
+        "y": -30
+      },
+      {
+        "moduleId": "prey.apex",
+        "preset": "support-pack",
+        "x": 820,
+        "y": 140
+      },
+      {
+        "moduleId": "prey.bulwark",
+        "preset": "heavy",
+        "x": 560,
+        "y": 180
+      }
+    ]
+  }
+}

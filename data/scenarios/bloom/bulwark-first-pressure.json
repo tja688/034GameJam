@@ -1,0 +1,30 @@
+{
+  "id": "bloom/bulwark-first-pressure",
+  "stageId": "bloom",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "bloom",
+    "playerPreset": "compact-hunter",
+    "energy": 0.76,
+    "growthCursor": 1,
+    "cameraZoom": 0.9,
+    "x": 0,
+    "y": 0
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.bulwark",
+        "preset": "basic",
+        "x": 420,
+        "y": 0
+      },
+      {
+        "moduleId": "prey.school",
+        "preset": "pack",
+        "x": 560,
+        "y": 120
+      }
+    ]
+  }
+}

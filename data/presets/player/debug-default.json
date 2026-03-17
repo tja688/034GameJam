@@ -1,0 +1,7 @@
+{
+  "id": "debug-default",
+  "moduleId": "player.cluster",
+  "chainIds": ["source", "shell-a", "dart-a", "prism", "compressor", "blade"],
+  "energyRatio": 0.78,
+  "growthCursor": 0
+}

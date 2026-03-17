@@ -1,0 +1,8 @@
+{
+  "id": "basic",
+  "moduleId": "prey.skittish",
+  "archetype": "skittish",
+  "behaviorId": "basic-runner",
+  "sizeKey": "small",
+  "shape": "triangle"
+}

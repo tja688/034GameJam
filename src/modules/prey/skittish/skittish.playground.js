@@ -1,0 +1,13 @@
+const SkittishPreyPlayground = {
+    label: 'Prey / Skittish',
+    searchTerms: ['prey', 'skittish', 'runner', 'escape'],
+    defaultPreset: 'basic',
+    inspectFields: [
+        { key: 'health', label: 'Health', type: 'number', step: 1 },
+        { key: 'compressionNeed', label: 'Compression Need', type: 'number', step: 0.05 },
+        { key: 'behaviorState', label: 'Behavior', type: 'enum', options: ['graze', 'alert', 'evade', 'burst', 'recover'] },
+        { key: 'remove', label: '移除', type: 'action', action: 'remove' }
+    ]
+};
+
+window.SkittishPreyPlayground = SkittishPreyPlayground;

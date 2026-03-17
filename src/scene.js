@@ -1,10 +1,28 @@
 class CoreDemoScene extends Phaser.Scene {
 
-    constructor() {
-        super('core-demo');
+    constructor(sceneKey = 'core-demo', runtimeMode = 'mainflow') {
+        super(sceneKey);
+        this.runtimeMode = runtimeMode;
     }
 
-    create() {
+    getShellConfig() {
+        return {
+            runtimeMode: this.runtimeMode || 'mainflow',
+            enableMenuUi: true,
+            startSession: false,
+            useStartupSequence: true
+        };
+    }
+
+    afterShellCreate() {}
+
+    create(data = {}) {
+        const shellConfig = {
+            ...this.getShellConfig(),
+            ...(data.shellConfig || {})
+        };
+        this.runtimeMode = shellConfig.runtimeMode || this.runtimeMode || 'mainflow';
+
         window.activeScene = this;
         window.dumpEcoTelemetry = () => window.activeScene?.getEcoTelemetrySnapshot?.();
         ensureGameUiStyles();
@@ -17,7 +35,7 @@ class CoreDemoScene extends Phaser.Scene {
         this.graphicsHud = this.add.graphics();
         this.graphicsHud.setDepth(40);
         this.initBakedSpriteRenderer?.();
-        this.initInfiniteMapBackgrounds?.('geometric'); // Options: 'geometric', 'flow', 'grid'
+        this.initInfiniteMapBackgrounds?.('geometric');
         this.input.mouse?.disableContextMenu();
         this.scale.on('resize', this.handleResize, this);
         this.keys = this.input.keyboard.addKeys({
@@ -35,19 +53,37 @@ class CoreDemoScene extends Phaser.Scene {
         });
         this.input.on('pointerdown', this.handlePointerDown, this);
         this.input.on('pointerup', this.handlePointerUp, this);
-        this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
+        this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY) => {
             if (typeof this.nudgeCameraZoom === 'function') {
                 this.nudgeCameraZoom(deltaY);
             }
         });
-        this.debugMenuOpen = false;
-        this.debugMenuAutoPaused = false;
-        this.menuMode = null;
-        this.toastTimer = null;
-        this.buildUi();
+
+        RuntimeCoordinator.bootstrapScene(this, {
+            runtimeMode: this.runtimeMode,
+            startSession: shellConfig.startSession !== false
+        });
+
+        if (shellConfig.enableMenuUi) {
+            this.buildUi();
+        } else {
+            this.ui = null;
+        }
+
         this.hideExternalDebugUi?.();
-        this.resetSimulation(false);
-        this.beginStartupSequence?.();
+        this.resetSimulation(shellConfig.startSession !== false);
+
+        if (shellConfig.useStartupSequence) {
+            this.beginStartupSequence?.();
+        } else {
+            this.startupSequence = null;
+            this.menuMode = null;
+            this.paused = false;
+            this.sessionStarted = shellConfig.startSession !== false;
+            this.hideStartupOverlay?.();
+        }
+
+        this.afterShellCreate(data, shellConfig);
     }
 
     handleResize() {

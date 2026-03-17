@@ -254,6 +254,49 @@ const PREY_ARCHETYPE_DEFS = {
     }
 };
 
+Object.assign(PREY_ARCHETYPE_DEFS, {
+    skittish: {
+        ...PREY_ARCHETYPE_DEFS.basic,
+        progressValue: 0.74,
+        biomassValue: 0.88,
+        energyValue: 6.6
+    },
+    bulwark: {
+        ...PREY_ARCHETYPE_DEFS.eliteRect,
+        armor: 0.16,
+        compressionNeed: 0.28,
+        encircleNeed: 0.08,
+        weakExpose: 0.1,
+        bulwarkChargeRate: 0.46,
+        bulwarkReleaseRate: 0.74,
+        bulwarkPulse: 0.52
+    },
+    weakspot: {
+        ...PREY_ARCHETYPE_DEFS.eliteSpinner,
+        armor: 0.12,
+        compressionNeed: 0.12,
+        encircleNeed: 0.36,
+        weakArc: Math.PI * 0.58,
+        weakExpose: 0.24,
+        protectTurnRate: 2.2
+    },
+    apex: {
+        ...PREY_ARCHETYPE_DEFS.eliteBrute,
+        armor: 0.22,
+        compressionNeed: 0.22,
+        encircleNeed: 0.24,
+        weakArc: Math.PI * 0.44,
+        weakExpose: 0.2,
+        protectTurnRate: 1.6,
+        bulwarkChargeRate: 0.2,
+        bulwarkReleaseRate: 0.34,
+        bulwarkPulse: 0.28
+    },
+    objective: {
+        ...PREY_ARCHETYPE_DEFS.objectiveOrb
+    }
+});
+
 function createStageNodeTargets(entry, earlyExit, idealExit, overstay, max) {
     return { entry, earlyExit, idealExit, overstay, max };
 }

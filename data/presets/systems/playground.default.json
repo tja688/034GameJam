@@ -1,0 +1,9 @@
+{
+  "id": "playground-default",
+  "cameraModuleId": "camera.invasive",
+  "cameraPreset": "playground",
+  "hudModuleId": "hud.main",
+  "hudPreset": "playground",
+  "progressionModuleId": "progression.demo5stage",
+  "progressionPreset": "forage"
+}

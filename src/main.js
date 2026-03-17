@@ -12,15 +12,16 @@ Object.assign(
     SceneEnemiesMixin,
     SceneRenderMixin
 );
-const config = {
-    type: Phaser.AUTO,
-    backgroundColor: '#071017',
-    scale: {
-        mode: Phaser.Scale.RESIZE,
-        width: window.innerWidth,
-        height: window.innerHeight
-    },
-    scene: [CoreDemoScene]
+
+CoreDemoScene.prototype.resetSimulation = function resetSimulation(startSession = true) {
+    return RuntimeCoordinator.resetSession(this, {
+        runtimeMode: this.runtimeMode || 'mainflow',
+        startSession
+    });
 };
 
-new Phaser.Game(config);
+CoreDemoScene.prototype.update = function update(_, deltaMs) {
+    return RuntimeCoordinator.tick(this, deltaMs);
+};
+
+start034GameApp();

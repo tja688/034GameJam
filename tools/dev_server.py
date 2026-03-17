@@ -22,6 +22,11 @@ ALLOWED_JSON_FILES = {
     "tuning-profile.json": ROOT / "tuning-profile.json",
     "save-slot.json": ROOT / "save-slot.json",
     "audio-profile.json": ROOT / "audio-profile.json",
+    "data/fixtures/playground/custom-sandbox.json": ROOT / "data/fixtures/playground/custom-sandbox.json",
+    "data/tuning/movement.base.json": ROOT / "data/tuning/movement.base.json",
+    "data/tuning/gameplay.base.json": ROOT / "data/tuning/gameplay.base.json",
+    "data/tuning/camera.base.json": ROOT / "data/tuning/camera.base.json",
+    "data/tuning/debug.base.json": ROOT / "data/tuning/debug.base.json",
 }
 
 

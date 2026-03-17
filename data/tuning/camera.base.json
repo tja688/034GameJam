@@ -1,0 +1,6 @@
+{
+  "cameraDefaultZoom": 0.92,
+  "cameraAutoNodeZoomEnabled": true,
+  "cameraMinZoom": 0.03,
+  "cameraMaxZoom": 1.12
+}

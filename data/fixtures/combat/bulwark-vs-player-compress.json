@@ -1,0 +1,21 @@
+{
+  "id": "combat/bulwark-vs-player-compress",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "debug-default",
+      "x": 120,
+      "y": 0
+    },
+    {
+      "moduleId": "prey.bulwark",
+      "preset": "basic",
+      "x": 420,
+      "y": 0
+    }
+  ],
+  "camera": {
+    "zoom": 0.95
+  },
+  "notes": "验证收缩姿态能否稳定破 bulwark。"
+}

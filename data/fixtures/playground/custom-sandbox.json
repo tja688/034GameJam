@@ -1,0 +1,19 @@
+{
+  "id": "playground/custom-sandbox",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "debug-default",
+      "x": -550.1202712512727,
+      "y": -753.6547538853084,
+      "overrides": {
+        "energyRatio": 0.7520787191933618,
+        "growthCursor": 0
+      }
+    }
+  ],
+  "camera": {
+    "zoom": 0.6069227121858701
+  },
+  "notes": "由 Playground 保存"
+}

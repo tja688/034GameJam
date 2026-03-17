@@ -1,0 +1,21 @@
+{
+  "id": "combat/weakspot-wrap-check",
+  "spawn": [
+    {
+      "moduleId": "player.cluster",
+      "preset": "stage-encircle-mid",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "moduleId": "prey.weakspot",
+      "preset": "basic",
+      "x": 420,
+      "y": 60
+    }
+  ],
+  "camera": {
+    "zoom": 0.9
+  },
+  "notes": "验证包围与绕后进入 weakspot 角度。"
+}

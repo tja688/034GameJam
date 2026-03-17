@@ -1,0 +1,24 @@
+# Terminology
+
+- `GameSessionState`
+  - 当前 session 的统一业务状态容器
+- `RuntimeCoordinator`
+  - 帧调度器；负责统一更新顺序
+- `Formal Module`
+  - 注册到 `ModuleRegistry` 的正式模块
+- `Legacy Adapter`
+  - 新骨架与旧 mixin 逻辑的桥接层
+- `Fixture`
+  - Playground 用的静态组合测试数据
+- `Scenario`
+  - 主流程问题现场总入口
+- `Checkpoint`
+  - 进入现场时的玩家状态
+- `Encounter`
+  - 现场内生成内容
+- `Baseline Panel`
+  - 仓库级参数管理面板
+- `Playground Inspector`
+  - fixture 范围内对象调试面板
+- `Dev Command Layer`
+  - 入口命令层

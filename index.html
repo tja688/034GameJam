@@ -61,7 +61,7 @@
 <body>
     <button id="floating-add-node" aria-hidden="true"></button>
     <script>
-        window.CORE_DEMO_DEBUG = false;
+        window.CORE_DEMO_DEBUG = true;
     </script>
     <script>
         const debugButton = document.getElementById('floating-add-node');
@@ -85,6 +85,68 @@
     <script src="src/audioEventRegistry.js"></script>
     <script src="src/audioManager.js"></script>
     <script src="src/audioDebugPanel.js"></script>
+    <script src="src/core/state/gameSessionState.js"></script>
+    <script src="src/core/spawn/moduleRegistry.js"></script>
+    <script src="src/core/spawn/spawnService.js"></script>
+    <script src="src/core/tuning/baselineTuningStore.js"></script>
+    <script src="src/core/save/sessionSnapshot.js"></script>
+    <script src="src/legacy/migration-adapters/legacySessionBridge.js"></script>
+    <script src="src/legacy/migration-adapters/legacyModuleAdapters.js"></script>
+    <script src="src/modules/moduleHelpers.js"></script>
+    <script src="src/modules/playerCluster/playerCluster.config.js"></script>
+    <script src="src/modules/playerCluster/playerCluster.presets.js"></script>
+    <script src="src/modules/playerCluster/playerCluster.playground.js"></script>
+    <script src="src/modules/playerCluster/playerCluster.behavior.js"></script>
+    <script src="src/modules/playerCluster/playerCluster.factory.js"></script>
+    <script src="src/modules/playerCluster/playerCluster.module.js"></script>
+    <script src="src/modules/prey/skittish/skittish.config.js"></script>
+    <script src="src/modules/prey/skittish/skittish.presets.js"></script>
+    <script src="src/modules/prey/skittish/skittish.playground.js"></script>
+    <script src="src/modules/prey/skittish/skittish.behavior.js"></script>
+    <script src="src/modules/prey/skittish/skittish.factory.js"></script>
+    <script src="src/modules/prey/skittish/skittish.module.js"></script>
+    <script src="src/modules/prey/school/school.config.js"></script>
+    <script src="src/modules/prey/school/school.presets.js"></script>
+    <script src="src/modules/prey/school/school.playground.js"></script>
+    <script src="src/modules/prey/school/school.behavior.js"></script>
+    <script src="src/modules/prey/school/school.factory.js"></script>
+    <script src="src/modules/prey/school/school.module.js"></script>
+    <script src="src/modules/prey/bulwark/bulwark.config.js"></script>
+    <script src="src/modules/prey/bulwark/bulwark.presets.js"></script>
+    <script src="src/modules/prey/bulwark/bulwark.playground.js"></script>
+    <script src="src/modules/prey/bulwark/bulwark.behavior.js"></script>
+    <script src="src/modules/prey/bulwark/bulwark.factory.js"></script>
+    <script src="src/modules/prey/bulwark/bulwark.module.js"></script>
+    <script src="src/modules/prey/weakspot/weakspot.config.js"></script>
+    <script src="src/modules/prey/weakspot/weakspot.presets.js"></script>
+    <script src="src/modules/prey/weakspot/weakspot.playground.js"></script>
+    <script src="src/modules/prey/weakspot/weakspot.behavior.js"></script>
+    <script src="src/modules/prey/weakspot/weakspot.factory.js"></script>
+    <script src="src/modules/prey/weakspot/weakspot.module.js"></script>
+    <script src="src/modules/prey/apex/apex.config.js"></script>
+    <script src="src/modules/prey/apex/apex.presets.js"></script>
+    <script src="src/modules/prey/apex/apex.playground.js"></script>
+    <script src="src/modules/prey/apex/apex.behavior.js"></script>
+    <script src="src/modules/prey/apex/apex.factory.js"></script>
+    <script src="src/modules/prey/apex/apex.module.js"></script>
+    <script src="src/modules/hud/hud.main.config.js"></script>
+    <script src="src/modules/hud/hud.main.presets.js"></script>
+    <script src="src/modules/hud/hud.main.playground.js"></script>
+    <script src="src/modules/hud/hud.main.behavior.js"></script>
+    <script src="src/modules/hud/hud.main.factory.js"></script>
+    <script src="src/modules/hud/hud.main.module.js"></script>
+    <script src="src/modules/camera/camera.invasive.config.js"></script>
+    <script src="src/modules/camera/camera.invasive.presets.js"></script>
+    <script src="src/modules/camera/camera.invasive.playground.js"></script>
+    <script src="src/modules/camera/camera.invasive.behavior.js"></script>
+    <script src="src/modules/camera/camera.invasive.factory.js"></script>
+    <script src="src/modules/camera/camera.invasive.module.js"></script>
+    <script src="src/modules/progression/progression.demo5stage.config.js"></script>
+    <script src="src/modules/progression/progression.demo5stage.presets.js"></script>
+    <script src="src/modules/progression/progression.demo5stage.playground.js"></script>
+    <script src="src/modules/progression/progression.demo5stage.behavior.js"></script>
+    <script src="src/modules/progression/progression.demo5stage.factory.js"></script>
+    <script src="src/modules/progression/progression.demo5stage.module.js"></script>
     <script src="src/sceneAudio.js"></script>
     <script src="src/ui.js"></script>
     <script src="src/scene.js"></script>
@@ -97,6 +159,21 @@
     <script src="src/sceneCombat.js"></script>
     <script src="src/sceneEnemies.js"></script>
     <script src="src/sceneRender.js"></script>
+    <script src="src/core/runtime/runtimeCoordinator.js"></script>
+    <script src="src/playground/fixtures/fixtureRegistry.js"></script>
+    <script src="src/playground/services/fixtureService.js"></script>
+    <script src="src/mainflow/scenarios/scenarioRegistry.js"></script>
+    <script src="src/mainflow/checkpoints/checkpointLoader.js"></script>
+    <script src="src/mainflow/encounters/encounterRunner.js"></script>
+    <script src="src/mainflow/scenarios/scenarioLoader.js"></script>
+    <script src="src/debug/commands/devCommandLayer.js"></script>
+    <script src="src/playground/ui/playgroundUiController.js"></script>
+    <script src="src/playground/scenes/playgroundOverlayScene.js"></script>
+    <script src="src/playground/scenes/playgroundWorldScene.js"></script>
+    <script src="src/mainflow/scenes/mainFlowScene.js"></script>
+    <script src="src/app/sceneRegistry.js"></script>
+    <script src="src/app/bootstrap/bootstrap.js"></script>
+    <script src="src/app/main.js"></script>
     <script src="src/main.js"></script>
 
 </body>

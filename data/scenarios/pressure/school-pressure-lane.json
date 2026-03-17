@@ -1,0 +1,36 @@
+{
+  "id": "pressure/school-pressure-lane",
+  "stageId": "pressure",
+  "scene": "MainFlowScene",
+  "checkpoint": {
+    "stageId": "pressure",
+    "playerPreset": "stage-encircle-mid",
+    "energy": 0.68,
+    "growthCursor": 2,
+    "cameraZoom": 0.9,
+    "x": 0,
+    "y": 0
+  },
+  "encounter": {
+    "spawn": [
+      {
+        "moduleId": "prey.school",
+        "preset": "medium",
+        "x": 360,
+        "y": -100
+      },
+      {
+        "moduleId": "prey.school",
+        "preset": "medium",
+        "x": 420,
+        "y": 10
+      },
+      {
+        "moduleId": "prey.skittish",
+        "preset": "medium",
+        "x": 500,
+        "y": 110
+      }
+    ]
+  }
+}

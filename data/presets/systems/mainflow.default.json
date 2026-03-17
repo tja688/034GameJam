@@ -1,0 +1,9 @@
+{
+  "id": "mainflow-default",
+  "cameraModuleId": "camera.invasive",
+  "cameraPreset": "mainflow",
+  "hudModuleId": "hud.main",
+  "hudPreset": "mainflow",
+  "progressionModuleId": "progression.demo5stage",
+  "progressionPreset": "forage"
+}
