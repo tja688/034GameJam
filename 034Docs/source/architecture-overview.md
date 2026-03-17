@@ -44,6 +44,20 @@
 9. `updateHud`
 10. `render`
 
+运行时资源回收约束：
+
+- `CoreAudioManager` 必须在 voice 自然结束时销毁对应 `Phaser.Sound` 实例，不能只把 record 从追踪表里移除
+- runtime guard 除了维持 BGM singleton，还要周期性清扫 `sound.sounds` 中“未追踪且已停止”的历史实例
+- `resetSimulation` 必须主动触发一次音频残留清扫，避免高关卡结束后回到第一关仍背着旧 run 的短音效对象
+
+## Dev Launch
+
+- 开发入口仍是仓库根目录的 `start-dev.ps1` / `start-dev.bat`
+- 启动脚本默认拉起本地 dev server，并打开一个专用 Google Chrome 调试实例，而不是依赖系统默认浏览器
+- 该 Chrome 实例固定开启 `remote debugging`，默认优先使用 `http://127.0.0.1:9222`
+- 若 `9222` 被占用，脚本会自动向后寻找可用端口，并在终端打印实际 DevTools endpoint
+- Chrome 使用独立 `user-data-dir`，用于保证 Chrome DevTools MCP 可稳定连接和全量控制，不污染日常浏览器会话
+
 ## Current Bridge Status
 
 以下能力已经进入新骨架，但底层行为仍依赖 legacy 实现：

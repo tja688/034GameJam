@@ -161,6 +161,7 @@ class CoreAudioManager {
             return;
         }
         this.lastRuntimeGuardAt = now;
+        this.cleanupInactiveManagerSounds({ maxCount: 256 });
         this.enforceBgmSingleton();
     }
 
@@ -473,6 +474,31 @@ class CoreAudioManager {
         return sounds.filter((sound) => !!sound && !sound.isDestroyed);
     }
 
+    cleanupInactiveManagerSounds(options = {}) {
+        const trackedSounds = this.getTrackedSoundSet();
+        const maxCount = Number.isFinite(options.maxCount)
+            ? Math.max(0, Math.floor(options.maxCount))
+            : Infinity;
+        let cleaned = 0;
+        this.getLiveManagerSounds().forEach((sound) => {
+            if (
+                cleaned >= maxCount
+                || !sound
+                || trackedSounds.has(sound)
+                || sound.isPlaying
+            ) {
+                return;
+            }
+            if (this.stopManagerSound(sound, { destroy: true })) {
+                cleaned += 1;
+            }
+        });
+        if (cleaned > 0) {
+            this.emitDebugUpdate('inactive_manager_sound_cleanup', { count: cleaned });
+        }
+        return cleaned;
+    }
+
     stopManagerSound(sound, options = {}) {
         if (!sound || sound.isDestroyed) {
             return false;
@@ -607,6 +633,28 @@ class CoreAudioManager {
         const now = this.getNowMs();
         const trackedSounds = this.getTrackedSoundSet();
         const bgmKeys = this.getBgmAssetKeys();
+        const readSoundSnapshot = (sound, index) => {
+            if (!sound || sound.isDestroyed) {
+                return null;
+            }
+            try {
+                return {
+                    index,
+                    key: sound.key || '',
+                    assetId: sound.__coreAudioAssetId || this.assetIdByKey.get(sound.key || '') || '',
+                    eventId: sound.__coreAudioEventId || '',
+                    voiceId: sound.__coreAudioVoiceId || '',
+                    tracked: trackedSounds.has(sound),
+                    isPlaying: !!sound.isPlaying,
+                    isPaused: !!sound.isPaused,
+                    loop: !!sound.loop,
+                    volume: Number.isFinite(sound.volume) ? sound.volume : null,
+                    rate: Number.isFinite(sound.rate) ? sound.rate : null
+                };
+            } catch (error) {
+                return null;
+            }
+        };
         const activeVoices = [...this.activeVoices]
             .filter((record) => !!record && !record.ended && !!record.sound && !record.sound.isDestroyed)
             .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
@@ -624,19 +672,9 @@ class CoreAudioManager {
                 volume: Number.isFinite(record.sound?.volume) ? record.sound.volume : null,
                 rate: Number.isFinite(record.sound?.rate) ? record.sound.rate : null
             }));
-        const managerSounds = this.getLiveManagerSounds().map((sound, index) => ({
-            index,
-            key: sound.key || '',
-            assetId: sound.__coreAudioAssetId || this.assetIdByKey.get(sound.key || '') || '',
-            eventId: sound.__coreAudioEventId || '',
-            voiceId: sound.__coreAudioVoiceId || '',
-            tracked: trackedSounds.has(sound),
-            isPlaying: !!sound.isPlaying,
-            isPaused: !!sound.isPaused,
-            loop: !!sound.loop,
-            volume: Number.isFinite(sound.volume) ? sound.volume : null,
-            rate: Number.isFinite(sound.rate) ? sound.rate : null
-        }));
+        const managerSounds = this.getLiveManagerSounds()
+            .map((sound, index) => readSoundSnapshot(sound, index))
+            .filter(Boolean);
         return {
             activeVoices,
             managerSounds,
@@ -949,6 +987,7 @@ class CoreAudioManager {
             return;
         }
         record.ended = true;
+        const sound = record.sound || null;
         const voices = this.activeVoicesByEvent.get(record.eventId);
         if (Array.isArray(voices)) {
             this.activeVoicesByEvent.set(record.eventId, voices.filter((entry) => entry !== record && !entry.ended));
@@ -960,6 +999,14 @@ class CoreAudioManager {
             eventId: record.eventId,
             assetId: record.assetId
         });
+        if (sound && !sound.isDestroyed && !sound.isPlaying) {
+            try {
+                sound.destroy();
+            } catch (error) {
+                console.warn('Audio voice cleanup destroy failed.', error);
+            }
+        }
+        record.sound = null;
     }
 
     scheduleStop(record, fadeOutMs = 0, options = {}) {

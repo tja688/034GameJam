@@ -572,6 +572,7 @@ const SceneInitMixin = {
         this.timeScaleFactor = 1;
         this.worldTime = 0;
         this.destroyBakedSpritePool?.();
+        this.audioManager?.cleanupInactiveManagerSounds?.({ maxCount: Number.POSITIVE_INFINITY });
         this.effects = [];
         this.fragments = [];
         this.resetFragmentPool?.();

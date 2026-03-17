@@ -180,8 +180,15 @@
       "bases:新建数据库": false
     }
   },
-  "active": "f65887c2b7dd11ae",
+  "active": "6b1911606f02b24d",
   "lastOpenFiles": [
+    "drafts",
+    "drafts sketches",
+    "dev plans/项目大型重构执行方案.md",
+    "drafts&sketches",
+    "dev plans",
+    "新建文件夹",
+    "Drafts & Sketches",
     "source/terminology.md",
     "source/scenario-spec.md",
     "source/project-north-star.md",
@@ -192,7 +199,6 @@
     "项目大型重构执行方案.md",
     "source/tuning-policy.md",
     "source",
-    "新建文件夹",
     "欢迎.md"
   ]
 }
