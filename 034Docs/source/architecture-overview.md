@@ -53,12 +53,14 @@
 音频排查快捷流（快速降噪定位）：
 
 - `Ctrl + M`：开/关“音效排查模式”
+- `Ctrl + /`：开/关右侧实时音频列表（当前 active voices + manager sounds）
 - 排查模式开启后：`{` 上一个候选、`}` 下一个候选、`|` 确认当前候选
 - 候选切换时会临时仅禁用当前事件，并在顶部短暂 toast 显示 `event/group/module/anchor` 绑定信息
 - `|` 确认后会同时：
   1. 写入 `audio-noise-mute-config.json`（可追溯禁用记录）
   2. 将该事件写入 `audio-profile.json` 的 applied binding（`enabled=false`）
   3. 在运行时触发入口直接拦截该事件，避免继续进入播放链
+- `CoreAudioManager.resolveCandidatePool` 对 `loop=false` 事件启用 one-shot 保底：若候选池同时含 loop 与非 loop 资产，会优先过滤 loop，避免回退到 `*_loop` 造成持续底噪
 
 ## Dev Launch
 

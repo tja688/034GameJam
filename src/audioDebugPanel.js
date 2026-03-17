@@ -253,6 +253,91 @@
             border-color: rgba(120, 232, 177, 0.65);
             color: #d4ffe8;
         }
+        #audio-live-dock {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            bottom: 12px;
+            width: min(420px, calc(100vw - 24px));
+            z-index: 21500;
+            pointer-events: auto;
+            background: rgba(7, 16, 23, 0.95);
+            border: 1px solid rgba(79, 169, 198, 0.32);
+            border-radius: 12px;
+            box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+            display: none;
+            overflow: hidden;
+        }
+        #audio-live-dock.open {
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+        }
+        .audio-live-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(79, 169, 198, 0.22);
+            background: rgba(79, 169, 198, 0.08);
+        }
+        .audio-live-title {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            color: #f4f0d7;
+            margin-right: auto;
+        }
+        .audio-live-hotkey {
+            font-size: 11px;
+            color: rgba(215, 230, 235, 0.68);
+        }
+        .audio-live-meta {
+            font-size: 11px;
+            color: rgba(215, 230, 235, 0.78);
+            border-bottom: 1px solid rgba(79, 169, 198, 0.14);
+            padding: 8px 12px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+        }
+        #audio-live-list {
+            overflow: auto;
+            padding: 6px 10px 10px;
+            display: grid;
+            gap: 6px;
+            align-content: start;
+        }
+        .audio-live-section {
+            margin-top: 4px;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #7defff;
+        }
+        .audio-live-row {
+            border: 1px solid rgba(79, 169, 198, 0.2);
+            border-radius: 8px;
+            background: rgba(3, 12, 19, 0.74);
+            padding: 7px 8px;
+            display: grid;
+            gap: 4px;
+        }
+        .audio-live-row-title {
+            font-size: 12px;
+            color: #f4f0d7;
+            word-break: break-word;
+        }
+        .audio-live-row-meta {
+            font-size: 11px;
+            color: rgba(215, 230, 235, 0.72);
+            word-break: break-word;
+        }
+        .audio-live-empty {
+            border: 1px dashed rgba(79, 169, 198, 0.28);
+            border-radius: 8px;
+            padding: 10px;
+            color: rgba(215, 230, 235, 0.72);
+            font-size: 11px;
+        }
         @media (max-width: 1080px) {
             .audio-debug-content {
                 grid-template-columns: 1fr;
@@ -286,6 +371,18 @@ class CoreAudioDebugPanel {
             previewRuntime: null,
             previewHadRuntime: false
         };
+        this.suspectPack = {
+            active: false,
+            eventIds: [
+                'loot_absorb_energy',
+                'loot_absorb_biomass',
+                'prey_bite_hook',
+                'prey_bite_grind',
+                'prey_bite_feed'
+            ],
+            previousRuntimeByEvent: {}
+        };
+        this.liveDockOpen = false;
         this.quickToastTimer = 0;
         this.globalKeydownHandler = (event) => this.handleGlobalKeydown(event);
         this.renderQueued = false;
@@ -303,6 +400,14 @@ class CoreAudioDebugPanel {
         root.id = 'audio-debug-root';
         root.innerHTML = `
             <div id="audio-quick-sweep-toast"></div>
+            <div id="audio-live-dock">
+                <div class="audio-live-header">
+                    <div class="audio-live-title">Live Audio</div>
+                    <div class="audio-live-hotkey">Ctrl+/ 切换</div>
+                </div>
+                <div id="audio-live-meta" class="audio-live-meta"></div>
+                <div id="audio-live-list"></div>
+            </div>
             <button id="audio-debug-toggle" type="button">Audio Debug</button>
             <div id="audio-debug-panel">
                 <div class="audio-debug-header">
@@ -389,6 +494,9 @@ class CoreAudioDebugPanel {
         this.dom = {
             root,
             quickToast: root.querySelector('#audio-quick-sweep-toast'),
+            liveDock: root.querySelector('#audio-live-dock'),
+            liveMeta: root.querySelector('#audio-live-meta'),
+            liveList: root.querySelector('#audio-live-list'),
             toggle: root.querySelector('#audio-debug-toggle'),
             panel: root.querySelector('#audio-debug-panel'),
             refreshManifest: root.querySelector('#audio-refresh-manifest'),
@@ -554,13 +662,59 @@ class CoreAudioDebugPanel {
 
     handleAudioDebugUpdate(reason = '') {
         const normalizedReason = typeof reason === 'string' ? reason : '';
-        if (!this.isOpen() && normalizedReason === 'event') {
+        if (!this.isOpen() && !this.liveDockOpen && normalizedReason === 'event') {
             return;
         }
-        if (this.quickSweep.active && !this.isOpen() && (normalizedReason === 'asset_queue' || normalizedReason === 'asset_loaded')) {
+        if (this.quickSweep.active && !this.isOpen() && !this.liveDockOpen && (normalizedReason === 'asset_queue' || normalizedReason === 'asset_loaded')) {
             return;
         }
         this.queueRender();
+    }
+
+    toggleSuspectPackMute() {
+        const ids = Array.isArray(this.suspectPack.eventIds) ? this.suspectPack.eventIds : [];
+        if (ids.length <= 0) {
+            this.showQuickToast('嫌疑音效包为空，未执行。', 'warn');
+            return false;
+        }
+
+        if (this.suspectPack.active) {
+            ids.forEach((eventId) => {
+                const previous = this.suspectPack.previousRuntimeByEvent[eventId];
+                if (previous && previous.__hadRuntime) {
+                    this.audio.setRuntimeOverride(eventId, previous.patch, { persist: false });
+                } else {
+                    this.audio.clearRuntimeOverride(eventId, { persist: false });
+                }
+            });
+            this.suspectPack.active = false;
+            this.suspectPack.previousRuntimeByEvent = {};
+            this.showQuickToast(`嫌疑音效包已恢复（${ids.length}条）`);
+            this.queueRender();
+            return false;
+        }
+
+        const nextPrevious = {};
+        ids.forEach((eventId) => {
+            const previousRuntime = this.audio.getRuntimeOverride(eventId);
+            nextPrevious[eventId] = previousRuntime
+                ? { __hadRuntime: true, patch: cloneData(previousRuntime) }
+                : { __hadRuntime: false, patch: null };
+            const effective = this.audio.getResolvedEventConfig(eventId, null);
+            this.audio.setRuntimeOverride(eventId, {
+                ...effective,
+                enabled: false
+            }, { persist: false });
+            this.audio.brutalStopForSweep?.(eventId, {
+                includeBgm: false,
+                includeAmbience: true
+            });
+        });
+        this.suspectPack.previousRuntimeByEvent = nextPrevious;
+        this.suspectPack.active = true;
+        this.showQuickToast(`嫌疑音效包已静音（${ids.length}条） | 切回: Ctrl+Shift+L`, 'ok');
+        this.queueRender();
+        return true;
     }
 
     isEditableTarget(target) {
@@ -592,6 +746,39 @@ class CoreAudioDebugPanel {
             return false;
         }
         return event.key === '|' || event.key === '\\' || event.code === 'Backslash';
+    }
+
+    isSuspectPackToggleKey(event) {
+        if (!event || event.metaKey || event.altKey) {
+            return false;
+        }
+        return !!event.ctrlKey && !!event.shiftKey && event.code === 'KeyL';
+    }
+
+    isLiveDockToggleKey(event) {
+        if (!event || event.metaKey || event.altKey || event.shiftKey) {
+            return false;
+        }
+        if (!event.ctrlKey) {
+            return false;
+        }
+        return event.code === 'Slash' || event.key === '/';
+    }
+
+    toggleLiveDock(forceOpen = null) {
+        if (!this.dom?.liveDock) {
+            return false;
+        }
+        const nextOpen = typeof forceOpen === 'boolean' ? forceOpen : !this.liveDockOpen;
+        this.liveDockOpen = !!nextOpen;
+        this.dom.liveDock.classList.toggle('open', this.liveDockOpen);
+        if (this.liveDockOpen) {
+            this.renderLiveDock();
+            this.showQuickToast('实时音频列表已开启（Ctrl+/ 关闭）');
+        } else {
+            this.showQuickToast('实时音频列表已关闭');
+        }
+        return this.liveDockOpen;
     }
 
     showQuickToast(message, tone = '') {
@@ -845,6 +1032,18 @@ class CoreAudioDebugPanel {
         if (event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyM') {
             event.preventDefault();
             this.toggleQuickSweep();
+            return;
+        }
+
+        if (!editable && this.isLiveDockToggleKey(event)) {
+            event.preventDefault();
+            this.toggleLiveDock();
+            return;
+        }
+
+        if (!editable && this.isSuspectPackToggleKey(event)) {
+            event.preventDefault();
+            this.toggleSuspectPackMute();
             return;
         }
 
@@ -1197,11 +1396,91 @@ class CoreAudioDebugPanel {
         const sweepState = this.quickSweep.active
             ? `on ${this.quickSweep.index + 1}/${Math.max(1, this.quickSweep.candidates.length)}`
             : 'off';
+        const suspectState = this.suspectPack.active ? 'on' : 'off';
+        const liveDockState = this.liveDockOpen ? 'on' : 'off';
         this.dom.manifestPill.textContent = `manifest ${stats.loaded}/${stats.total} (loading ${stats.loading})`;
-        this.dom.statusManifest.textContent = `assets: ${stats.total} | loaded: ${stats.loaded} | queue: ${stats.loading} | voices: ${trackedVoiceCount} | manager: ${managerSoundCount} | orphanBgm: ${orphanBgmCount} | suppressed: ${suppressed.length} | sweep: ${sweepState}`;
+        this.dom.statusManifest.textContent = `assets: ${stats.total} | loaded: ${stats.loaded} | queue: ${stats.loading} | voices: ${trackedVoiceCount} | manager: ${managerSoundCount} | orphanBgm: ${orphanBgmCount} | suppressed: ${suppressed.length} | sweep: ${sweepState} | suspectPack: ${suspectState} | liveList: ${liveDockState}`;
         const save = this.snapshot?.lastSaveResult || { ok: true, message: '' };
         const muteSave = this.snapshot?.lastNoiseMuteSaveResult || { ok: true, message: '' };
         this.dom.statusSave.textContent = `last save: ${save.ok ? 'ok' : 'failed'} ${save.message || ''} | mute save: ${muteSave.ok ? 'ok' : 'failed'} ${muteSave.message || ''}`;
+    }
+
+    renderLiveDock() {
+        if (!this.liveDockOpen || !this.dom?.liveList || !this.dom?.liveMeta) {
+            return;
+        }
+        const runtime = this.snapshot?.runtime || {};
+        const voices = Array.isArray(runtime.activeVoices) ? runtime.activeVoices.filter((voice) => voice?.isPlaying) : [];
+        const managerSounds = Array.isArray(runtime.managerSounds) ? runtime.managerSounds.filter((entry) => entry?.isPlaying) : [];
+        const trackedManagerSounds = managerSounds.filter((entry) => !!entry.tracked);
+        const untrackedManagerSounds = managerSounds.filter((entry) => !entry.tracked);
+        const now = this.audio.getNowMs();
+        const lastEvent = Array.isArray(this.snapshot?.recentEvents) ? this.snapshot.recentEvents[0] : null;
+        const lastAtText = lastEvent?.at ? this.formatAge(Math.max(0, now - lastEvent.at)) : 'n/a';
+
+        this.dom.liveMeta.textContent = `trackedVoices=${voices.length} | managerPlaying=${managerSounds.length} (tracked=${trackedManagerSounds.length}, untracked=${untrackedManagerSounds.length}) | recentEvent=${lastEvent?.eventId || '-'} (${lastAtText} ago)`;
+
+        const fragment = document.createDocumentFragment();
+        const addSection = (title) => {
+            const section = document.createElement('div');
+            section.className = 'audio-live-section';
+            section.textContent = title;
+            fragment.appendChild(section);
+        };
+        const addRow = (title, metaLines = []) => {
+            const row = document.createElement('div');
+            row.className = 'audio-live-row';
+            const titleNode = document.createElement('div');
+            titleNode.className = 'audio-live-row-title';
+            titleNode.textContent = title;
+            row.appendChild(titleNode);
+            metaLines.forEach((line) => {
+                const metaNode = document.createElement('div');
+                metaNode.className = 'audio-live-row-meta';
+                metaNode.textContent = line;
+                row.appendChild(metaNode);
+            });
+            fragment.appendChild(row);
+        };
+
+        addSection(`Tracked Voices (${voices.length})`);
+        if (voices.length <= 0) {
+            const empty = document.createElement('div');
+            empty.className = 'audio-live-empty';
+            empty.textContent = '当前没有正在播放的 tracked voice。';
+            fragment.appendChild(empty);
+        } else {
+            voices.slice(0, 80).forEach((voice) => {
+                addRow(
+                    `${voice.eventId || '-'} / ${voice.assetId || '-'}`,
+                    [
+                        `voice=${voice.voiceId || '-'} bus=${voice.bus || '-'} loop=${!!voice.loop} preview=${!!voice.preview}`,
+                        `age=${this.formatAge(voice.ageMs)} volume=${Number.isFinite(voice.volume) ? voice.volume.toFixed(3) : 'n/a'} rate=${Number.isFinite(voice.rate) ? voice.rate.toFixed(3) : 'n/a'}`
+                    ]
+                );
+            });
+        }
+
+        addSection(`Manager Playing (${managerSounds.length})`);
+        if (managerSounds.length <= 0) {
+            const empty = document.createElement('div');
+            empty.className = 'audio-live-empty';
+            empty.textContent = '当前没有 manager 层正在播放的声音。';
+            fragment.appendChild(empty);
+        } else {
+            managerSounds.slice(0, 120).forEach((entry) => {
+                addRow(
+                    `${entry.key || '-'} / ${entry.assetId || '-'}`,
+                    [
+                        `event=${entry.eventId || '-'} tracked=${!!entry.tracked} loop=${!!entry.loop} paused=${!!entry.isPaused}`,
+                        `volume=${Number.isFinite(entry.volume) ? entry.volume.toFixed(3) : 'n/a'} rate=${Number.isFinite(entry.rate) ? entry.rate.toFixed(3) : 'n/a'}`
+                    ]
+                );
+            });
+        }
+
+        this.dom.liveList.innerHTML = '';
+        this.dom.liveList.appendChild(fragment);
     }
 
     renderRuntimeState() {
@@ -1257,6 +1536,7 @@ class CoreAudioDebugPanel {
         this.renderBusGrid();
         this.renderRuntimeState();
         this.renderStatus();
+        this.renderLiveDock();
         this.dom.abA.value = this.assetAB.a;
         this.dom.abB.value = this.assetAB.b;
         this.initEventBusOptions();
@@ -1268,6 +1548,7 @@ class CoreAudioDebugPanel {
         window.removeEventListener('keydown', this.globalKeydownHandler);
         window.clearTimeout(this.quickToastTimer);
         this.stopQuickSweep({ keepPreview: false });
+        this.toggleLiveDock(false);
         this.setOpen(false);
         if (this.dom?.root?.parentNode) {
             this.dom.root.parentNode.removeChild(this.dom.root);

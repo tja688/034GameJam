@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": 1773732113320,
+  "savedAt": 1773734314788,
   "manifestPath": "audio-library.manifest.json",
   "busVolumes": {
     "master": 0.5,
@@ -304,18 +304,195 @@
       ]
     },
     "player_pulse_source": {
-      "enabled": true,
+      "enabled": false,
       "bus": "sfx",
-      "volume": 0.4,
+      "volume": 0.16,
       "rate": 1,
       "detune": 0,
       "loop": false,
-      "cooldown": 0.035,
-      "maxVoices": 8,
-      "strategy": "random",
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
       "assetPool": [
-        "pulse_source_01",
-        "pulse_source_02"
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "player_pulse_compressor": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "player_pulse_shell": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "player_pulse_prism": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "player_pulse_dart": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "player_pulse_blade": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "player_pulse_inverse": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.16,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.05,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_player_bubble_moves",
+        "snd_player_swim_01",
+        "snd_player_swim_02"
+      ]
+    },
+    "prey_bite_hook": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.2,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.04,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_jellyfish_bubble_hit_01",
+        "snd_jellyfish_bubble_hit_02",
+        "snd_jellyfish_bubble_hit_03"
+      ]
+    },
+    "prey_bite_grind": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.2,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.04,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_jellyfish_bubble_hit_01",
+        "snd_jellyfish_bubble_hit_02",
+        "snd_jellyfish_bubble_hit_03"
+      ]
+    },
+    "prey_bite_feed": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.2,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.04,
+      "maxVoices": 4,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_jellyfish_bubble_hit_01",
+        "snd_jellyfish_bubble_hit_02",
+        "snd_jellyfish_bubble_hit_03"
+      ]
+    },
+    "loot_absorb_energy": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.2,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.04,
+      "maxVoices": 6,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_coral_bubble_01",
+        "snd_coral_bubble_02",
+        "snd_bubblegun_bubble_pop"
+      ]
+    },
+    "loot_absorb_biomass": {
+      "enabled": false,
+      "bus": "sfx",
+      "volume": 0.2,
+      "rate": 1,
+      "detune": 0,
+      "loop": false,
+      "cooldown": 0.04,
+      "maxVoices": 6,
+      "strategy": "round_robin",
+      "assetPool": [
+        "snd_coral_bubble_01",
+        "snd_coral_bubble_02",
+        "snd_bubblegun_bubble_pop"
       ]
     }
   },

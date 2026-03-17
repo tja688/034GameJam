@@ -1065,6 +1065,24 @@ class CoreAudioManager {
         return this.findHintAssetPool([...groupHints, ...busHints], limit);
     }
 
+    isLikelyLoopAsset(assetId) {
+        if (!isNonEmptyString(assetId)) {
+            return false;
+        }
+        const entry = this.getAssetEntry(assetId);
+        const tags = Array.isArray(entry?.tags) ? entry.tags.join(' ') : '';
+        const text = `${assetId} ${entry?.label || ''} ${tags}`.toLowerCase();
+        return text.includes('loop');
+    }
+
+    preferOneShotPool(pool, config) {
+        if (!Array.isArray(pool) || pool.length <= 0 || config?.loop) {
+            return Array.isArray(pool) ? pool : [];
+        }
+        const oneShot = pool.filter((assetId) => !this.isLikelyLoopAsset(assetId));
+        return oneShot.length > 0 ? oneShot : pool;
+    }
+
     resolveCandidatePool(eventId, config, forcedAssetId = '') {
         if (isNonEmptyString(forcedAssetId)) {
             return [forcedAssetId.trim()];
@@ -1072,20 +1090,20 @@ class CoreAudioManager {
         const configuredPool = normalizeAudioAssetList(config.assetPool || []);
         const knownPool = configuredPool.filter((assetId) => this.assetById.has(assetId));
         if (knownPool.length > 0) {
-            return knownPool;
+            return this.preferOneShotPool(knownPool, config);
         }
         const fuzzy = this.findFuzzyAssetPool(eventId, 8);
         if (fuzzy.length > 0) {
-            return fuzzy;
+            return this.preferOneShotPool(fuzzy, config);
         }
         const groupFallback = this.findGroupFallbackPool(eventId, config, 8);
         if (groupFallback.length > 0) {
-            return groupFallback;
+            return this.preferOneShotPool(groupFallback, config);
         }
         if (configuredPool.length > 0) {
-            return configuredPool;
+            return this.preferOneShotPool(configuredPool, config);
         }
-        return fuzzy;
+        return this.preferOneShotPool(fuzzy, config);
     }
 
     pickAssetId(eventId, pool, strategy = 'random') {
