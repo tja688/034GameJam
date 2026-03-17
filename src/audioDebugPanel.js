@@ -219,6 +219,40 @@
             max-height: 220px;
             overflow: auto;
         }
+        #audio-quick-sweep-toast {
+            position: fixed;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-16px);
+            z-index: 22000;
+            pointer-events: none;
+            font-size: 12px;
+            line-height: 1.45;
+            max-width: min(960px, calc(100vw - 24px));
+            color: #f4f0d7;
+            background: rgba(7, 16, 23, 0.92);
+            border: 1px solid rgba(79, 169, 198, 0.5);
+            border-radius: 999px;
+            padding: 7px 14px;
+            opacity: 0;
+            transition: opacity 140ms ease, transform 140ms ease;
+            box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #audio-quick-sweep-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        #audio-quick-sweep-toast.warn {
+            border-color: rgba(255, 166, 102, 0.65);
+            color: #ffdcbf;
+        }
+        #audio-quick-sweep-toast.ok {
+            border-color: rgba(120, 232, 177, 0.65);
+            color: #d4ffe8;
+        }
         @media (max-width: 1080px) {
             .audio-debug-content {
                 grid-template-columns: 1fr;
@@ -244,6 +278,16 @@ class CoreAudioDebugPanel {
         this.assetGroup = 'all';
         this.assetAB = { a: '', b: '' };
         this.eventDrafts = {};
+        this.quickSweep = {
+            active: false,
+            candidates: [],
+            index: 0,
+            previewEventId: '',
+            previewRuntime: null,
+            previewHadRuntime: false
+        };
+        this.quickToastTimer = 0;
+        this.globalKeydownHandler = (event) => this.handleGlobalKeydown(event);
         this.renderQueued = false;
 
         ensureAudioDebugPanelStyles();
@@ -258,6 +302,7 @@ class CoreAudioDebugPanel {
         const root = document.createElement('div');
         root.id = 'audio-debug-root';
         root.innerHTML = `
+            <div id="audio-quick-sweep-toast"></div>
             <button id="audio-debug-toggle" type="button">Audio Debug</button>
             <div id="audio-debug-panel">
                 <div class="audio-debug-header">
@@ -343,6 +388,7 @@ class CoreAudioDebugPanel {
         document.body.appendChild(root);
         this.dom = {
             root,
+            quickToast: root.querySelector('#audio-quick-sweep-toast'),
             toggle: root.querySelector('#audio-debug-toggle'),
             panel: root.querySelector('#audio-debug-panel'),
             refreshManifest: root.querySelector('#audio-refresh-manifest'),
@@ -404,12 +450,7 @@ class CoreAudioDebugPanel {
 
     bindDomEvents() {
         this.dom.toggle.addEventListener('click', () => this.togglePanel());
-        window.addEventListener('keydown', (event) => {
-            if (event.code === 'F8') {
-                event.preventDefault();
-                this.togglePanel();
-            }
-        });
+        window.addEventListener('keydown', this.globalKeydownHandler);
 
         this.dom.refreshManifest.addEventListener('click', () => this.audio.refreshManifest());
         this.dom.saveAll.addEventListener('click', () => this.audio.saveProfile());
@@ -509,6 +550,305 @@ class CoreAudioDebugPanel {
             control.addEventListener('input', onDraftChanged);
             control.addEventListener('change', onDraftChanged);
         });
+    }
+
+    isEditableTarget(target) {
+        if (!target || typeof target.closest !== 'function') {
+            return false;
+        }
+        if (target.isContentEditable) {
+            return true;
+        }
+        return !!target.closest('input, textarea, select, [contenteditable="true"]');
+    }
+
+    isQuickSweepPrevKey(event) {
+        return event.key === '{' || (event.code === 'BracketLeft' && !!event.shiftKey);
+    }
+
+    isQuickSweepNextKey(event) {
+        return event.key === '}' || (event.code === 'BracketRight' && !!event.shiftKey);
+    }
+
+    isQuickSweepConfirmKey(event) {
+        return event.key === '|' || (event.code === 'Backslash' && !!event.shiftKey);
+    }
+
+    showQuickToast(message, tone = '') {
+        if (!this.dom?.quickToast) {
+            return;
+        }
+        const text = typeof message === 'string' ? message.trim() : '';
+        if (!text) {
+            return;
+        }
+        const toast = this.dom.quickToast;
+        toast.textContent = text;
+        toast.className = '';
+        if (tone === 'warn' || tone === 'ok') {
+            toast.classList.add(tone);
+        }
+        toast.classList.add('show');
+        window.clearTimeout(this.quickToastTimer);
+        this.quickToastTimer = window.setTimeout(() => {
+            toast.classList.remove('show');
+        }, 1700);
+    }
+
+    scoreQuickSweepCandidate(entry, now) {
+        const effective = entry?.effective || {};
+        const metrics = entry?.metrics || {};
+        const descriptor = `${entry?.id || ''} ${entry?.anchor || ''} ${entry?.module || ''}`.toLowerCase();
+        const lastTriggeredAt = Number.isFinite(metrics.lastTriggeredAt) ? metrics.lastTriggeredAt : 0;
+        const ageMs = lastTriggeredAt > 0 ? Math.max(0, now - lastTriggeredAt) : Infinity;
+        let score = 0;
+
+        if (entry?.group === 'player') {
+            score += 32;
+        } else if (entry?.group === 'prey') {
+            score += 18;
+        } else if (entry?.group === 'topology') {
+            score += 12;
+        }
+
+        if (effective.loop) {
+            score += 24;
+        }
+        if (effective.cooldown <= 0.05) {
+            score += 20;
+        } else if (effective.cooldown <= 0.1) {
+            score += 14;
+        } else if (effective.cooldown <= 0.2) {
+            score += 8;
+        }
+
+        if (effective.maxVoices >= 8) {
+            score += 12;
+        } else if (effective.maxVoices >= 4) {
+            score += 8;
+        }
+
+        score += Math.min(16, Number.isFinite(metrics.playCount) ? metrics.playCount : 0);
+
+        if (ageMs <= 3000) {
+            score += 24;
+        } else if (ageMs <= 8000) {
+            score += 10;
+        }
+
+        if (/pulse|swim|step|move|burst|latch|bite|guard|absorb|devour/.test(descriptor)) {
+            score += 10;
+        }
+        if (/menu|toast|save|load|victory|death|restart|edit_|objective/.test(descriptor)) {
+            score -= 40;
+        }
+        if (/bgm/.test(descriptor)) {
+            score -= 80;
+        }
+
+        return score;
+    }
+
+    buildQuickSweepCandidates() {
+        const events = Array.isArray(this.snapshot?.events) ? this.snapshot.events : [];
+        const now = this.audio.getNowMs();
+        const excludedGroups = new Set(['ui', 'editor', 'progression']);
+        const excludedIds = new Set([
+            'system_boot',
+            'game_start_new_run',
+            'game_restart',
+            'save_success',
+            'save_error',
+            'load_success',
+            'load_error',
+            'bgm_main'
+        ]);
+        const base = events
+            .filter((entry) => !!entry && entry.effective?.enabled !== false && !this.audio.isEventSuppressed?.(entry.id))
+            .map((entry) => ({
+                ...entry,
+                _quickScore: this.scoreQuickSweepCandidate(entry, now)
+            }));
+
+        const strict = base.filter((entry) => (
+            !excludedGroups.has(entry.group)
+            && !excludedIds.has(entry.id)
+            && entry._quickScore >= 18
+        ));
+        const mid = base.filter((entry) => (
+            !excludedGroups.has(entry.group)
+            && entry._quickScore >= 8
+        ));
+        const fallback = base;
+
+        const picked = strict.length > 0 ? strict : (mid.length > 0 ? mid : fallback);
+        return picked
+            .sort((a, b) => b._quickScore - a._quickScore || a.id.localeCompare(b.id))
+            .slice(0, 48);
+    }
+
+    restoreQuickSweepPreview() {
+        if (!this.quickSweep.previewEventId) {
+            return;
+        }
+        if (this.quickSweep.previewHadRuntime) {
+            this.audio.setRuntimeOverride(this.quickSweep.previewEventId, this.quickSweep.previewRuntime, { persist: false });
+        } else {
+            this.audio.clearRuntimeOverride(this.quickSweep.previewEventId, { persist: false });
+        }
+        this.quickSweep.previewEventId = '';
+        this.quickSweep.previewRuntime = null;
+        this.quickSweep.previewHadRuntime = false;
+    }
+
+    applyQuickSweepPreview(eventId) {
+        if (!eventId) {
+            return;
+        }
+        const entry = this.quickSweep.candidates[this.quickSweep.index] || null;
+        this.restoreQuickSweepPreview();
+        const previousRuntime = this.audio.getRuntimeOverride(eventId);
+        const effective = this.audio.getResolvedEventConfig(eventId, null);
+        this.quickSweep.previewEventId = eventId;
+        this.quickSweep.previewHadRuntime = !!previousRuntime;
+        this.quickSweep.previewRuntime = previousRuntime ? cloneData(previousRuntime) : null;
+
+        this.audio.setRuntimeOverride(eventId, {
+            ...effective,
+            enabled: false
+        }, { persist: false });
+        this.audio.stopEvent(eventId, { fadeOutMs: 70 });
+
+        if (entry) {
+            const total = this.quickSweep.candidates.length;
+            const position = this.quickSweep.index + 1;
+            const cfg = entry.effective || effective;
+            const meta = `${entry.group || 'misc'} | ${entry.module || '-'} | ${entry.anchor || '-'}`;
+            const configText = `bus=${cfg.bus} cd=${Number(cfg.cooldown || 0).toFixed(3)} loop=${!!cfg.loop} voices=${cfg.maxVoices || 1}`;
+            this.showQuickToast(`[${position}/${total}] mute ${entry.id} | ${meta} | ${configText}`);
+        }
+        this.queueRender();
+    }
+
+    startQuickSweep() {
+        this.getSnapshot();
+        const candidates = this.buildQuickSweepCandidates();
+        if (candidates.length <= 0) {
+            this.showQuickToast('未找到可排查的已启用音效事件。', 'warn');
+            return;
+        }
+        this.quickSweep.active = true;
+        this.quickSweep.candidates = candidates;
+        this.quickSweep.index = 0;
+        this.selectedEventId = candidates[0].id;
+        this.applyQuickSweepPreview(candidates[0].id);
+        this.showQuickToast('音效排查已开启：{ 上一个，} 下一个，| 确认，Ctrl+M 退出');
+    }
+
+    stopQuickSweep(options = {}) {
+        const keepPreview = !!options.keepPreview;
+        if (!keepPreview) {
+            this.restoreQuickSweepPreview();
+        }
+        const wasActive = this.quickSweep.active;
+        this.quickSweep.active = false;
+        this.quickSweep.candidates = [];
+        this.quickSweep.index = 0;
+        if (wasActive && !keepPreview) {
+            this.showQuickToast('音效排查已关闭。');
+        }
+        this.queueRender();
+    }
+
+    toggleQuickSweep() {
+        if (this.quickSweep.active) {
+            this.stopQuickSweep({ keepPreview: false });
+            return false;
+        }
+        this.startQuickSweep();
+        return this.quickSweep.active;
+    }
+
+    stepQuickSweep(delta) {
+        if (!this.quickSweep.active || this.quickSweep.candidates.length <= 0) {
+            return;
+        }
+        const total = this.quickSweep.candidates.length;
+        const next = (this.quickSweep.index + delta + total) % total;
+        this.quickSweep.index = next;
+        const entry = this.quickSweep.candidates[next];
+        if (entry?.id) {
+            this.selectedEventId = entry.id;
+            this.applyQuickSweepPreview(entry.id);
+        }
+    }
+
+    confirmQuickSweepSelection() {
+        if (!this.quickSweep.active || this.quickSweep.candidates.length <= 0) {
+            return;
+        }
+        const entry = this.quickSweep.candidates[this.quickSweep.index];
+        if (!entry?.id) {
+            return;
+        }
+        const result = this.audio.confirmNoisyEventSuppression(entry.id, {
+            source: 'quick-audio-sweep',
+            note: 'Confirmed by quick keyboard sweep',
+            meta: {
+                group: entry.group || 'misc',
+                module: entry.module || '',
+                anchor: entry.anchor || ''
+            }
+        });
+        if (result?.ok) {
+            this.quickSweep.previewEventId = '';
+            this.quickSweep.previewRuntime = null;
+            this.quickSweep.previewHadRuntime = false;
+            this.stopQuickSweep({ keepPreview: true });
+            this.selectedEventId = entry.id;
+            this.showQuickToast(`已确认并永久禁用: ${entry.id}`, 'ok');
+            this.queueRender();
+            return;
+        }
+        this.showQuickToast(`禁用落盘失败: ${entry.id}`, 'warn');
+    }
+
+    handleGlobalKeydown(event) {
+        if (!event) {
+            return;
+        }
+        const editable = this.isEditableTarget(event.target);
+
+        if (event.code === 'F8' && !editable) {
+            event.preventDefault();
+            this.togglePanel();
+            return;
+        }
+
+        if (event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'KeyM') {
+            event.preventDefault();
+            this.toggleQuickSweep();
+            return;
+        }
+
+        if (!this.quickSweep.active || editable) {
+            return;
+        }
+
+        if (this.isQuickSweepPrevKey(event)) {
+            event.preventDefault();
+            this.stepQuickSweep(-1);
+            return;
+        }
+        if (this.isQuickSweepNextKey(event)) {
+            event.preventDefault();
+            this.stepQuickSweep(1);
+            return;
+        }
+        if (this.isQuickSweepConfirmKey(event)) {
+            event.preventDefault();
+            this.confirmQuickSweepSelection();
+        }
     }
 
     queueRender() {
@@ -833,13 +1173,18 @@ class CoreAudioDebugPanel {
     renderStatus() {
         const stats = this.snapshot?.manifestStats || { total: 0, loaded: 0, loading: 0 };
         const runtime = this.snapshot?.runtime || {};
+        const suppressed = Array.isArray(this.snapshot?.suppressedEvents) ? this.snapshot.suppressedEvents : [];
         const trackedVoiceCount = Array.isArray(runtime.activeVoices) ? runtime.activeVoices.length : 0;
         const managerSoundCount = Array.isArray(runtime.managerSounds) ? runtime.managerSounds.length : 0;
         const orphanBgmCount = Array.isArray(runtime.orphanBgmVoices) ? runtime.orphanBgmVoices.length : 0;
+        const sweepState = this.quickSweep.active
+            ? `on ${this.quickSweep.index + 1}/${Math.max(1, this.quickSweep.candidates.length)}`
+            : 'off';
         this.dom.manifestPill.textContent = `manifest ${stats.loaded}/${stats.total} (loading ${stats.loading})`;
-        this.dom.statusManifest.textContent = `assets: ${stats.total} | loaded: ${stats.loaded} | queue: ${stats.loading} | voices: ${trackedVoiceCount} | manager: ${managerSoundCount} | orphanBgm: ${orphanBgmCount}`;
+        this.dom.statusManifest.textContent = `assets: ${stats.total} | loaded: ${stats.loaded} | queue: ${stats.loading} | voices: ${trackedVoiceCount} | manager: ${managerSoundCount} | orphanBgm: ${orphanBgmCount} | suppressed: ${suppressed.length} | sweep: ${sweepState}`;
         const save = this.snapshot?.lastSaveResult || { ok: true, message: '' };
-        this.dom.statusSave.textContent = `last save: ${save.ok ? 'ok' : 'failed'} ${save.message || ''}`;
+        const muteSave = this.snapshot?.lastNoiseMuteSaveResult || { ok: true, message: '' };
+        this.dom.statusSave.textContent = `last save: ${save.ok ? 'ok' : 'failed'} ${save.message || ''} | mute save: ${muteSave.ok ? 'ok' : 'failed'} ${muteSave.message || ''}`;
     }
 
     renderRuntimeState() {
@@ -903,6 +1248,9 @@ class CoreAudioDebugPanel {
 
     destroy() {
         this.unsubscribe?.();
+        window.removeEventListener('keydown', this.globalKeydownHandler);
+        window.clearTimeout(this.quickToastTimer);
+        this.stopQuickSweep({ keepPreview: false });
         this.setOpen(false);
         if (this.dom?.root?.parentNode) {
             this.dom.root.parentNode.removeChild(this.dom.root);

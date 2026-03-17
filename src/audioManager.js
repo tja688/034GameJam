@@ -1,5 +1,7 @@
 const AUDIO_PROFILE_SCHEMA_VERSION = 1;
 const AUDIO_PROFILE_PATH = 'audio-profile.json';
+const AUDIO_NOISE_MUTE_SCHEMA_VERSION = 1;
+const AUDIO_NOISE_MUTE_PATH = 'audio-noise-mute-config.json';
 const AUDIO_LIBRARY_MANIFEST_PATH = 'audio-library.manifest.json';
 
 function isNonEmptyString(value) {
@@ -47,6 +49,8 @@ class CoreAudioManager {
         this.manifestPath = options.manifestPath || AUDIO_LIBRARY_MANIFEST_PATH;
         this.profilePath = options.profilePath || AUDIO_PROFILE_PATH;
         this.profileStorageKey = options.profileStorageKey || STORAGE_KEYS.audioProfile;
+        this.noiseMutePath = options.noiseMutePath || AUDIO_NOISE_MUTE_PATH;
+        this.noiseMuteStorageKey = options.noiseMuteStorageKey || STORAGE_KEYS.audioNoiseMute;
         this.eventRegistry = Array.isArray(AUDIO_EVENT_REGISTRY) ? AUDIO_EVENT_REGISTRY : [];
         this.eventIndex = new Map(this.eventRegistry.map((entry) => [entry.id, entry]));
 
@@ -79,6 +83,9 @@ class CoreAudioManager {
         this.recentEvents = [];
         this.recentAudioTrace = [];
         this.lastSaveResult = { ok: true, message: '' };
+        this.suppressedEventIds = new Set();
+        this.suppressedEventRecords = [];
+        this.lastNoiseMuteSaveResult = { ok: true, message: '' };
         this.audioUnlockInstalled = false;
         this.nextVoiceId = 1;
         this.runtimeGuardInstalled = false;
@@ -90,6 +97,7 @@ class CoreAudioManager {
     bootstrap() {
         this.loadManifestFromDisk();
         this.loadProfileFromStorage();
+        this.loadNoiseMuteConfigFromStorage();
         this.installAutoplayUnlock();
         this.installRuntimeGuards();
         this.preloadInitialAssets();
@@ -302,6 +310,85 @@ class CoreAudioManager {
         return output;
     }
 
+    normalizeSuppressedEventRecords(rawRecords) {
+        if (!Array.isArray(rawRecords)) {
+            return [];
+        }
+        const seen = new Set();
+        const normalized = [];
+        rawRecords.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') {
+                return;
+            }
+            const eventId = isNonEmptyString(entry.eventId) ? entry.eventId.trim() : '';
+            if (!eventId || seen.has(eventId)) {
+                return;
+            }
+            seen.add(eventId);
+            normalized.push({
+                eventId,
+                label: isNonEmptyString(entry.label) ? entry.label.trim() : eventId,
+                group: isNonEmptyString(entry.group) ? entry.group.trim() : 'misc',
+                module: isNonEmptyString(entry.module) ? entry.module.trim() : '',
+                anchor: isNonEmptyString(entry.anchor) ? entry.anchor.trim() : '',
+                bus: isNonEmptyString(entry.bus) ? entry.bus.trim() : '',
+                loop: !!entry.loop,
+                cooldown: Number.isFinite(entry.cooldown) ? clamp(entry.cooldown, 0, 8) : 0,
+                maxVoices: Number.isFinite(entry.maxVoices) ? clamp(Math.round(entry.maxVoices), 1, 24) : 1,
+                assetPool: normalizeAudioAssetList(entry.assetPool || []),
+                source: isNonEmptyString(entry.source) ? entry.source.trim() : 'quick-audio-sweep',
+                note: isNonEmptyString(entry.note) ? entry.note.trim() : '',
+                confirmedAt: Number.isFinite(entry.confirmedAt) ? Math.round(entry.confirmedAt) : Date.now(),
+                meta: entry.meta && typeof entry.meta === 'object' ? cloneData(entry.meta) : null
+            });
+        });
+        return normalized;
+    }
+
+    loadNoiseMuteConfigFromStorage() {
+        const raw = typeof readStoredJson === 'function'
+            ? readStoredJson(this.noiseMuteStorageKey)
+            : this.readJsonFile(this.noiseMutePath);
+        if (!raw || typeof raw !== 'object') {
+            this.suppressedEventIds = new Set();
+            this.suppressedEventRecords = [];
+            return;
+        }
+        const records = this.normalizeSuppressedEventRecords(raw.records);
+        const legacyIds = Array.isArray(raw.disabledEvents) ? raw.disabledEvents : [];
+        const explicitIds = Array.isArray(raw.disabledEventIds) ? raw.disabledEventIds : [];
+        const suppressedIds = new Set();
+        [...explicitIds, ...legacyIds, ...records.map((entry) => entry.eventId)].forEach((eventId) => {
+            if (isNonEmptyString(eventId)) {
+                suppressedIds.add(eventId.trim());
+            }
+        });
+        this.suppressedEventIds = suppressedIds;
+        this.suppressedEventRecords = records;
+    }
+
+    buildNoiseMutePayload() {
+        return {
+            version: AUDIO_NOISE_MUTE_SCHEMA_VERSION,
+            updatedAt: Date.now(),
+            disabledEventIds: [...this.suppressedEventIds],
+            records: cloneData(this.suppressedEventRecords)
+        };
+    }
+
+    saveNoiseMuteConfig() {
+        const payload = this.buildNoiseMutePayload();
+        const ok = typeof writeStoredJson === 'function'
+            ? writeStoredJson(this.noiseMuteStorageKey, payload)
+            : false;
+        this.lastNoiseMuteSaveResult = {
+            ok,
+            message: ok ? 'saved' : 'write failed'
+        };
+        this.emitDebugUpdate('noise_mute_saved', this.lastNoiseMuteSaveResult);
+        return ok;
+    }
+
     loadProfileFromStorage() {
         const raw = typeof readStoredJson === 'function'
             ? readStoredJson(this.profileStorageKey)
@@ -340,6 +427,62 @@ class CoreAudioManager {
         };
         this.emitDebugUpdate('profile_saved', this.lastSaveResult);
         return ok;
+    }
+
+    isEventSuppressed(eventId) {
+        if (!isNonEmptyString(eventId)) {
+            return false;
+        }
+        return this.suppressedEventIds.has(eventId.trim());
+    }
+
+    confirmNoisyEventSuppression(eventId, options = {}) {
+        if (!isNonEmptyString(eventId)) {
+            return { ok: false, eventId: '' };
+        }
+        const normalizedEventId = eventId.trim();
+        const definition = getAudioEventDefinition(normalizedEventId) || {};
+        const effective = this.getResolvedEventConfig(normalizedEventId, null);
+        const confirmedAt = Date.now();
+        const record = {
+            eventId: normalizedEventId,
+            label: definition.label || normalizedEventId,
+            group: definition.group || 'misc',
+            module: definition.module || '',
+            anchor: definition.anchor || '',
+            bus: effective.bus || '',
+            loop: !!effective.loop,
+            cooldown: Number.isFinite(effective.cooldown) ? effective.cooldown : 0,
+            maxVoices: Number.isFinite(effective.maxVoices) ? effective.maxVoices : 1,
+            assetPool: normalizeAudioAssetList(effective.assetPool || []),
+            source: isNonEmptyString(options.source) ? options.source.trim() : 'quick-audio-sweep',
+            note: isNonEmptyString(options.note) ? options.note.trim() : '',
+            confirmedAt,
+            meta: options.meta && typeof options.meta === 'object' ? cloneData(options.meta) : null
+        };
+
+        this.suppressedEventIds.add(normalizedEventId);
+        const nextRecords = [record, ...this.suppressedEventRecords.filter((entry) => entry.eventId !== normalizedEventId)];
+        this.suppressedEventRecords = nextRecords.slice(0, 256);
+
+        const muteSaved = this.saveNoiseMuteConfig();
+        const persisted = this.applyEventConfig(normalizedEventId, {
+            ...effective,
+            enabled: false
+        }, { persist: true, clearRuntime: true });
+        this.stopEvent(normalizedEventId, { fadeOutMs: 80 });
+        this.emitDebugUpdate('event_suppressed', {
+            eventId: normalizedEventId,
+            muteSaved,
+            persisted
+        });
+        return {
+            ok: muteSaved && persisted,
+            eventId: normalizedEventId,
+            muteSaved,
+            persisted,
+            record: cloneData(record)
+        };
     }
 
     getAppliedEventConfig(eventId) {
@@ -1101,6 +1244,10 @@ class CoreAudioManager {
     }
 
     playEvent(eventId, options = {}) {
+        if (this.isEventSuppressed(eventId)) {
+            this.recordEvent(eventId, 'skipped', 'suppressed', '', options.meta);
+            return Promise.resolve(false);
+        }
         const config = this.getResolvedEventConfig(eventId, options.overridePatch || null);
         const now = this.getNowMs();
         if (!config.enabled) {
@@ -1449,6 +1596,8 @@ class CoreAudioManager {
                 state: this.getAssetState(asset.id)
             })),
             lastSaveResult: cloneData(this.lastSaveResult),
+            lastNoiseMuteSaveResult: cloneData(this.lastNoiseMuteSaveResult),
+            suppressedEvents: cloneData(this.suppressedEventRecords),
             recentEvents: cloneData(this.recentEvents.slice(0, 24)),
             recentAudioTrace: cloneData(this.recentAudioTrace.slice(0, 64)),
             runtime: cloneData(runtime)

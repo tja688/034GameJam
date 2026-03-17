@@ -50,6 +50,16 @@
 - runtime guard 除了维持 BGM singleton，还要周期性清扫 `sound.sounds` 中“未追踪且已停止”的历史实例
 - `resetSimulation` 必须主动触发一次音频残留清扫，避免高关卡结束后回到第一关仍背着旧 run 的短音效对象
 
+音频排查快捷流（快速降噪定位）：
+
+- `Ctrl + M`：开/关“音效排查模式”
+- 排查模式开启后：`{` 上一个候选、`}` 下一个候选、`|` 确认当前候选
+- 候选切换时会临时仅禁用当前事件，并在顶部短暂 toast 显示 `event/group/module/anchor` 绑定信息
+- `|` 确认后会同时：
+  1. 写入 `audio-noise-mute-config.json`（可追溯禁用记录）
+  2. 将该事件写入 `audio-profile.json` 的 applied binding（`enabled=false`）
+  3. 在运行时触发入口直接拦截该事件，避免继续进入播放链
+
 ## Dev Launch
 
 - 开发入口仍是仓库根目录的 `start-dev.ps1` / `start-dev.bat`

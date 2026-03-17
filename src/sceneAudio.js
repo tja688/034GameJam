@@ -170,6 +170,9 @@ const SceneAudioMixin = {
         if (!manager || !eventId) {
             return Promise.resolve(false);
         }
+        if (manager.isEventSuppressed?.(eventId)) {
+            return Promise.resolve(false);
+        }
         return manager.playEvent(eventId, {
             ...(options || {}),
             meta: meta && typeof meta === 'object' ? meta : {}
