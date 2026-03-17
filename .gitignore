@@ -21,6 +21,7 @@ __pycache__/
 # IDEs
 .vscode/
 .idea/
+.obsidian/
 *.swp
 *.swo
 

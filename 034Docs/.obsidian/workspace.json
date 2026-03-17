@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "项目大型重构执行方案.md",
+                "file": "source/tuning-policy.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "项目大型重构执行方案"
+              "title": "tuning-policy"
             }
           }
         ]
@@ -183,16 +183,16 @@
   "active": "f65887c2b7dd11ae",
   "lastOpenFiles": [
     "source/terminology.md",
-    "source/ai-collaboration-rules.md",
-    "source/tuning-policy.md",
     "source/scenario-spec.md",
+    "source/project-north-star.md",
     "source/playground-spec.md",
     "source/module-spec.md",
     "source/architecture-overview.md",
-    "source/project-north-star.md",
+    "source/ai-collaboration-rules.md",
+    "项目大型重构执行方案.md",
+    "source/tuning-policy.md",
     "source",
     "新建文件夹",
-    "项目大型重构执行方案.md",
     "欢迎.md"
   ]
 }
