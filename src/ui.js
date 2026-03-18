@@ -202,6 +202,7 @@ function ensureGameUiStyles() {
             display: block;
             width: 100%;
             height: 100%;
+            overflow: hidden;
             background: rgba(255, 255, 255, 0.06);
             transition:
                 clip-path 0.28s ease,
@@ -209,6 +210,9 @@ function ensureGameUiStyles() {
                 transform 0.28s ease;
         }
         .game-startup-progress-fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            display: block;
             width: 0%;
             height: 100%;
             background: linear-gradient(90deg, rgba(96, 210, 255, 0.82), rgba(255, 255, 255, 0.96));

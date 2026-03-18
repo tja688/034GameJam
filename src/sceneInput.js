@@ -700,9 +700,7 @@ const SceneInputMixin = {
         this.commitIntentState(move, worldPointer, frameDt);
     },
     handleModeInputs() {
-        const T = window.TUNING || {};
         if (!this.player.edit.active) {
-            this.timeScaleFactor = 1;
             return;
         }
 
@@ -713,9 +711,6 @@ const SceneInputMixin = {
             this.deleteCurrentEditSelection();
         }
 
-        this.timeScaleFactor = this.player.edit.deleteType === 'nodes' && this.player.edit.deleteNodes.length > 0
-            ? (T.editDeleteTimeScale ?? 0.05)
-            : (T.editTimeScale ?? 0.08);
         this.refreshEditHover();
     },
     handlePointerDown(pointer) {

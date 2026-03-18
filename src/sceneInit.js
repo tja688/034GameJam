@@ -169,6 +169,85 @@ const SceneInitMixin = {
             lastDistance: 0
         };
     },
+    createDefaultTimeDilationState() {
+        return {
+            heroTimer: 0,
+            heroDuration: 0,
+            heroMinScale: 1,
+            heroWorldShake: 0,
+            heroHudShake: 0,
+            audioMix: 0,
+            appliedAudioMix: -1
+        };
+    },
+    ensureTimeDilationState() {
+        if (!this.timeDilation || typeof this.timeDilation !== 'object') {
+            this.timeDilation = this.createDefaultTimeDilationState();
+        }
+        return this.timeDilation;
+    },
+    getEditTimeScaleTarget() {
+        const T = window.TUNING || {};
+        if (!this.player?.edit?.active) {
+            return 1;
+        }
+        return this.player.edit.deleteType === 'nodes' && this.player.edit.deleteNodes.length > 0
+            ? (T.editDeleteTimeScale ?? 0.05)
+            : (T.editTimeScale ?? 0.08);
+    },
+    triggerHeroTimeDilation(prey = null) {
+        const state = this.ensureTimeDilationState();
+        const isLarge = prey?.sizeKey === 'large' || prey?.isObjective;
+        state.heroDuration = isLarge ? 0.44 : 0.32;
+        state.heroTimer = state.heroDuration;
+        state.heroMinScale = isLarge ? 0.14 : 0.2;
+        state.heroWorldShake = isLarge ? 1.18 : 0.86;
+        state.heroHudShake = isLarge ? 0.96 : 0.72;
+        this.addScreenShake?.(state.heroWorldShake, state.heroHudShake);
+    },
+    updateTimeDilationState(frameDt, options = {}) {
+        const state = this.ensureTimeDilationState();
+        const forceNormal = options === true || !!options.forceNormal;
+        let heroScale = 1;
+        let heroMix = 0;
+
+        if (!forceNormal && (state.heroTimer || 0) > 0) {
+            state.heroTimer = Math.max(0, state.heroTimer - frameDt);
+            const duration = Math.max(0.0001, state.heroDuration || 0.0001);
+            const progress = 1 - state.heroTimer / duration;
+            const eased = Phaser.Math.Easing.Cubic.Out(clamp(progress, 0, 1));
+            heroScale = lerp(state.heroMinScale || 0.18, 1, eased);
+            heroMix = clamp(1 - eased, 0, 1);
+            if (heroMix > 0.02 && this.cameraRig) {
+                this.cameraRig.shake = Math.max(this.cameraRig.shake || 0, (state.heroWorldShake || 0) * (0.26 + heroMix * 0.74));
+                this.cameraRig.hudShake = Math.max(this.cameraRig.hudShake || 0, (state.heroHudShake || 0) * (0.22 + heroMix * 0.78));
+            }
+            if (state.heroTimer <= 0) {
+                state.heroDuration = 0;
+                state.heroMinScale = 1;
+                state.heroWorldShake = 0;
+                state.heroHudShake = 0;
+            }
+        } else if (forceNormal) {
+            state.heroTimer = 0;
+            state.heroDuration = 0;
+            state.heroMinScale = 1;
+            state.heroWorldShake = 0;
+            state.heroHudShake = 0;
+        }
+
+        const editMix = forceNormal ? 0 : clamp(this.player?.edit?.ambience || 0, 0, 1) * 0.92;
+        const editScale = forceNormal ? 1 : this.getEditTimeScaleTarget();
+        const targetScale = Math.min(editScale, heroScale);
+        const targetAudioMix = forceNormal ? 0 : clamp(1 - (1 - editMix) * (1 - heroMix), 0, 1);
+        state.audioMix = damp(state.audioMix || 0, targetAudioMix, forceNormal ? 12 : 10.5, frameDt);
+        this.timeScaleFactor = clamp(targetScale, 0.04, 1);
+
+        if (!Number.isFinite(state.appliedAudioMix) || Math.abs(state.appliedAudioMix - state.audioMix) > 0.01 || forceNormal) {
+            this.applyGlobalTimeAudioFx?.(forceNormal ? 0 : state.audioMix, { force: forceNormal });
+            state.appliedAudioMix = forceNormal ? 0 : state.audioMix;
+        }
+    },
     createDefaultPlayer(chain = this.baseChain) {
         return {
             chain: [...chain],
@@ -445,6 +524,9 @@ const SceneInitMixin = {
     beginStartupSequence() {
         this.hideExternalDebugUi();
         this.startupSequence = this.createDefaultStartupSequence();
+        this.ensureTimeDilationState();
+        this.timeScaleFactor = 1;
+        this.applyGlobalTimeAudioFx?.(0, { force: true });
         const manager = this.ensureAudioSystem?.();
         const assetIds = manager?.assetCatalog?.map((asset) => asset.id).filter((id) => typeof id === 'string' && id.length > 0) || [];
         this.startupSequence.assetIds = assetIds;
@@ -599,6 +681,7 @@ const SceneInitMixin = {
         if (!state) {
             return false;
         }
+        this.updateTimeDilationState?.(frameDt, { forceNormal: true });
         this.hideExternalDebugUi();
         if (state.phase === 'loading' || state.phase === 'ready') {
             const simDt = frameDt * 0.72;
@@ -642,6 +725,7 @@ const SceneInitMixin = {
         this.cameraRig = this.createDefaultCameraRig();
         this.clusterVolume = this.createDefaultClusterVolumeState();
         this.burstDrive = this.createDefaultBurstDriveState();
+        this.timeDilation = this.createDefaultTimeDilationState();
         this.performanceProbe = this.createDefaultPerformanceProbe();
         this.ecoTelemetry = this.createDefaultEcoTelemetry?.() || null;
         this.pendingDevourRewards = [];
@@ -659,6 +743,7 @@ const SceneInitMixin = {
         this.expandHoldTimer = 0;
         this.expandAddCount = 0;
         this.nextExpandThreshold = 0;
+        this.applyGlobalTimeAudioFx?.(0, { force: true });
         this.syncSceneBgm?.({ source: startSession ? 'reset-session' : 'reset-idle' });
         this.refreshMenuState();
     },
@@ -691,6 +776,7 @@ const SceneInitMixin = {
             }
 
             if (this.menuMode) {
+                this.profileFrameSection('timeFx', () => this.updateTimeDilationState?.(frameDt, { forceNormal: true }));
                 this.profileFrameSection('camera', () => this.updateCamera(frameDt));
                 this.profileFrameSection('display', () => this.updateDisplay(frameDt));
                 this.profileFrameSection('render', () => this.render());
@@ -710,6 +796,7 @@ const SceneInitMixin = {
             }
 
             if (this.paused) {
+                this.profileFrameSection('timeFx', () => this.updateTimeDilationState?.(frameDt, { forceNormal: true }));
                 this.profileFrameSection('camera', () => this.updateCamera(frameDt));
                 this.profileFrameSection('display', () => this.updateDisplay(frameDt));
                 this.profileFrameSection('render', () => this.render());
@@ -743,6 +830,7 @@ const SceneInitMixin = {
             this.profileFrameSection('modeInputs', () => this.handleModeInputs());
             this.profileFrameSection('intent', () => this.readIntent(frameDt));
             this.profileFrameSection('editMode', () => this.updateEditMode(frameDt));
+            this.profileFrameSection('timeFx', () => this.updateTimeDilationState?.(frameDt));
 
             const simDt = frameDt * this.timeScaleFactor;
             this.worldTime += simDt;
@@ -1037,6 +1125,7 @@ const SceneInitMixin = {
             node.feedPulse = Math.max(0, node.feedPulse - frameDt * 1.6);
             node.hookTension = Math.max(0, node.hookTension - frameDt * 2.8);
             node.biteGlow = Math.max(0, node.biteGlow - frameDt * 2.2);
+            node.triggerPulse = Math.max(0, node.triggerPulse - frameDt * 4.6);
             node.absorbLoad = Math.max(0, node.absorbLoad - frameDt * 1.7);
             node.absorbJitter = Math.max(0, node.absorbJitter - frameDt * 3.6);
             node.absorbFlash = Math.max(0, node.absorbFlash - frameDt * 2.4);

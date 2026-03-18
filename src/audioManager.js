@@ -42,6 +42,16 @@ function tokenizeAudioSearchTerms(...values) {
     return [...tokens];
 }
 
+function createDefaultGlobalVoiceFx() {
+    return {
+        mix: 0,
+        rateMul: 1,
+        detune: 0,
+        masterVolumeMul: 1,
+        busVolumeMuls: {}
+    };
+}
+
 class CoreAudioManager {
     constructor(scene, options = {}) {
         this.scene = scene;
@@ -91,6 +101,7 @@ class CoreAudioManager {
         this.runtimeGuardInstalled = false;
         this.lastRuntimeGuardAt = 0;
         this.eventSkipRecordAt = {};
+        this.globalVoiceFx = createDefaultGlobalVoiceFx();
 
         this.bootstrap();
     }
@@ -1238,19 +1249,77 @@ class CoreAudioManager {
         const rateMul = Number.isFinite(options.rateMul) ? options.rateMul : 1;
         const detuneAdd = Number.isFinite(options.detuneAdd) ? options.detuneAdd : 0;
         const seek = Number.isFinite(options.seek) ? Math.max(0, options.seek) : 0;
-        const finalVolume = clamp(config.volume * this.getEffectiveBusGain(bus) * volumeMul, 0, 2);
-        return {
+        const playback = {
             eventId,
             assetId,
             bus,
-            volume: finalVolume,
             baseVolume: clamp(config.volume * volumeMul, 0, 2),
-            rate: clamp(config.rate * rateMul, 0.2, 3),
-            detune: clamp(config.detune + detuneAdd, -2400, 2400),
+            baseRate: clamp(config.rate * rateMul, 0.2, 3),
+            baseDetune: clamp(config.detune + detuneAdd, -2400, 2400),
             seek,
             loop: !!config.loop,
             preview: !!options.preview
         };
+        playback.volume = this.getVoiceOutputVolume(playback);
+        playback.rate = this.getVoiceOutputRate(playback);
+        playback.detune = this.getVoiceOutputDetune(playback);
+        return playback;
+    }
+
+    getGlobalVoiceFxMix() {
+        return clamp(this.globalVoiceFx?.mix ?? 0, 0, 1);
+    }
+
+    getGlobalBusVolumeMul(bus) {
+        if (!isNonEmptyString(bus)) {
+            return 1;
+        }
+        const raw = this.globalVoiceFx?.busVolumeMuls?.[bus];
+        return clamp(Number.isFinite(raw) ? raw : 1, 0.2, 2);
+    }
+
+    getVoiceOutputVolume(record) {
+        const mix = this.getGlobalVoiceFxMix();
+        const masterFxMul = clamp(this.globalVoiceFx?.masterVolumeMul ?? 1, 0.2, 2);
+        const busFxMul = this.getGlobalBusVolumeMul(record?.bus);
+        const fxMul = lerp(1, masterFxMul * busFxMul, mix);
+        return clamp((record?.baseVolume || 0) * this.getEffectiveBusGain(record?.bus || 'sfx') * fxMul, 0, 2);
+    }
+
+    getVoiceOutputRate(record) {
+        const mix = this.getGlobalVoiceFxMix();
+        const rateMul = clamp(this.globalVoiceFx?.rateMul ?? 1, 0.2, 3);
+        return clamp((record?.baseRate || 1) * lerp(1, rateMul, mix), 0.2, 3);
+    }
+
+    getVoiceOutputDetune(record) {
+        const mix = this.getGlobalVoiceFxMix();
+        const detune = clamp(this.globalVoiceFx?.detune ?? 0, -2400, 2400);
+        return clamp((record?.baseDetune || 0) + detune * mix, -2400, 2400);
+    }
+
+    setGlobalVoiceFx(patch = {}, options = {}) {
+        const next = createDefaultGlobalVoiceFx();
+        const current = this.globalVoiceFx || createDefaultGlobalVoiceFx();
+        next.mix = clamp(Number.isFinite(patch.mix) ? patch.mix : current.mix, 0, 1);
+        next.rateMul = clamp(Number.isFinite(patch.rateMul) ? patch.rateMul : current.rateMul, 0.2, 3);
+        next.detune = clamp(Number.isFinite(patch.detune) ? patch.detune : current.detune, -2400, 2400);
+        next.masterVolumeMul = clamp(Number.isFinite(patch.masterVolumeMul) ? patch.masterVolumeMul : current.masterVolumeMul, 0.2, 2);
+        next.busVolumeMuls = { ...(current.busVolumeMuls || {}) };
+        AUDIO_BUS_ORDER.forEach((bus) => {
+            if (bus === 'master') {
+                return;
+            }
+            if (!patch.busVolumeMuls || !Object.prototype.hasOwnProperty.call(patch.busVolumeMuls, bus)) {
+                return;
+            }
+            next.busVolumeMuls[bus] = clamp(Number(patch.busVolumeMuls[bus]), 0.2, 2);
+        });
+        this.globalVoiceFx = next;
+        this.updateActiveVoiceVolumes();
+        if (options.force) {
+            this.emitDebugUpdate('global_voice_fx', { mix: next.mix });
+        }
     }
 
     registerVoice(record) {
@@ -1485,6 +1554,8 @@ class CoreAudioManager {
                 sound,
                 bus: playback.bus,
                 baseVolume: playback.baseVolume,
+                baseRate: playback.baseRate,
+                baseDetune: playback.baseDetune,
                 preview: playback.preview,
                 loop: playback.loop,
                 startedAt: now,
@@ -1574,8 +1645,13 @@ class CoreAudioManager {
             if (!record || record.ended || !record.sound || record.sound.isDestroyed) {
                 return;
             }
-            const gain = clamp(record.baseVolume * this.getEffectiveBusGain(record.bus), 0, 2);
-            record.sound.setVolume(gain);
+            try {
+                record.sound.setVolume(this.getVoiceOutputVolume(record));
+                record.sound.setRate(this.getVoiceOutputRate(record));
+                record.sound.setDetune(this.getVoiceOutputDetune(record));
+            } catch (error) {
+                console.warn('Audio voice runtime FX update failed.', error);
+            }
         });
     }
 

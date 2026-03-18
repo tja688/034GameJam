@@ -2,6 +2,7 @@ const SceneProgressionMixin = {
     createDefaultRunState() {
         return {
             stageIndex: 0,
+            roundIndex: 0,
             stageProgress: 0,
             totalProgress: 0,
             objectiveSpawned: false,
@@ -94,6 +95,12 @@ const SceneProgressionMixin = {
     },
     getStageCount() {
         return DEMO_STAGE_DEFS.length;
+    },
+    getRoundIndex() {
+        return Math.max(0, Math.round(this.runState?.roundIndex || 0));
+    },
+    getRoundDifficultyMultiplier(roundIndex = this.getRoundIndex()) {
+        return 1 + Math.max(0, roundIndex) * 0.1;
     },
     getStageScopedTuningValue(baseKey, stageId, fallback) {
         if (!stageId) {
@@ -250,6 +257,7 @@ const SceneProgressionMixin = {
             ? clamp(this.runState.stageIndex || 0, 0, DEMO_STAGE_DEFS.length - 1)
             : 0;
         const baseStage = DEMO_STAGE_DEFS[stageIndex];
+        const roundDifficultyMul = this.getRoundDifficultyMultiplier();
         const spawnDensityMul = Math.max(0.25, this.getRunTuningValue('gameplayStageSpawnDensityMul', 1));
         const spawnIntervalMul = Math.max(0.25, this.getRunTuningValue('gameplayStageSpawnIntervalMul', 1));
         const spawnCapMul = Math.max(0.25, this.getRunTuningValue('gameplayStageSpawnCapMul', 1));
@@ -298,11 +306,12 @@ const SceneProgressionMixin = {
             objectiveRevealRatio,
             objectiveRevealNodeCount,
             growthEconomy,
-            metabolism: Math.max(0.1, baseStage.metabolism * metabolismMul),
+            metabolism: Math.max(0.1, baseStage.metabolism * metabolismMul * roundDifficultyMul),
             spawnCap: Math.max(1, Math.round(baseStage.spawnCap * spawnCapMul)),
             spawnRules: scaleRules(baseStage.spawnRules),
             eliteRules: scaleRules(baseStage.eliteRules),
-            objective: baseStage.objective ? { ...baseStage.objective, tier: baseStage.objective.tier || 'objective' } : null
+            objective: baseStage.objective ? { ...baseStage.objective, tier: baseStage.objective.tier || 'objective' } : null,
+            roundDifficultyMul
         };
     },
     getRunPalette() {
@@ -324,7 +333,46 @@ const SceneProgressionMixin = {
         return {
             stageIndex: normalizedIndex,
             stageId: stage?.id || '',
-            palette: stage?.palette || this.getRunPalette()
+            palette: stage?.palette || this.getRunPalette(),
+            roundIndex: this.getRoundIndex()
+        };
+    },
+    getRoundMarkerSpec(roundIndex = this.getRoundIndex(), palette = this.getRunPalette()) {
+        const normalizedRound = Math.max(0, Math.round(roundIndex));
+        if (normalizedRound <= 0) {
+            return null;
+        }
+        if (normalizedRound === 1) {
+            return {
+                shape: 'triangle',
+                size: 15,
+                color: blendColor(palette.signal || COLORS.core, palette.pulse || COLORS.pulse, 0.22)
+            };
+        }
+        if (normalizedRound === 2) {
+            return {
+                shape: 'square',
+                size: 15,
+                color: blendColor(palette.signal || COLORS.core, palette.threat || COLORS.health, 0.18)
+            };
+        }
+
+        const extraRounds = Math.max(0, normalizedRound - 3);
+        const size = 15 + extraRounds * 4;
+        const huePool = [
+            palette.pulse || COLORS.pulse,
+            palette.signal || COLORS.core,
+            palette.threat || COLORS.health,
+            COLORS.circle,
+            COLORS.triangle,
+            COLORS.square
+        ];
+        const colorA = huePool[extraRounds % huePool.length];
+        const colorB = huePool[(extraRounds + 2) % huePool.length];
+        return {
+            shape: 'circle',
+            size,
+            color: blendColor(colorA, colorB, 0.38 + Math.min(0.28, extraRounds * 0.06))
         };
     },
     ensureRunProgressionState() {
@@ -839,11 +887,7 @@ const SceneProgressionMixin = {
             this.runState.objectiveId = '';
         }
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 1.1);
-        if ((this.runState.stageIndex || 0) >= this.getStageCount() - 1) {
-            this.triggerVictory();
-        } else {
-            this.advanceStage();
-        }
+        this.advanceStage();
     },
     absorbFragment(fragment) {
         const rewardEnergy = Math.max(0, fragment.rewardEnergy || 0);
@@ -908,11 +952,7 @@ const SceneProgressionMixin = {
             this.runState.objectiveId = '';
         }
         this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, 1.1);
-        if ((this.runState.stageIndex || 0) >= this.getStageCount() - 1) {
-            this.triggerVictory();
-        } else {
-            this.advanceStage();
-        }
+        this.advanceStage();
     },
     queuePreyDevourOutcome(prey) {
         if (!prey) {
@@ -1056,20 +1096,21 @@ const SceneProgressionMixin = {
     },
     advanceStage() {
         const previousStageIndex = this.runState.stageIndex || 0;
-        if ((this.runState.stageIndex || 0) >= this.getStageCount() - 1) {
-            this.triggerVictory();
-            return;
-        }
+        const wrappedRound = previousStageIndex >= this.getStageCount() - 1;
+        const previousRoundIndex = this.getRoundIndex();
+        const nextRoundIndex = wrappedRound ? previousRoundIndex + 1 : previousRoundIndex;
 
         this.clearActivePreyChases?.('stage-advance');
         this.prey = [];
-        this.runState.stageIndex += 1;
+        this.runState.stageIndex = wrappedRound ? 0 : previousStageIndex + 1;
+        this.runState.roundIndex = nextRoundIndex;
         this.runState.stageProgress = 0;
         this.runState.objectiveSpawned = false;
         this.runState.objectiveId = '';
-        this.runState.stageFlash = 1.25;
+        this.runState.stageFlash = wrappedRound ? 1.5 : 1.25;
         this.runState.stageSignal = 1;
         this.runState.stageChangedAt = this.worldTime;
+        this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, wrappedRound ? 0.72 : 0.32);
         this.syncSpawnTimersForStage(true);
         this.populateStagePrey?.(true);
         this.applyEnergyDelta(
@@ -1081,14 +1122,24 @@ const SceneProgressionMixin = {
             'stage'
         );
         this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3, 'stage-advance');
+        if (wrappedRound) {
+            const marker = this.getRoundMarkerSpec(nextRoundIndex);
+            if (marker) {
+                this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 78, marker.color, 0.24, 4, 'stage-advance');
+            }
+        }
         this.playAudioEvent?.('stage_advance', {
             fromStage: previousStageIndex,
-            toStage: this.runState.stageIndex || 0
+            toStage: this.runState.stageIndex || 0,
+            roundIndex: this.runState.roundIndex || 0,
+            wrappedRound
         });
         this.syncSceneBgm?.({ source: 'stage-advance' });
         this.showStageTransition?.(this.runState.stageIndex || 0, {
             source: 'stage-advance',
-            fromStageIndex: previousStageIndex
+            fromStageIndex: previousStageIndex,
+            roundIndex: this.runState.roundIndex || 0,
+            wrappedRound
         });
     },
     triggerVictory() {

@@ -20,7 +20,8 @@ const SceneEnemiesMixin = {
             return Math.max(0, Math.round(rule?.desired || 0));
         }
         const stage = this.getCurrentStageDef?.();
-        const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1));
+        const density = Math.max(0, this.getRunTuningValue('gameplayPreyInitialDensityMul', 1))
+            * Math.max(1, this.getRoundDifficultyMultiplier?.() || 1);
         const bonus = Math.round(this.getRunTuningValue('gameplayPreyInitialCountBonus', 0));
         const viewScale = this.getPreyInitialPopulationScale?.() || 1;
         const carryDensity = this.getRuleCarryDensityMul?.(rule, stage) || 1;
@@ -33,7 +34,8 @@ const SceneEnemiesMixin = {
         return this.getCurrentStageCarryProfile?.(stage, nodeCount)?.densityMul || 1;
     },
     getPreyEncounterDensityMul() {
-        return clamp(this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1), 0.35, 8);
+        const baseDensity = this.getRunTuningValue('gameplayPreyEncounterDensityMul', 1);
+        return clamp(baseDensity * Math.max(1, this.getRoundDifficultyMultiplier?.() || 1), 0.35, 8);
     },
     isPreyCameraPopulationScalingEnabled() {
         return this.getRunTuningToggle?.('gameplayPreyCameraScaleEnabled', true)

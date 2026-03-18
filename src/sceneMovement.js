@@ -61,6 +61,7 @@ const SceneMovementMixin = {
                 feedPulse: existing ? existing.feedPulse : 0,
                 hookTension: existing ? existing.hookTension : 0,
                 biteGlow: existing ? existing.biteGlow : 0,
+                triggerPulse: existing ? existing.triggerPulse : 0,
                 absorbLoad: existing ? existing.absorbLoad : 0,
                 absorbJitter: existing ? existing.absorbJitter : 0,
                 absorbFlash: existing ? existing.absorbFlash : 0,
@@ -425,6 +426,7 @@ const SceneMovementMixin = {
         }
     },
     triggerNode(node, edge) {
+        node.triggerPulse = Math.max(node.triggerPulse || 0, edge.kind === 'inverse' ? 1.18 : 1);
         if (edge.kind === 'inverse') {
             this.player.agitation = clamp(this.player.agitation + 0.22, 0, 2);
             this.playAudioEvent?.('player_pulse_inverse', { nodeIndex: node.index, role: node.role });

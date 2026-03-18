@@ -556,12 +556,13 @@ const SceneCombatMixin = {
         const speedMul = this.getRunTuningValue ? this.getRunTuningValue('gameplayPreyFragmentSpeedMul', 1.2) : 1.2;
         const sizeMul = this.getRunTuningValue ? this.getRunTuningValue('gameplayPreyFragmentSizeMul', 1.28) : 1.28;
         const visualMul = Math.max(0.8, Math.pow(prey?.visualScale || 1, 0.48));
+        const eliteBurstRangeMul = fatal && (prey?.encounterClass === 'elite' || prey?.encounterClass === 'objective') ? 2 : 1;
         const directionX = node?.attackDirX ?? normalize(prey.vx, prey.vy, 1, 0).x;
         const directionY = node?.attackDirY ?? normalize(prey.vx, prey.vy, 0, 1).y;
         const feedBias = attachment?.mode === 'feed' ? 0.62 : 0.14;
         const spawned = this.spawnFragmentBurst(prey.x, prey.y, {
             count: Math.max(1, Math.round(count * countMul * visualMul)),
-            speed: (fatal ? 182 : (attachment?.mode === 'feed' ? 58 : 104)) * speedMul * Math.max(0.85, visualMul * 0.9),
+            speed: (fatal ? 182 : (attachment?.mode === 'feed' ? 58 : 104)) * speedMul * Math.max(0.85, visualMul * 0.9) * eliteBurstRangeMul,
             size: (fatal ? 6.4 : 4.8) * sizeMul * Math.max(0.9, visualMul * 0.72),
             baseColor: fatal ? COLORS.meat : (attachment?.mode === 'feed' ? COLORS.energy : COLORS.flesh),
             collectible: collectible || fatal,
@@ -587,6 +588,9 @@ const SceneCombatMixin = {
         this.noteDevourBurst?.(1);
         const deathLoot = this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
         const rewardDeferred = Array.isArray(deathLoot) && deathLoot.some((fragment) => !!fragment.rewardSourceId);
+        if (prey.encounterClass === 'elite' || prey.encounterClass === 'objective') {
+            this.triggerHeroTimeDilation?.(prey);
+        }
         if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPreyDeathRingsEnabled', true)) {
             this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4, 'prey-death');
             this.createRing(prey.x, prey.y, prey.radius + 16, COLORS.core, 0.22, 3, 'prey-death');
@@ -954,9 +958,10 @@ const SceneCombatMixin = {
         }
         const collectPerFrameCap = Math.max(1, Math.round(this.getRunTuningValue?.('gameplayPreyFragmentCollectPerFrameCap', 8) ?? 8));
         let collectedThisFrame = 0;
-        const lootRangeBase = Math.max(140, this.getRunTuningValue?.('gameplayLootHomingRange', 260) ?? 260);
-        const lootRangeGrow = Math.max(30, this.getRunTuningValue?.('gameplayLootHomingRangeGrow', 180) ?? 180);
-        const lootRetargetRange = Math.max(220, this.getRunTuningValue?.('gameplayLootRetargetRange', 360) ?? 360);
+        const absorbRangeMul = Math.max(0.2, this.getRunTuningValue?.('gameplayLootAbsorbRangeMul', 1.5) ?? 1.5);
+        const lootRangeBase = Math.max(140, this.getRunTuningValue?.('gameplayLootHomingRange', 260) ?? 260) * absorbRangeMul;
+        const lootRangeGrow = Math.max(30, this.getRunTuningValue?.('gameplayLootHomingRangeGrow', 180) ?? 180) * absorbRangeMul;
+        const lootRetargetRange = Math.max(220, this.getRunTuningValue?.('gameplayLootRetargetRange', 360) ?? 360) * absorbRangeMul;
         const absorbSpeedMul = Math.max(0.2, this.getRunTuningValue?.('gameplayLootAbsorbSpeedMul', 1) ?? 1);
         const hasFeeders = feeders.length > 0;
         for (let i = this.fragments.length - 1; i >= 0; i -= 1) {

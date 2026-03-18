@@ -234,5 +234,24 @@ const SceneAudioMixin = {
             return false;
         }
         return this.audioManager.applyEventConfig(eventId, patch, { persist, clearRuntime: true });
+    },
+
+    applyGlobalTimeAudioFx(mix = 0, options = {}) {
+        if (!this.audioManager || typeof this.audioManager.setGlobalVoiceFx !== 'function') {
+            return;
+        }
+        const normalizedMix = clamp(mix, 0, 1);
+        this.audioManager.setGlobalVoiceFx({
+            mix: normalizedMix,
+            rateMul: lerp(1, 0.7, normalizedMix),
+            detune: Math.round(lerp(0, -340, normalizedMix)),
+            masterVolumeMul: lerp(1, 0.94, normalizedMix),
+            busVolumeMuls: {
+                bgm: lerp(1, 0.82, normalizedMix),
+                ambience: lerp(1, 0.78, normalizedMix),
+                sfx: lerp(1, 0.9, normalizedMix),
+                ui: lerp(1, 0.88, normalizedMix)
+            }
+        }, options);
     }
 };

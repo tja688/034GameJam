@@ -584,6 +584,11 @@ const SceneRenderMixin = {
             const lowEnergy = clamp(this.runState?.lowEnergyPulse || 0, 0, 1);
             const beat = clamp(this.runState?.energyBeat || 0, 0, 1);
             const palette = this.getRunPalette ? this.getRunPalette() : { pulse: COLORS.pulse, signal: COLORS.core };
+            const themeArena = palette.arena || COLORS.shadow;
+            const themeMist = palette.mist || palette.grid || COLORS.link;
+            const themePulse = palette.pulse || COLORS.pulse;
+            const themeSignal = palette.signal || COLORS.core;
+            const themeThreat = palette.threat || COLORS.health;
             const targetLength = this.getLivingEnergyBarTargetLength();
             const lengthDamp = 9.2 + growthRatio * 1.6;
 
@@ -693,17 +698,19 @@ const SceneRenderMixin = {
 
             const leftEdge = -actualLength * 0.5;
             const shellColor = lowEnergy > 0.08
-                ? blendColor(palette.signal, COLORS.health, lowEnergy * 0.54)
-                : blendColor(COLORS.shadow, palette.signal, 0.22);
+                ? blendColor(themeThreat, themeSignal, 0.28 + lowEnergy * 0.24)
+                : blendColor(themeArena, themeSignal, 0.46);
             const fillColor = lowEnergy > 0.08
-                ? blendColor(COLORS.energy, COLORS.health, lowEnergy * 0.42)
-                : blendColor(COLORS.inverse, palette.signal, 0.68);
-            const flashColor = blendColor(COLORS.core, COLORS.energy, 0.34 + Math.min(0.46, gain * 0.08 + overload * 0.12));
-            const growthColor = blendColor(palette.pulse, COLORS.energy, 0.42 + Math.min(0.28, grow * 0.06));
+                ? blendColor(themeThreat, COLORS.health, 0.32 + lowEnergy * 0.2)
+                : blendColor(themeSignal, themePulse, 0.38);
+            const flashColor = lowEnergy > 0.08
+                ? blendColor(themeThreat, themeSignal, 0.44)
+                : blendColor(themePulse, themeSignal, 0.5 + Math.min(0.18, gain * 0.05 + overload * 0.08));
+            const growthColor = blendColor(themePulse, themeMist, 0.34 + Math.min(0.18, grow * 0.05));
             const glowColor = lowEnergy > 0.08
-                ? COLORS.health
-                : blendColor(palette.pulse, COLORS.energy, 0.2);
-            const ghostColor = blendColor(COLORS.health, COLORS.inverse, 0.28);
+                ? themeThreat
+                : blendColor(themePulse, themeMist, 0.16);
+            const ghostColor = blendColor(themeArena, themeThreat, 0.48);
             const shadowAlpha = Math.min(0.4, 0.2 + lowEnergy * 0.06 + overload * 0.05);
             const glowAlpha = Math.min(0.28, 0.04 + gain * 0.06 + overload * 0.1 + lowEnergy * 0.05 + beat * 0.03);
             const flashAlpha = Math.min(0.46, 0.1 + gain * 0.11 + overload * 0.12 + grow * 0.05);
@@ -920,6 +927,33 @@ const SceneRenderMixin = {
         sprite.setRotation(Math.atan2(by - ay, bx - ax));
         sprite.setTint(color);
         sprite.setAlpha(alpha);
+    },
+    getPlayerNodeStageColor(node, palette = this.getRunPalette ? this.getRunPalette() : {}) {
+        const baseColor = Number.isFinite(node?.color) ? node.color : (NODE_COLORS_BY_SHAPE[node?.shape] || COLORS.core);
+        const roleAccent = node?.role === 'source'
+            ? (palette.pulse || COLORS.pulse)
+            : node?.role === 'compressor'
+                ? (palette.mist || palette.grid || COLORS.link)
+                : node?.role === 'shell'
+                    ? (palette.arena || COLORS.grid)
+                    : node?.role === 'prism'
+                        ? (palette.signal || COLORS.core)
+                        : node?.role === 'blade'
+                            ? (palette.threat || COLORS.health)
+                            : (palette.pulse || COLORS.pulse);
+        const polarityAccent = node?.polarity === 'inverse'
+            ? (palette.threat || COLORS.health)
+            : (palette.signal || COLORS.core);
+        const roleMix = node?.shape === 'circle' ? 0.34 : 0.28;
+        const polarityMix = node?.polarity === 'inverse' ? 0.32 : 0.18;
+        return blendColor(blendColor(baseColor, roleAccent, roleMix), polarityAccent, polarityMix);
+    },
+    getPlayerNodeGlowColor(node, palette = this.getRunPalette ? this.getRunPalette() : {}) {
+        const staged = this.getPlayerNodeStageColor(node, palette);
+        const accent = node?.polarity === 'inverse'
+            ? (palette.threat || COLORS.health)
+            : (palette.signal || COLORS.core);
+        return blendColor(staged, accent, 0.28);
     },
     addScreenShake(worldAmount = 0, hudAmount = worldAmount) {
         if (!this.cameraRig) {
@@ -1827,10 +1861,13 @@ const SceneRenderMixin = {
         this.activeNodes.forEach((node) => {
             const nodePos = this.worldToScreen(node.displayX, node.displayY);
             const anchorPos = this.worldToScreen(node.displayAnchorX, node.displayAnchorY);
+            const nodeColor = this.getPlayerNodeStageColor(node, palette);
+            const nodeGlowColor = this.getPlayerNodeGlowColor(node, palette);
+            const triggerPulse = clamp(node.triggerPulse || 0, 0, 1.4);
             if (node.anchored) {
                 g.lineStyle(clamp(2.6 * this.cameraRig.zoom, 1, 3), COLORS.pulse, 0.45);
                 g.lineBetween(nodePos.x, nodePos.y, anchorPos.x, anchorPos.y);
-                g.lineStyle(clamp(2.2 * this.cameraRig.zoom, 1, 3), node.color, 0.55);
+                g.lineStyle(clamp(2.2 * this.cameraRig.zoom, 1, 3), nodeColor, 0.55);
                 g.strokeCircle(anchorPos.x, anchorPos.y, clamp(14 * this.cameraRig.zoom, 5, 14));
             }
 
@@ -1840,8 +1877,13 @@ const SceneRenderMixin = {
                 g.strokeCircle(nodePos.x, nodePos.y, glowRadius);
             }
 
+            if (drawGlow && triggerPulse > 0.02) {
+                g.lineStyle(clamp((1.6 + triggerPulse * 2) * this.cameraRig.zoom, 1, 4), nodeGlowColor, 0.14 + triggerPulse * 0.2);
+                g.strokeCircle(nodePos.x, nodePos.y, clamp((16 + triggerPulse * 12) * this.cameraRig.zoom, 8, 32));
+            }
+
             if (drawGlow && node.biteGlow > 0.01) {
-                g.lineStyle(clamp((2.2 + node.biteGlow * 1.6) * this.cameraRig.zoom, 1, 4), node.color, node.biteGlow * 0.5);
+                g.lineStyle(clamp((2.2 + node.biteGlow * 1.6) * this.cameraRig.zoom, 1, 4), nodeColor, node.biteGlow * 0.5);
                 g.strokeCircle(nodePos.x, nodePos.y, clamp((16 + node.biteGlow * 10) * this.cameraRig.zoom, 8, 26));
             }
 
@@ -1860,20 +1902,21 @@ const SceneRenderMixin = {
                 }
                 const pulse = 1
                     + Math.sin(this.worldTime * 9 + node.order * 1.7) * 0.1 * (0.6 + node.feedPulse + growthPulse * 0.4 + victoryPulse * 0.8)
-                    + mouthLoad * 0.1;
+                    + mouthLoad * 0.1
+                    + triggerPulse * 0.12;
                 size *= pulse;
                 if (drawGlow && mouthLoad > 0.02) {
                     g.lineStyle(clamp((1.4 + mouthLoad * 1.6) * this.cameraRig.zoom, 1, 4), COLORS.core, 0.1 + mouthLoad * 0.08);
                     g.strokeCircle(bodyX, bodyY, clamp(size * (0.32 + mouthLoad * 0.03), 4, 18));
                 }
             } else if (node.shape === 'square') {
-                size *= 1 + node.biteGlow * 0.08 + victoryPulse * 0.04;
+                size *= 1 + node.biteGlow * 0.08 + victoryPulse * 0.04 + triggerPulse * 0.1;
                 if (drawGlow && node.spinVelocity > 0.02) {
                     g.lineStyle(clamp((1.8 + node.spinVelocity * 0.04) * this.cameraRig.zoom, 1, 4), COLORS.core, 0.12 + node.biteGlow * 0.18);
                     g.strokeCircle(nodePos.x, nodePos.y, clamp(size * 0.56, 5, 22));
                 }
             } else {
-                size *= 1 + node.hookTension * 0.1;
+                size *= 1 + node.hookTension * 0.1 + triggerPulse * 0.12;
                 if (drawGlow && node.hookTension > 0.02) {
                     drawShape(
                         g,
@@ -1881,14 +1924,14 @@ const SceneRenderMixin = {
                         nodePos.x + (node.attackDirX || 0) * 8 * this.cameraRig.zoom,
                         nodePos.y + (node.attackDirY || 0) * 8 * this.cameraRig.zoom,
                         size * (1 + node.hookTension * 0.08),
-                        node.color,
+                        nodeGlowColor,
                         0.18 + node.hookTension * 0.16,
                         rotation
                     );
                 }
             }
 
-            drawShape(g, node.shape, bodyX, bodyY, size, node.color, 0.96, rotation);
+            drawShape(g, node.shape, bodyX, bodyY, size, nodeColor, 0.96, rotation);
             if (drawGlow && node.shape === 'circle' && node.feedPulse > 0.02) {
                 const mouthCore = clamp((node.absorbLoad || 0) * 0.08 + (node.absorbFlash || 0) * 0.1, 0, 0.22);
                 g.fillStyle(COLORS.core, 0.18 + node.feedPulse * 0.14 + mouthCore);
@@ -1941,6 +1984,18 @@ const SceneRenderMixin = {
             g.strokeCircle(centerX, bottomY, 16 + centerCompression * 10);
             g.lineStyle(2, palette.signal, 0.16 + objectivePulse * 0.22);
             g.strokeCircle(centerX, bottomY, 28 + objectivePulse * 4);
+
+            const roundMarker = this.getRoundMarkerSpec?.();
+            if (roundMarker) {
+                const markerX = anchorLeft - 34 - roundMarker.size * 0.5;
+                const markerY = (barVisible ? barMetrics.top + barMetrics.height * 0.5 : 54)
+                    + (this.cameraRig?.hudOffsetY || 0) * 0.4
+                    + Math.sin(this.worldTime * 5.4 + roundMarker.size * 0.03) * (1.2 + hudJolt);
+                const markerSize = roundMarker.size * (1 + hudJolt * 0.04 + objectivePulse * 0.02);
+                g.lineStyle(3, blendColor(roundMarker.color, palette.signal || COLORS.core, 0.28), 0.34 + objectivePulse * 0.12);
+                g.strokeCircle(markerX, markerY, markerSize * 0.62);
+                drawShape(g, roundMarker.shape, markerX, markerY, markerSize * 2, roundMarker.color, 0.92, 0);
+            }
         }
 
         if (this.menuMode === 'pause') {
