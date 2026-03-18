@@ -86,6 +86,20 @@
 - 若 `9222` 被占用，脚本会自动向后寻找可用端口，并在终端打印实际 DevTools endpoint
 - Chrome 使用独立 `user-data-dir`，用于保证 Chrome DevTools MCP 可稳定连接和全量控制，不污染日常浏览器会话
 
+## Desktop Shell (Electron)
+
+- 新增桌面壳入口：`electron/main.js`
+- Electron 主进程会启动内置 HTTP 服务（默认优先 `127.0.0.1:4173`，端口被占用时自动向后探测）
+- 该服务复用 dev server 的关键协议约束：
+  - `GET /__api/ping`
+  - `POST /__api/write-json`（同白名单文件集）
+  - 静态资源服务（`index.html`、`src/`、`assets/`、`data/`、`vendor/`）
+- 前端运行路径保持 `http://` 协议，不改 `tuning-panel.js` 与 `src/storage.js` 的读写协议假设
+- JSON 可写文件策略分层：
+  - 开发态（未打包）：写回仓库根目录对应 JSON 文件
+  - 打包态（`app.isPackaged=true`）：写入 `app.getPath('userData')/mutable-json/`，并在读取时优先覆盖同名内置资源
+- 打包配置由仓库根 `package.json` 中的 `electron-builder` 维护，Windows 目标为 `nsis` 安装包
+
 ## Current Bridge Status
 
 以下能力已经进入新骨架，但底层行为仍依赖 legacy 实现：

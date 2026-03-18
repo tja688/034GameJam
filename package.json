@@ -1,0 +1,57 @@
+{
+  "name": "034gamejam",
+  "version": "0.1.0",
+  "description": "Desktop packaging for the Phaser 3 game",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "electron:dev": "electron .",
+    "electron:dist:dir": "electron-builder --dir",
+    "electron:dist:win": "electron-builder --win nsis"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^26.0.12",
+    "playwright": "^1.58.2"
+  },
+  "build": {
+    "appId": "com.gamejam034.desktop",
+    "productName": "生物动力学",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "files": [
+      "index.html",
+      "vendor/**/*",
+      "src/**/*",
+      "assets/**/*",
+      "data/**/*",
+      "audio-library.manifest.json",
+      "audio-profile.json",
+      "audio-noise-mute-config.json",
+      "tuning-profile.json",
+      "tuning-panel.js",
+      "save-slot.json",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "logo-256.png",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

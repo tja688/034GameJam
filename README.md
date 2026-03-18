@@ -4,9 +4,20 @@
 
 - Windows：`start-dev.bat`
 - PowerShell：`./start-dev.ps1`
+- Electron 开发运行：`npm run electron:dev`
 
 开发脚本默认会打开一个可被 Chrome DevTools MCP 接管的专用 Chrome 调试实例。
 终端会打印实际 DevTools endpoint，默认优先为 `http://127.0.0.1:9222`。
+
+## Electron 打包
+
+```bash
+npm install
+npm run electron:dist:win
+```
+
+- 产物目录：`dist/`
+- 仅生成目录包（不出安装器）：`npm run electron:dist:dir`
 
 唯一 canonical 文档目录：
 
