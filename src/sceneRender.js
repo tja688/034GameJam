@@ -1525,6 +1525,7 @@ const SceneRenderMixin = {
         const objective = this.getObjectivePrey ? this.getObjectivePrey() : null;
         const objectivePulse = clamp(this.runState?.objectivePulse || 0, 0, 1);
         const stageFlash = clamp(this.runState?.stageFlash || 0, 0, 1.8);
+        const heroFlash = clamp(this.timeDilation?.heroFlash || 0, 0, 1.4);
         const energyGainPulse = clamp(this.runState?.energyGainPulse || 0, 0, 1.4);
         const energyLossPulse = clamp(this.runState?.energyLossPulse || 0, 0, 1.4);
         const energyBeat = clamp(this.runState?.energyBeat || 0, 0, 1);
@@ -1567,6 +1568,18 @@ const SceneRenderMixin = {
         if (huntGlow > 0.01) {
             g.fillStyle(palette.pulse, huntGlow * 0.03);
             g.fillRect(0, 0, width, height);
+        }
+        if (heroFlash > 0.01) {
+            const flashColor = blendColor(palette.signal || COLORS.core, COLORS.inverse, 0.34);
+            g.fillStyle(flashColor, 0.05 + heroFlash * 0.14);
+            g.fillRect(0, 0, width, height);
+            g.lineStyle(4 + heroFlash * 4, blendColor(palette.pulse || COLORS.pulse, palette.signal || COLORS.core, 0.4), 0.08 + heroFlash * 0.18);
+            g.strokeRect(
+                10 + heroFlash * 10,
+                10 + heroFlash * 8,
+                Math.max(12, width - 20 - heroFlash * 20),
+                Math.max(12, height - 20 - heroFlash * 16)
+            );
         }
         if (energyGainPulse > 0.01) {
             g.fillStyle(COLORS.energy, 0.025 + energyGainPulse * 0.05);
@@ -1985,17 +1998,6 @@ const SceneRenderMixin = {
             g.lineStyle(2, palette.signal, 0.16 + objectivePulse * 0.22);
             g.strokeCircle(centerX, bottomY, 28 + objectivePulse * 4);
 
-            const roundMarker = this.getRoundMarkerSpec?.();
-            if (roundMarker) {
-                const markerX = anchorLeft - 34 - roundMarker.size * 0.5;
-                const markerY = (barVisible ? barMetrics.top + barMetrics.height * 0.5 : 54)
-                    + (this.cameraRig?.hudOffsetY || 0) * 0.4
-                    + Math.sin(this.worldTime * 5.4 + roundMarker.size * 0.03) * (1.2 + hudJolt);
-                const markerSize = roundMarker.size * (1 + hudJolt * 0.04 + objectivePulse * 0.02);
-                g.lineStyle(3, blendColor(roundMarker.color, palette.signal || COLORS.core, 0.28), 0.34 + objectivePulse * 0.12);
-                g.strokeCircle(markerX, markerY, markerSize * 0.62);
-                drawShape(g, roundMarker.shape, markerX, markerY, markerSize * 2, roundMarker.color, 0.92, 0);
-            }
         }
 
         if (this.menuMode === 'pause') {

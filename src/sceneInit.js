@@ -174,8 +174,11 @@ const SceneInitMixin = {
             heroTimer: 0,
             heroDuration: 0,
             heroMinScale: 1,
+            heroHoldRatio: 0,
             heroWorldShake: 0,
             heroHudShake: 0,
+            heroFlash: 0,
+            heroFlashPeak: 0,
             audioMix: 0,
             appliedAudioMix: -1
         };
@@ -196,28 +199,57 @@ const SceneInitMixin = {
             : (T.editTimeScale ?? 0.08);
     },
     triggerHeroTimeDilation(prey = null) {
+        const isElite = prey?.encounterClass === 'elite' || !!prey?.isElite;
+        if (!isElite) {
+            return false;
+        }
         const state = this.ensureTimeDilationState();
-        const isLarge = prey?.sizeKey === 'large' || prey?.isObjective;
-        state.heroDuration = isLarge ? 0.44 : 0.32;
+        const isLarge = prey?.sizeKey === 'large';
+        state.heroDuration = isLarge ? 0.62 : 0.5;
         state.heroTimer = state.heroDuration;
-        state.heroMinScale = isLarge ? 0.14 : 0.2;
-        state.heroWorldShake = isLarge ? 1.18 : 0.86;
-        state.heroHudShake = isLarge ? 0.96 : 0.72;
+        state.heroMinScale = isLarge ? 0.06 : 0.1;
+        state.heroHoldRatio = isLarge ? 0.28 : 0.24;
+        state.heroWorldShake = isLarge ? 1.95 : 1.6;
+        state.heroHudShake = isLarge ? 1.58 : 1.3;
+        state.heroFlashPeak = isLarge ? 1.12 : 0.92;
+        state.heroFlash = Math.max(state.heroFlash || 0, state.heroFlashPeak);
+        if (this.runState) {
+            this.runState.stageFlash = Math.max(this.runState.stageFlash || 0, isLarge ? 1.5 : 1.22);
+            this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, isLarge ? 1.02 : 0.82);
+        }
+        if (this.player) {
+            this.player.feastGlow = Math.max(this.player.feastGlow || 0, isLarge ? 0.78 : 0.56);
+        }
         this.addScreenShake?.(state.heroWorldShake, state.heroHudShake);
+        return true;
     },
     updateTimeDilationState(frameDt, options = {}) {
         const state = this.ensureTimeDilationState();
         const forceNormal = options === true || !!options.forceNormal;
         let heroScale = 1;
         let heroMix = 0;
+        let heroFlashTarget = 0;
 
         if (!forceNormal && (state.heroTimer || 0) > 0) {
             state.heroTimer = Math.max(0, state.heroTimer - frameDt);
             const duration = Math.max(0.0001, state.heroDuration || 0.0001);
-            const progress = 1 - state.heroTimer / duration;
-            const eased = Phaser.Math.Easing.Cubic.Out(clamp(progress, 0, 1));
-            heroScale = lerp(state.heroMinScale || 0.18, 1, eased);
-            heroMix = clamp(1 - eased, 0, 1);
+            const progress = clamp(1 - state.heroTimer / duration, 0, 1);
+            const holdRatio = clamp(state.heroHoldRatio || 0, 0, 0.72);
+            const recoverProgress = holdRatio > 0
+                ? clamp((progress - holdRatio) / Math.max(0.0001, 1 - holdRatio), 0, 1)
+                : progress;
+            const recoverEase = Phaser.Math.Easing.Cubic.Out(recoverProgress);
+            if (progress <= holdRatio) {
+                const holdEase = holdRatio > 0
+                    ? Phaser.Math.Easing.Sine.Out(clamp(progress / Math.max(holdRatio, 0.0001), 0, 1))
+                    : 1;
+                heroScale = lerp(state.heroMinScale || 0.08, (state.heroMinScale || 0.08) + 0.02, holdEase);
+                heroMix = 1;
+            } else {
+                heroScale = lerp(state.heroMinScale || 0.08, 1, recoverEase);
+                heroMix = clamp(1 - recoverEase, 0, 1);
+            }
+            heroFlashTarget = heroMix * Math.max(0, state.heroFlashPeak || 1);
             if (heroMix > 0.02 && this.cameraRig) {
                 this.cameraRig.shake = Math.max(this.cameraRig.shake || 0, (state.heroWorldShake || 0) * (0.26 + heroMix * 0.74));
                 this.cameraRig.hudShake = Math.max(this.cameraRig.hudShake || 0, (state.heroHudShake || 0) * (0.22 + heroMix * 0.78));
@@ -225,15 +257,19 @@ const SceneInitMixin = {
             if (state.heroTimer <= 0) {
                 state.heroDuration = 0;
                 state.heroMinScale = 1;
+                state.heroHoldRatio = 0;
                 state.heroWorldShake = 0;
                 state.heroHudShake = 0;
+                state.heroFlashPeak = 0;
             }
         } else if (forceNormal) {
             state.heroTimer = 0;
             state.heroDuration = 0;
             state.heroMinScale = 1;
+            state.heroHoldRatio = 0;
             state.heroWorldShake = 0;
             state.heroHudShake = 0;
+            state.heroFlashPeak = 0;
         }
 
         const editMix = forceNormal ? 0 : clamp(this.player?.edit?.ambience || 0, 0, 1) * 0.92;
@@ -241,6 +277,9 @@ const SceneInitMixin = {
         const targetScale = Math.min(editScale, heroScale);
         const targetAudioMix = forceNormal ? 0 : clamp(1 - (1 - editMix) * (1 - heroMix), 0, 1);
         state.audioMix = damp(state.audioMix || 0, targetAudioMix, forceNormal ? 12 : 10.5, frameDt);
+        state.heroFlash = forceNormal
+            ? 0
+            : damp(state.heroFlash || 0, heroFlashTarget, 15.5, frameDt);
         this.timeScaleFactor = clamp(targetScale, 0.04, 1);
 
         if (!Number.isFinite(state.appliedAudioMix) || Math.abs(state.appliedAudioMix - state.audioMix) > 0.01 || forceNormal) {

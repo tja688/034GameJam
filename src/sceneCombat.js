@@ -588,18 +588,34 @@ const SceneCombatMixin = {
         this.noteDevourBurst?.(1);
         const deathLoot = this.releasePreyFragments(prey, prey.chunkBurst + (prey.sizeKey === 'large' ? 8 : 3), node, attachment, true, true);
         const rewardDeferred = Array.isArray(deathLoot) && deathLoot.some((fragment) => !!fragment.rewardSourceId);
-        if (prey.encounterClass === 'elite' || prey.encounterClass === 'objective') {
+        const triggerEliteHeroShot = prey.encounterClass === 'elite' || !!prey.isElite;
+        if (triggerEliteHeroShot) {
             this.triggerHeroTimeDilation?.(prey);
         }
         if (!this.getRunTuningToggle || this.getRunTuningToggle('gameplayPreyDeathRingsEnabled', true)) {
             this.createRing(prey.x, prey.y, prey.radius + 34, node?.color || prey.color, 0.28, 4, 'prey-death');
             this.createRing(prey.x, prey.y, prey.radius + 16, COLORS.core, 0.22, 3, 'prey-death');
             this.createRing(prey.x, prey.y, prey.radius * 0.82, COLORS.gore, 0.18, 2, 'prey-death');
+            if (triggerEliteHeroShot) {
+                this.createRing(prey.x, prey.y, prey.radius + 58, prey.signalColor || COLORS.core, 0.34, 5, 'prey-death');
+            }
         }
         this.bumpFeastMeter(0.18 + prey.yield * 0.09);
         this.addScreenShake?.(
-            prey.sizeKey === 'large' ? 0.8 : prey.sizeKey === 'medium' ? 0.46 : 0.24,
-            prey.sizeKey === 'large' ? 0.95 : prey.sizeKey === 'medium' ? 0.56 : 0.3
+            triggerEliteHeroShot
+                ? (prey.sizeKey === 'large' ? 1.34 : 1.02)
+                : prey.sizeKey === 'large'
+                    ? 0.8
+                    : prey.sizeKey === 'medium'
+                        ? 0.46
+                        : 0.24,
+            triggerEliteHeroShot
+                ? (prey.sizeKey === 'large' ? 1.48 : 1.14)
+                : prey.sizeKey === 'large'
+                    ? 0.95
+                    : prey.sizeKey === 'medium'
+                        ? 0.56
+                        : 0.3
         );
         const devourEventId = (prey.encounterClass === 'elite' || prey.encounterClass === 'objective')
             ? 'prey_devoured_elite_objective_burst'

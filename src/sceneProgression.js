@@ -337,44 +337,6 @@ const SceneProgressionMixin = {
             roundIndex: this.getRoundIndex()
         };
     },
-    getRoundMarkerSpec(roundIndex = this.getRoundIndex(), palette = this.getRunPalette()) {
-        const normalizedRound = Math.max(0, Math.round(roundIndex));
-        if (normalizedRound <= 0) {
-            return null;
-        }
-        if (normalizedRound === 1) {
-            return {
-                shape: 'triangle',
-                size: 15,
-                color: blendColor(palette.signal || COLORS.core, palette.pulse || COLORS.pulse, 0.22)
-            };
-        }
-        if (normalizedRound === 2) {
-            return {
-                shape: 'square',
-                size: 15,
-                color: blendColor(palette.signal || COLORS.core, palette.threat || COLORS.health, 0.18)
-            };
-        }
-
-        const extraRounds = Math.max(0, normalizedRound - 3);
-        const size = 15 + extraRounds * 4;
-        const huePool = [
-            palette.pulse || COLORS.pulse,
-            palette.signal || COLORS.core,
-            palette.threat || COLORS.health,
-            COLORS.circle,
-            COLORS.triangle,
-            COLORS.square
-        ];
-        const colorA = huePool[extraRounds % huePool.length];
-        const colorB = huePool[(extraRounds + 2) % huePool.length];
-        return {
-            shape: 'circle',
-            size,
-            color: blendColor(colorA, colorB, 0.38 + Math.min(0.28, extraRounds * 0.06))
-        };
-    },
     ensureRunProgressionState() {
         if (!this.runState) {
             this.runState = this.createDefaultRunState();
@@ -430,6 +392,34 @@ const SceneProgressionMixin = {
         }
         this.syncSpawnTimersForStage(true);
         this.populateStagePrey?.(true);
+    },
+    resetPlayerForRoundLoop() {
+        this.effects = [];
+        this.fragments = [];
+        this.resetFragmentPool?.();
+        this.prey = [];
+        this.pendingDevourRewards = [];
+        this.pendingLootRewardSources = {};
+        this.preySpawnCursor = { small: 0, medium: 1, large: 2 };
+        this.preyIdCounter = 1;
+        this.baseChain = [...DEFAULT_BASE_CHAIN];
+        this.poolNodes = this.createPoolNodesFromLibrary?.() || this.poolNodes;
+        this.player = this.createDefaultPlayer();
+        this.intent = this.createDefaultIntent?.() || this.intent;
+        this.cameraRig = this.createDefaultCameraRig();
+        this.clusterVolume = this.createDefaultClusterVolumeState?.() || this.clusterVolume;
+        this.burstDrive = this.createDefaultBurstDriveState?.() || this.burstDrive;
+        this.timeDilation = this.createDefaultTimeDilationState?.() || this.timeDilation;
+        this.timeScaleFactor = 1;
+        this.resetLivingEnergyBarState?.();
+        this.player.topology = this.rebuildTopologyFromCurrentChain();
+        this.activeNodes = [];
+        this.links = [];
+        this.rebuildFormation(true);
+        this.clearEditDeleteState?.();
+        this.clearEditSelection?.();
+        this.resetBoxSelectionState?.();
+        this.applyGlobalTimeAudioFx?.(0, { force: true });
     },
     syncSpawnTimersForStage(forceReset = false) {
         this.ensureRunProgressionState();
@@ -1101,33 +1091,42 @@ const SceneProgressionMixin = {
         const nextRoundIndex = wrappedRound ? previousRoundIndex + 1 : previousRoundIndex;
 
         this.clearActivePreyChases?.('stage-advance');
-        this.prey = [];
-        this.runState.stageIndex = wrappedRound ? 0 : previousStageIndex + 1;
-        this.runState.roundIndex = nextRoundIndex;
-        this.runState.stageProgress = 0;
-        this.runState.objectiveSpawned = false;
-        this.runState.objectiveId = '';
-        this.runState.stageFlash = wrappedRound ? 1.5 : 1.25;
-        this.runState.stageSignal = 1;
-        this.runState.stageChangedAt = this.worldTime;
-        this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, wrappedRound ? 0.72 : 0.32);
+        if (wrappedRound) {
+            this.resetPlayerForRoundLoop();
+            this.runState = {
+                ...this.createDefaultRunState(),
+                stageIndex: 0,
+                roundIndex: nextRoundIndex,
+                stageFlash: 1.58,
+                stageSignal: 1,
+                hudJolt: 0.92,
+                stageChangedAt: this.worldTime
+            };
+        } else {
+            this.prey = [];
+            this.runState.stageIndex = previousStageIndex + 1;
+            this.runState.roundIndex = nextRoundIndex;
+            this.runState.stageProgress = 0;
+            this.runState.objectiveSpawned = false;
+            this.runState.objectiveId = '';
+            this.runState.stageFlash = 1.25;
+            this.runState.stageSignal = 1;
+            this.runState.stageChangedAt = this.worldTime;
+            this.runState.hudJolt = Math.max(this.runState.hudJolt || 0, 0.32);
+        }
         this.syncSpawnTimersForStage(true);
         this.populateStagePrey?.(true);
-        this.applyEnergyDelta(
-            Math.max(
-                this.getRunTuningValue('gameplayStageAdvanceEnergyFlat', 12),
-                this.player.maxEnergy * this.getRunTuningValue('gameplayStageAdvanceEnergyRatio', 0.24)
-            ),
-            0.42,
-            'stage'
-        );
-        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3, 'stage-advance');
-        if (wrappedRound) {
-            const marker = this.getRoundMarkerSpec(nextRoundIndex);
-            if (marker) {
-                this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 78, marker.color, 0.24, 4, 'stage-advance');
-            }
+        if (!wrappedRound) {
+            this.applyEnergyDelta(
+                Math.max(
+                    this.getRunTuningValue('gameplayStageAdvanceEnergyFlat', 12),
+                    this.player.maxEnergy * this.getRunTuningValue('gameplayStageAdvanceEnergyRatio', 0.24)
+                ),
+                0.42,
+                'stage'
+            );
         }
+        this.createRing(this.player.centroidX, this.player.centroidY, this.getFormationSpan() + 46, this.getRunPalette().signal, 0.32, 3, 'stage-advance');
         this.playAudioEvent?.('stage_advance', {
             fromStage: previousStageIndex,
             toStage: this.runState.stageIndex || 0,

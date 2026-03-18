@@ -51,9 +51,9 @@
 - startup sequence 不再复用 stage 1 预览，而是清空 prey / fragments / effects，只保留基础人物；人物保持自然游走，并允许鼠标吸引跟随
 - startup sequence 的 BGM 固定复用第三关素材；离开 startup sequence 后恢复正式 stage-aware BGM
 - stage transition 现在是一套统一 DOM 转场层：第一关起手和后续 `advanceStage()` 共用同一表现，不再只有后续关卡有切场反馈
-- `progression.demo5stage` 主流程现在按 5 个 stage 为一轮循环推进；打满一轮后回到第一关继续跑，并给该轮后续所有 stage 叠加 `+10%` pulse metabolism 与 `+10%` common prey density
-- 轮次状态不走文字 HUD，而是通过 living energy bar 左侧的几何标记表达：第二轮三角、第三轮方块、第四轮起圆形，后续轮次只放大圆形并换色
-- 精英 / objective 死亡现在会触发短时英雄镜头：共享时间缓动、屏幕抖动与全局音频慢放后处理；该后处理与编辑模式共用同一运行时混音层，恢复时必须自动回正
+- `progression.demo5stage` 主流程现在按 5 个 stage 为一轮循环推进；打满一轮后会把玩家 cluster 与成长进度重置回基础开局，再从第一关重新开始，同时给该轮后续所有 stage 叠加 `+10%` pulse metabolism 与 `+10%` common prey density
+- 轮次增量只作为内部难度标量，不再额外追加 round HUD 图标
+- 只有 `elite` 致死时才会触发英雄镜头，并且该镜头会叠加强化过的时间放缓、屏幕闪屏、屏幕抖动与全局音频慢放后处理；编辑模式继续共用同一运行时混音层，恢复时必须自动回正
 - 玩家 cluster 渲染继续保持 034 基础形体，但每关节点配色与 living energy bar 都会跟随 stage palette 切换，节点在 pulse 触发瞬间会额外膨胀回弹
 - 精英 / objective 致死碎片爆散半径翻倍；玩家 circle 节点的碎片吸收搜索半径提升到原来的 `1.5x`
 
