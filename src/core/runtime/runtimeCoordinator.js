@@ -13,7 +13,10 @@ const RuntimeCoordinator = {
             startSession: options.startSession !== false
         });
     },
-    tickStaticFrame(scene, frameDt) {
+    tickStaticFrame(scene, frameDt, options = {}) {
+        scene.profileFrameSection('timeFx', () => scene.updateTimeDilationState?.(frameDt, {
+            forceNormal: options.forceNormal !== false
+        }));
         this.updateCamera(scene, frameDt);
         this.updateHud(scene, frameDt);
         scene.profileFrameSection('render', () => this.render(scene));
@@ -44,11 +47,12 @@ const RuntimeCoordinator = {
     updateIntent(scene, frameDt) {
         scene.profileFrameSection('intent', () => scene.readIntent(frameDt));
     },
-    updateTopology(scene, frameDt, simDt) {
-        scene.profileFrameSection('topology', () => {
-            scene.updateEditMode(frameDt);
-            scene.updatePulse(simDt);
-        });
+    updateTimeFx(scene, frameDt) {
+        scene.profileFrameSection('editMode', () => scene.updateEditMode(frameDt));
+        scene.profileFrameSection('timeFx', () => scene.updateTimeDilationState?.(frameDt));
+    },
+    updateTopology(scene, simDt) {
+        scene.profileFrameSection('topology', () => scene.updatePulse(simDt));
     },
     updateMovement(scene, simDt) {
         scene.profileFrameSection('movement', () => {
@@ -108,7 +112,7 @@ const RuntimeCoordinator = {
         }
 
         if (scene.menuMode) {
-            this.tickStaticFrame(scene, frameDt);
+            this.tickStaticFrame(scene, frameDt, { forceNormal: true });
             return true;
         }
 
@@ -126,7 +130,7 @@ const RuntimeCoordinator = {
         }
 
         if (scene.paused) {
-            this.tickStaticFrame(scene, frameDt);
+            this.tickStaticFrame(scene, frameDt, { forceNormal: true });
             return true;
         }
 
@@ -154,12 +158,13 @@ const RuntimeCoordinator = {
 
         this.preUpdateInput(scene, frameDt);
         this.updateIntent(scene, frameDt);
+        this.updateTimeFx(scene, frameDt);
 
         const simDt = frameDt * scene.timeScaleFactor;
         scene.worldTime += simDt;
 
         if (!scene.player.dead) {
-            this.updateTopology(scene, frameDt, simDt);
+            this.updateTopology(scene, simDt);
             this.updateMovement(scene, simDt);
             this.updatePrey(scene, simDt);
             this.updatePredation(scene, simDt);

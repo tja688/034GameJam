@@ -3,8 +3,8 @@
 ## Layer Map
 
 - `src/core`
-  - `state/gameSessionState.js`：统一运行时状态容器
-  - `runtime/runtimeCoordinator.js`：统一帧调度顺序
+  - `state/gameSessionState.js`：统一运行时状态容器；`timeDilation` 也必须落在 session state 里，避免 reset / pause / menu 后残留慢放态
+  - `runtime/runtimeCoordinator.js`：统一帧调度顺序；编辑模式 / 英雄镜头的 `updateTimeDilationState()` 必须在计算 `simDt` 前执行
   - `spawn/moduleRegistry.js` + `spawn/spawnService.js`：正式模块注册与生成入口
   - `tuning/baselineTuningStore.js`：Baseline tuning 拆分写盘
   - `save/sessionSnapshot.js`：fixture / snapshot 导出

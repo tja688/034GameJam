@@ -86,6 +86,7 @@ const LegacySessionBridge = {
         scene.cameraRig = scene.createDefaultCameraRig();
         scene.clusterVolume = scene.createDefaultClusterVolumeState();
         scene.burstDrive = scene.createDefaultBurstDriveState();
+        scene.timeDilation = scene.createDefaultTimeDilationState?.() || null;
         scene.performanceProbe = scene.createDefaultPerformanceProbe();
         scene.ecoTelemetry = scene.createDefaultEcoTelemetry?.() || null;
         scene.pendingDevourRewards = [];
@@ -109,6 +110,7 @@ const LegacySessionBridge = {
         scene.expandHoldTimer = 0;
         scene.expandAddCount = 0;
         scene.nextExpandThreshold = 0;
+        scene.applyGlobalTimeAudioFx?.(0, { force: true });
         scene.syncSceneBgm?.({ source: options.startSession === false ? 'reset-idle' : 'reset-session' });
         scene.refreshMenuState?.();
         GameSessionStateFactory.touch(scene.sessionState);
