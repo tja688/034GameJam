@@ -1,9 +1,25 @@
 {
   "version": 1,
-  "generatedAt": "2026-03-14T07:15:42Z",
+  "generatedAt": "2026-03-18T01:47:26Z",
   "basePath": "assets/audio",
   "preloadLimit": 24,
   "assets": [
+    {
+      "id": "sfx_boss_hit2",
+      "label": "Sfx Boss Hit2",
+      "group": "misc",
+      "tags": [
+        "boss",
+        "hit2",
+        "misc",
+        "sfx",
+        "sfx_boss_hit2"
+      ],
+      "preload": false,
+      "files": [
+        "SFX_boss_hit2.wav"
+      ]
+    },
     {
       "id": "snd_alchemy_chest_close",
       "label": "Snd Alchemy Chest Close",
@@ -667,22 +683,6 @@
       ]
     },
     {
-      "id": "snd_final_cutscene",
-      "label": "Snd Final Cutscene",
-      "group": "misc",
-      "tags": [
-        "cutscene",
-        "final",
-        "misc",
-        "snd",
-        "snd_final_cutscene"
-      ],
-      "preload": false,
-      "files": [
-        "snd_final_cutscene.wav"
-      ]
-    },
-    {
       "id": "snd_flask_collect_01",
       "label": "Snd Flask Collect 01",
       "group": "misc",
@@ -731,60 +731,6 @@
       "preload": false,
       "files": [
         "snd_flask_collect_03.wav"
-      ]
-    },
-    {
-      "id": "snd_glacial_depths_main_01",
-      "label": "Snd Glacial Depths Main 01",
-      "group": "misc",
-      "tags": [
-        "01",
-        "depths",
-        "glacial",
-        "main",
-        "misc",
-        "snd",
-        "snd_glacial_depths_main_01"
-      ],
-      "preload": false,
-      "files": [
-        "snd_glacial_depths_main_01.wav"
-      ]
-    },
-    {
-      "id": "snd_glacial_depths_main_02",
-      "label": "Snd Glacial Depths Main 02",
-      "group": "misc",
-      "tags": [
-        "02",
-        "depths",
-        "glacial",
-        "main",
-        "misc",
-        "snd",
-        "snd_glacial_depths_main_02"
-      ],
-      "preload": false,
-      "files": [
-        "snd_glacial_depths_main_02.wav"
-      ]
-    },
-    {
-      "id": "snd_glacial_depths_main_03",
-      "label": "Snd Glacial Depths Main 03",
-      "group": "misc",
-      "tags": [
-        "03",
-        "depths",
-        "glacial",
-        "main",
-        "misc",
-        "snd",
-        "snd_glacial_depths_main_03"
-      ],
-      "preload": false,
-      "files": [
-        "snd_glacial_depths_main_03.wav"
       ]
     },
     {
@@ -882,57 +828,6 @@
       "preload": false,
       "files": [
         "snd_inventory_open.wav"
-      ]
-    },
-    {
-      "id": "snd_island_main_01",
-      "label": "Snd Island Main 01",
-      "group": "misc",
-      "tags": [
-        "01",
-        "island",
-        "main",
-        "misc",
-        "snd",
-        "snd_island_main_01"
-      ],
-      "preload": false,
-      "files": [
-        "snd_island_main_01.wav"
-      ]
-    },
-    {
-      "id": "snd_island_main_02",
-      "label": "Snd Island Main 02",
-      "group": "misc",
-      "tags": [
-        "02",
-        "island",
-        "main",
-        "misc",
-        "snd",
-        "snd_island_main_02"
-      ],
-      "preload": false,
-      "files": [
-        "snd_island_main_02.wav"
-      ]
-    },
-    {
-      "id": "snd_island_main_03",
-      "label": "Snd Island Main 03",
-      "group": "misc",
-      "tags": [
-        "03",
-        "island",
-        "main",
-        "misc",
-        "snd",
-        "snd_island_main_03"
-      ],
-      "preload": false,
-      "files": [
-        "snd_island_main_03.wav"
       ]
     },
     {
@@ -1069,22 +964,6 @@
       "preload": false,
       "files": [
         "snd_jellyfish_explode.wav"
-      ]
-    },
-    {
-      "id": "sfx_boss_hit2",
-      "label": "Sfx Boss Hit2",
-      "group": "misc",
-      "tags": [
-        "boss",
-        "hit2",
-        "misc",
-        "sfx",
-        "sfx_boss_hit2"
-      ],
-      "preload": false,
-      "files": [
-        "SFX_boss_hit2.wav"
       ]
     },
     {
@@ -1353,76 +1232,6 @@
       "preload": false,
       "files": [
         "snd_logo_entrance.wav"
-      ]
-    },
-    {
-      "id": "snd_magma_abyss_main_01",
-      "label": "Snd Magma Abyss Main 01",
-      "group": "misc",
-      "tags": [
-        "01",
-        "abyss",
-        "magma",
-        "main",
-        "misc",
-        "snd",
-        "snd_magma_abyss_main_01"
-      ],
-      "preload": false,
-      "files": [
-        "snd_magma_abyss_main_01.wav"
-      ]
-    },
-    {
-      "id": "snd_magma_abyss_main_02",
-      "label": "Snd Magma Abyss Main 02",
-      "group": "misc",
-      "tags": [
-        "02",
-        "abyss",
-        "magma",
-        "main",
-        "misc",
-        "snd",
-        "snd_magma_abyss_main_02"
-      ],
-      "preload": false,
-      "files": [
-        "snd_magma_abyss_main_02.wav"
-      ]
-    },
-    {
-      "id": "snd_magma_abyss_main_03",
-      "label": "Snd Magma Abyss Main 03",
-      "group": "misc",
-      "tags": [
-        "03",
-        "abyss",
-        "magma",
-        "main",
-        "misc",
-        "snd",
-        "snd_magma_abyss_main_03"
-      ],
-      "preload": false,
-      "files": [
-        "snd_magma_abyss_main_03.wav"
-      ]
-    },
-    {
-      "id": "snd_menu_music",
-      "label": "Snd Menu Music",
-      "group": "misc",
-      "tags": [
-        "menu",
-        "misc",
-        "music",
-        "snd",
-        "snd_menu_music"
-      ],
-      "preload": false,
-      "files": [
-        "snd_menu_music.wav"
       ]
     },
     {
@@ -1727,22 +1536,6 @@
       "preload": false,
       "files": [
         "snd_obsidian_hit_03.wav"
-      ]
-    },
-    {
-      "id": "snd_ocean_ambience",
-      "label": "Snd Ocean Ambience",
-      "group": "misc",
-      "tags": [
-        "ambience",
-        "misc",
-        "ocean",
-        "snd",
-        "snd_ocean_ambience"
-      ],
-      "preload": false,
-      "files": [
-        "snd_ocean_ambience.wav"
       ]
     },
     {
@@ -2785,57 +2578,6 @@
       ]
     },
     {
-      "id": "snd_shallows_main_01",
-      "label": "Snd Shallows Main 01",
-      "group": "misc",
-      "tags": [
-        "01",
-        "main",
-        "misc",
-        "shallows",
-        "snd",
-        "snd_shallows_main_01"
-      ],
-      "preload": false,
-      "files": [
-        "snd_shallows_main_01.wav"
-      ]
-    },
-    {
-      "id": "snd_shallows_main_02",
-      "label": "Snd Shallows Main 02",
-      "group": "misc",
-      "tags": [
-        "02",
-        "main",
-        "misc",
-        "shallows",
-        "snd",
-        "snd_shallows_main_02"
-      ],
-      "preload": false,
-      "files": [
-        "snd_shallows_main_02.wav"
-      ]
-    },
-    {
-      "id": "snd_shallows_main_03",
-      "label": "Snd Shallows Main 03",
-      "group": "misc",
-      "tags": [
-        "03",
-        "main",
-        "misc",
-        "shallows",
-        "snd",
-        "snd_shallows_main_03"
-      ],
-      "preload": false,
-      "files": [
-        "snd_shallows_main_03.wav"
-      ]
-    },
-    {
       "id": "snd_shellphone_in",
       "label": "Snd Shellphone In",
       "group": "misc",
@@ -3032,60 +2774,6 @@
       "preload": false,
       "files": [
         "snd_submarine_storage_flying.wav"
-      ]
-    },
-    {
-      "id": "snd_swamp_waters_main_01",
-      "label": "Snd Swamp Waters Main 01",
-      "group": "misc",
-      "tags": [
-        "01",
-        "main",
-        "misc",
-        "snd",
-        "snd_swamp_waters_main_01",
-        "swamp",
-        "waters"
-      ],
-      "preload": false,
-      "files": [
-        "snd_swamp_waters_main_01.wav"
-      ]
-    },
-    {
-      "id": "snd_swamp_waters_main_02",
-      "label": "Snd Swamp Waters Main 02",
-      "group": "misc",
-      "tags": [
-        "02",
-        "main",
-        "misc",
-        "snd",
-        "snd_swamp_waters_main_02",
-        "swamp",
-        "waters"
-      ],
-      "preload": false,
-      "files": [
-        "snd_swamp_waters_main_02.wav"
-      ]
-    },
-    {
-      "id": "snd_swamp_waters_main_03",
-      "label": "Snd Swamp Waters Main 03",
-      "group": "misc",
-      "tags": [
-        "03",
-        "main",
-        "misc",
-        "snd",
-        "snd_swamp_waters_main_03",
-        "swamp",
-        "waters"
-      ],
-      "preload": false,
-      "files": [
-        "snd_swamp_waters_main_03.wav"
       ]
     },
     {
